@@ -1,0 +1,6 @@
+# Auto-detect text files and normalize line endings to LF
+* text=auto eol=lf
+
+# Seira source files (.sra) collide with Sybase/SAP PowerBuilder in GitHub Linguist.
+# Exclude .sra files from repository language statistics to prevent false classification.
+*.sra linguist-detectable=false

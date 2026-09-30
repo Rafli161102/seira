@@ -16,6 +16,6 @@ The Seira standard library adheres strictly to the architectural axiom:
 - `net/`: Network sockets and streams. Explicit effects (`!`).
 - `time/`: High-resolution clocks, `Instant`, `Duration`, and `sleep!`.
 
-## Status in 0.0.1-s (Seed Foundation)
-In **0.0.1-s**, these modules provide **architectural contracts and type specifications** only.
-They establish the layout for the upcoming Seed Series (`0.0.2-s` through `0.0.10-s`) and will be natively compiled during the Alpha series.
+## Status in the Seed Series (0.0.1-s – 0.0.10-s)
+Throughout the Seed Series, these modules provide **architectural contracts and type specifications** only.
+They establish the layout for the project and will be natively compiled during the Alpha series.

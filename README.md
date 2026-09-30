@@ -1,33 +1,37 @@
-# Seira Programming Language
+# Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release: 0.0.4-s](https://img.shields.io/badge/Release-0.0.4--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Language Foundation](https://img.shields.io/badge/Status-Language%20Foundation-orange.svg)](#status)
+[![Status: Language Foundation](https://img.shields.io/badge/Status-Language%20Foundation-orange.svg)](#project-status)
+
+**Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Seed stage.
 
 > **Simple to write. Predictable to run.**  
 > *Write less. Control more.*
 
-**Seira** is an open-source programming language. The long-term goal of the project is:
-> *A fast, modern, predictable, and secure programming language for native and WebAssembly software.*
+---
+
+## Project Status
 
 > [!IMPORTANT]
 > **Current Status: Seed (0.0.4-s) — Language Foundation**  
-> Seira is in its earliest seed stage. **Alpha is not released yet.**  
-> In this 0.0.4-s release, the project establishes the first real semantic layer: name resolution, lexical scopes, predictable shadowing, static type inference, structural type equality, explicit type checking, strict Boolean requirements (zero truthy/falsy coercion), mutability semantics, function call and return validation, Option/Result foundations, and pipeline validation. Direct native compilation and full execution will arrive during the Alpha series.
+> Seira is currently an early-stage experimental programming language project. The repository is establishing its compiler architecture, language foundation, tooling boundaries, and engineering infrastructure.  
+> **Seira is NOT production-ready, and Alpha is not yet released.**  
+> In the current 0.0.4-s release, the project provides a working front-end pipeline (lexing, parsing, name resolution, lexical scoping, and static type analysis) validated via `seira check`. Direct native code generation and WebAssembly emission will be implemented in subsequent phases.
 
 ---
 
-## 1. Core Language Identity
+## Core Philosophy
 
 Seira is built upon three foundational axioms:
 
-```
+```text
 «Everything is a Value.
 Programs are Transformations.
 The outside world is an Effect.»
 ```
 
-### Core Principles
+### Core Design Principles
 
 1. **Concise**: High signal-to-noise ratio syntax without boilerplate.
 2. **Predictable**: No hidden control flow, no implicit coercions, deterministic execution.
@@ -38,125 +42,29 @@ The outside world is an Effect.»
 
 ---
 
-## 2. Locked Language Foundations
+## Language Example
 
-The following design decisions are architectural constraints locked in the Seira specification:
+The following examples demonstrate syntax and semantic features supported and validated by the current `0.0.4-s` implementation:
 
-- **Static & Strong Typing**: Aggressive type inference ensures safety with minimal ceremony.
-- **Values by Default**: Values are immutable by default; mutation is explicitly declared with `mut`.
-- **First-Class Functions**: Functions are values that compose seamlessly via pipelines (`|>`).
-- **Data Modeling**: Structs, algebraic enums, `Option<T>`, and `Result<T, E>`.
-- **No Null**: Null pointers and `null`/`undefined` values do not exist.
-- **Resource Lifecycle**: Deterministic resource management using `with` blocks.
-- **Explicit Effects**: Effectful functions and operations are declared with `!` notation.
-- **No Implicit Operators**: No ternary `?:`, no `++`/`--`. Boolean logic uses readable `and`, `or`, `not`.
-- **Target Backends**: Native code generation and WebAssembly (Wasm).
-
----
-
-## 3. Project Identity
-
-| Attribute | Specification |
-| :--- | :--- |
-| **Language Name** | Seira |
-| **Source Extension** | `.sra` |
-| **Official CLI** | `seira` |
-| **Current Version** | `0.0.4-s` (*Language Foundation*) |
-| **License** | [MIT License](LICENSE) |
-| **Target Backends** | Native (LLVM) & WebAssembly (Wasm) |
-
----
-
-## 4. Current Status: Release 0.0.4-s (Language Foundation)
-
-Seira follows a staged release model:
-
-```
-Seed Series (0.0.1-s ... 0.0.10-s)
-  ↓
-Development Series (0.0.11-d ... 0.0.30-d)
-  ↓
-Alpha Series (0.1.0-alpha.1 ... 0.1.0-alpha.10)
-  ↓
-Beta Series (0.1.0-beta.1 ... 0.1.0-beta.10)
-  ↓
-Release Candidates (0.1.0-rc.1 ...)
-  ↓
-Stable 1.0.0
-```
-
-### What is implemented in `0.0.4-s`:
-- [x] Official repository architecture and 3 permanent branches (`main`, `develop`, `dev-infra`).
-- [x] Source management subsystem (`compiler/source/`) with `SourceId`, `SourceFile`, `Span`, `Position`, `LineMap`, and `SourceManager`.
-- [x] Full lexical scanner (`compiler/lexer/`) supporting literals (`Int`, `UInt`, `Float`, `Bool`, `Char`, `String`), keywords, operators, delimiters, compound assignments (`+=`, `-=`, etc.), and ranges (`..`, `..<`).
-- [x] Rejection of banned operators (`++`, `--`, `&&`, `||`, `null`, `===`, `!==`, `::`) with targeted diagnostics and suggestions.
-- [x] Pratt precedence climbing parser (`compiler/parser/`) for expressions, functions (standard and expression-style `=>`), if expressions, block expressions, bare bindings (`name = expr;`, `mut name = expr;`), and let/const statements.
-- [x] Controlled error recovery (`synchronize()`) enabling multi-error diagnostic reporting across statements and blocks.
-- [x] Source-aware AST node hierarchy (`compiler/ast/`) preserving precise source spans across all constructs.
-- [x] Name resolution & lexical scoping (`compiler/resolver/`) supporting global/module/function/block scopes, predictable lexical shadowing, top-level declaration hoisting, duplicate declaration detection (`E2002`), unresolved identifier detection (`E2001`), and immutable reassignment rejection (`E2003`).
-- [x] Basic type system foundation & inference (`compiler/typecheck/`) supporting `Int`, `UInt`, `Float`, `Bool`, `Char`, `String`, `Byte`, `Unit`, structural type equality, explicit type checking (`E3001`), operator operand typing (`E3002`), function calls & returns (`E3003`, `E3004`), strict Boolean requirements for `if` conditions (`E3005`), Option/Result foundations, and pipeline validation (`|>`).
-- [x] Diagnostics engine (`compiler/diagnostics/`) with structured code families (`E1xxx`–`E9xxx`), line snippets, ASCII code pointers, help/suggestions, and `InternalCompilerError` (ICE) reporting.
-- [x] Compiler driver subsystem (`compiler/driver/`) orchestrating the full pipeline (`Source -> Lexer -> Parser -> AST -> Resolver -> Typecheck -> Diagnostics`).
-- [x] Project manifest format (`Seira.toml`) parsing and validation.
-- [x] Official CLI (`seira`) with `--version`, `--help`, `info`, and `check` commands wired to the compiler driver.
-- [x] Intermediate representation contracts (`HIR`, `MIR`) and backend emission interface.
-- [x] Runtime architecture boundaries (`RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, `HostAdapter`).
-- [x] Automated test suite across unit, integration, compiler, resolver, typecheck, fixtures, runtime, and conformance (87 passing tests).
-
-### What is reserved / planned for future releases:
-- Full LLVM native code generator and WebAssembly emission backend.
-- Full borrow checker and static algebraic effect system.
-- Complete standard library (`std/core`, `std/collections`, `std/io`, `std/fs`, `std/net`, `std/time`, etc.).
-- Runtime execution engine and async task scheduler.
-- Package manager network registry and dependency resolution.
-
----
-
-## 5. Quick Start
-
-### Prerequisites
-- Node.js `v22+` (Node `v26` recommended)
-
-### Clone & Setup
-```bash
-git clone https://github.com/Rafli161102/seira.git
-cd seira
-npm install  # installs dev tools for typechecking and linting
-```
-
-### Running the CLI
-```bash
-# Check version
-./bin/seira --version
-# Output: Seira 0.0.2-s
-
-# Inspect environment and project
-./bin/seira info
-
-# Check syntax of a Seira source file
-./bin/seira check examples/hello_world.sra
-```
-
-### Running Tests
-```bash
-npm test
-```
-
----
-
-## 6. Syntax Preview (`.sra`)
-
+### 1. Hello World
 ```sra
-// examples/hello_world.sra
-// Seira Language Seed Example
-
+// Canonical function and output
 fn main() {
     println("Hello, Seira!")
 }
 ```
 
+### 2. Functional Pipelines and Option Fallback
 ```sra
-// Functional transformation with pipelines and Option fallback
+// Pure transformations with pipelines (|>) and Option fallback (??)
+fn double(x: Int) -> Int {
+    x * 2
+}
+
+fn add_bonus(x: Int, bonus: Int) -> Int {
+    x + bonus
+}
+
 fn compute_score(input: Option<Int>) -> Int {
     input
         ?? 0
@@ -165,11 +73,100 @@ fn compute_score(input: Option<Int>) -> Int {
 }
 ```
 
-*(Note: In 0.0.2-s, syntax is validated by `seira check`. Executable code generation is planned for the Alpha series).*
+*(Note: In 0.0.4-s, code is validated through syntax, scoping, and static type analysis using `seira check`. Executable code generation is planned for the Alpha series).*
 
 ---
 
-## 7. Architecture & Documentation
+## Implementation Status
+
+To maintain technical honesty and clear engineering boundaries, repository capabilities are strictly categorized:
+
+| Category | Definition | Subsystems / Features |
+| :--- | :--- | :--- |
+| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Basic type inference and static checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`)<br>• Compiler driver orchestrating front-end pipeline (`compiler/driver/`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira`) |
+| **Architecturally Prepared** | Formal contracts, interfaces, and boundary types defined | • High-Level Intermediate Representation (`compiler/hir/`)<br>• Mid-Level Intermediate Representation (`compiler/mir/`)<br>• Backend emission interfaces (`compiler/backend/`)<br>• Runtime session and service boundaries (`runtime/context.ts`, `services/`) |
+| **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics<br>• Scoped resource ownership model (`with` blocks, deterministic cleanup)<br>• Memory model, borrow checking, and zero-overhead abstractions<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts (`std/core`, `std/collections`, `std/io`, etc.) |
+| **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Direct executable compilation (`seira build`, `seira run`)<br>• Package manager registry and dependency resolution |
+
+### Completed Milestones
+
+- **`0.0.1-s` — Seed Foundation**: Repository bootstrap, root documentation, initial structure, CLI entry point.
+- **`0.0.2-s` — Repository Architecture**: Subsystem boundaries, source management, diagnostics bag, driver lifecycle, runtime contracts, backend interfaces.
+- **`0.0.3-s` — Compiler Foundation**: Lexer, Pratt parser, AST hierarchy, error recovery, token validation.
+- **`0.0.4-s` — Language Foundation**: Name resolution, lexical scoping, basic static type system, structural type equality, pipeline validation.
+- **`0.0.5-s` — NOT STARTED**: Scheduled next in the Seed series.
+
+---
+
+## Architecture Overview
+
+Seira's compiler architecture is designed to support native and WebAssembly targets through a clean multi-stage pipeline:
+
+```text
+Source Code (.sra)
+  ↓
+SourceManager        [IMPLEMENTED (0.0.2-s)]
+  ↓
+Lexer                [IMPLEMENTED (0.0.3-s)]
+  ↓
+Parser               [IMPLEMENTED (0.0.3-s)]
+  ↓
+AST                  [IMPLEMENTED (0.0.3-s / 0.0.4-s)]
+  ↓
+Name Resolution      [IMPLEMENTED (0.0.4-s)]
+  ↓
+Type Analysis        [IMPLEMENTED (0.0.4-s)]
+  ↓
+Semantic Validation  [IMPLEMENTED (0.0.4-s)]
+  ↓
+HIR Lowering         [Architectural Contract (0.0.2-s)]
+  ↓
+MIR Lowering         [Architectural Contract (0.0.2-s)]
+  ↓
+Backend Emitter      [Architectural Contract (0.0.2-s)]
+  ↓
+Native / WebAssembly [Planned: Alpha Series]
+```
+
+---
+
+## Roadmap
+
+Seira adheres to a locked, staged versioning and milestone sequence:
+
+```text
+PHASE 0: DESIGN
+  └── Architectural specifications and language axioms.
+
+PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [CURRENT PHASE]
+  ├── 0.0.1-s: Seed Foundation (Complete)
+  ├── 0.0.2-s: Repository Architecture (Complete)
+  ├── 0.0.3-s: Compiler Foundation (Complete)
+  ├── 0.0.4-s: Language Foundation (Complete)
+  └── 0.0.5-s → 0.0.10-s: (Not Started)
+
+PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)
+  └── Toolchain maturation, intermediate representations, and effect checking.
+
+PHASE 3: ALPHA (0.1.0-alpha.x)
+  └── Native (LLVM) code generation, WebAssembly backend, and executable binaries.
+
+PHASE 4: BETA (0.1.0-beta.x)
+  └── Standard library completion, stability, and developer tooling.
+
+PHASE 5: RELEASE CANDIDATES (0.1.0-rc.x)
+  └── Release stabilization, performance profiling, and bug fixes.
+
+PHASE 6: STABLE (1.0.0)
+  └── Production-ready language specification, standard library, and toolchain.
+
+PHASE 7: PRODUCTION (1.1+)
+  └── Long-term backwards compatibility and ecosystem growth.
+```
+
+---
+
+## Documentation
 
 - [Architecture Overview](docs/architecture/overview.md)
 - [Repository Architecture](docs/architecture/repository.md)
@@ -185,16 +182,63 @@ fn compute_score(input: Option<Int>) -> Int {
 
 ---
 
-## 8. Contributing & Governance
+## Development
 
-We welcome community participation! Please read:
-- [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, PR guidelines, and coding standards.
-- [GOVERNANCE.md](GOVERNANCE.md) for the project decision-making model.
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards.
-- [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
+### Prerequisites
+- Node.js `v22+` (Node `v26` recommended)
+
+### Clone & Setup
+```bash
+git clone https://github.com/Rafli161102/seira.git
+cd seira
+npm ci
+```
+
+### Running the CLI
+```bash
+# Check version
+./bin/seira --version
+# Output: Seira 0.0.4-s
+
+# Inspect environment and project
+./bin/seira info
+
+# Validate syntax, scoping, and types of a Seira source file
+./bin/seira check examples/hello_world.sra
+```
+
+### Running Tests
+```bash
+npm test
+```
+
+### Type Checking
+```bash
+npm run typecheck
+```
 
 ---
 
-## 9. License
+## Contributing
+
+We welcome community participation! Please review:
+- [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy, PR workflows, and engineering guidelines.
+- The Seira project enforces a permanent three-branch model (`main`, `develop`, `dev-infra`). All development branches merge into `develop`.
+
+---
+
+## Governance
+
+Seira is guided by transparent, consensus-driven governance. See [GOVERNANCE.md](GOVERNANCE.md) for role definitions and the [RFC Process](docs/rfcs/README.md) for proposing language changes.
+
+---
+
+## Security
+
+For security vulnerability reporting procedures, please consult [SECURITY.md](SECURITY.md).
+
+---
+
+## License
 
 Seira is open-source software licensed under the [MIT License](LICENSE).
