@@ -1,7 +1,7 @@
 {
   "name": "seira",
-  "version": "0.0.3-s",
-  "description": "The Seira Programming Language — Compiler Foundation",
+  "version": "0.0.4-s",
+  "description": "The Seira Programming Language — Language Foundation",
   "type": "module",
   "bin": {
     "seira": "./bin/seira"

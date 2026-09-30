@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Specification | Seira 0.0.2-s Repository Architecture |
-| Target Milestone | 0.0.2-s (Seed Series) |
+| Specification | Seira 0.0.4-s Repository Architecture |
+| Target Milestone | 0.0.4-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
@@ -71,7 +71,7 @@ Detailed architecture documents provide deep-dive specifications for each bounda
 
 ## 4. Status Classification Matrix
 
-| Feature / Subsystem | Status in 0.0.3-s | Target Milestone | Description |
+| Feature / Subsystem | Status in 0.0.4-s | Target Milestone | Description |
 | :--- | :--- | :--- | :--- |
 | **Source Management** | **Implemented** | 0.0.2-s | `SourceManager`, `LineMap`, `Span`, `Position` |
 | **Compiler Driver & Lifecycle** | **Implemented** | 0.0.3-s | `CompilerDriver`, `CompilerContext`, `CompilerConfig` |
@@ -81,9 +81,9 @@ Detailed architecture documents provide deep-dive specifications for each bounda
 | **AST Definitions** | **Implemented** | 0.0.3-s | Structured AST node representations and prepared nodes |
 | **Manifest System** | **Implemented** | 0.0.1-s | `Seira.toml` specification, parser, and validator |
 | **CLI Core** | **Implemented** | 0.0.3-s | `seira --version`, `info`, `check`, `init`, `new` |
-| **Name Resolver** | **Architectural Skeleton** | Reserved (0.0.4-s) | Symbol tables, scope resolution, import graphs |
-| **Type Checker & Inference** | **Architectural Skeleton** | Reserved (0.0.4-s) | Strong typing, HM inference, trait resolution |
-| **Effect Checker** | **Architectural Skeleton** | Reserved (0.0.5-s) | Effect tracking (`!`) and purity verification |
+| **Name Resolver** | **Implemented** | 0.0.4-s | Lexical scope hierarchy, predictable shadowing, hoisting, duplicate detection |
+| **Type Checker & Inference** | **Implemented** | 0.0.4-s | Static type inference, structural type equality, explicit type checking, no coercions |
+| **Effect Checker** | **Architectural Skeleton** | Reserved (0.0.6-s) | Effect tracking (`!`) and purity verification |
 | **HIR / MIR Lowering** | **Architectural Skeleton** | Reserved (0.0.11-d) | High/Mid-level intermediate representations |
 | **LLVM Native Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Machine code emission for x86_64 and AArch64 |
 | **WebAssembly Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Wasm binary emission and component model |

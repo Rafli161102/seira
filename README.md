@@ -1,8 +1,8 @@
 # Seira Programming Language
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.3-s](https://img.shields.io/badge/Release-0.0.3--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Compiler Foundation](https://img.shields.io/badge/Status-Compiler%20Foundation-orange.svg)](#status)
+[![Release: 0.0.4-s](https://img.shields.io/badge/Release-0.0.4--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: Language Foundation](https://img.shields.io/badge/Status-Language%20Foundation-orange.svg)](#status)
 
 > **Simple to write. Predictable to run.**  
 > *Write less. Control more.*
@@ -11,9 +11,9 @@
 > *A fast, modern, predictable, and secure programming language for native and WebAssembly software.*
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.3-s) — Compiler Foundation**  
+> **Current Status: Seed (0.0.4-s) — Language Foundation**  
 > Seira is in its earliest seed stage. **Alpha is not released yet.**  
-> Seira is under active development and is **not production-ready**. In this 0.0.3-s release, the project establishes a real compiler foundation capable of lexing, parsing, and AST construction for a genuine subset of Seira source code, supported by source management, Pratt precedence climbing, error recovery, structured diagnostics, and driver orchestration. Direct native compilation and full execution will arrive during the Alpha series.
+> In this 0.0.4-s release, the project establishes the first real semantic layer: name resolution, lexical scopes, predictable shadowing, static type inference, structural type equality, explicit type checking, strict Boolean requirements (zero truthy/falsy coercion), mutability semantics, function call and return validation, Option/Result foundations, and pipeline validation. Direct native compilation and full execution will arrive during the Alpha series.
 
 ---
 
@@ -61,13 +61,13 @@ The following design decisions are architectural constraints locked in the Seira
 | **Language Name** | Seira |
 | **Source Extension** | `.sra` |
 | **Official CLI** | `seira` |
-| **Current Version** | `0.0.3-s` (*Compiler Foundation*) |
+| **Current Version** | `0.0.4-s` (*Language Foundation*) |
 | **License** | [MIT License](LICENSE) |
 | **Target Backends** | Native (LLVM) & WebAssembly (Wasm) |
 
 ---
 
-## 4. Current Status: Release 0.0.3-s (Compiler Foundation)
+## 4. Current Status: Release 0.0.4-s (Language Foundation)
 
 Seira follows a staged release model:
 
@@ -85,7 +85,7 @@ Release Candidates (0.1.0-rc.1 ...)
 Stable 1.0.0
 ```
 
-### What is implemented in `0.0.3-s`:
+### What is implemented in `0.0.4-s`:
 - [x] Official repository architecture and 3 permanent branches (`main`, `develop`, `dev-infra`).
 - [x] Source management subsystem (`compiler/source/`) with `SourceId`, `SourceFile`, `Span`, `Position`, `LineMap`, and `SourceManager`.
 - [x] Full lexical scanner (`compiler/lexer/`) supporting literals (`Int`, `UInt`, `Float`, `Bool`, `Char`, `String`), keywords, operators, delimiters, compound assignments (`+=`, `-=`, etc.), and ranges (`..`, `..<`).
@@ -93,17 +93,19 @@ Stable 1.0.0
 - [x] Pratt precedence climbing parser (`compiler/parser/`) for expressions, functions (standard and expression-style `=>`), if expressions, block expressions, bare bindings (`name = expr;`, `mut name = expr;`), and let/const statements.
 - [x] Controlled error recovery (`synchronize()`) enabling multi-error diagnostic reporting across statements and blocks.
 - [x] Source-aware AST node hierarchy (`compiler/ast/`) preserving precise source spans across all constructs.
+- [x] Name resolution & lexical scoping (`compiler/resolver/`) supporting global/module/function/block scopes, predictable lexical shadowing, top-level declaration hoisting, duplicate declaration detection (`E2002`), unresolved identifier detection (`E2001`), and immutable reassignment rejection (`E2003`).
+- [x] Basic type system foundation & inference (`compiler/typecheck/`) supporting `Int`, `UInt`, `Float`, `Bool`, `Char`, `String`, `Byte`, `Unit`, structural type equality, explicit type checking (`E3001`), operator operand typing (`E3002`), function calls & returns (`E3003`, `E3004`), strict Boolean requirements for `if` conditions (`E3005`), Option/Result foundations, and pipeline validation (`|>`).
 - [x] Diagnostics engine (`compiler/diagnostics/`) with structured code families (`E1xxx`–`E9xxx`), line snippets, ASCII code pointers, help/suggestions, and `InternalCompilerError` (ICE) reporting.
-- [x] Compiler driver subsystem (`compiler/driver/`) orchestrating the pipeline (`Source -> SourceManager -> Lexer -> Parser -> AST -> Diagnostics`).
+- [x] Compiler driver subsystem (`compiler/driver/`) orchestrating the full pipeline (`Source -> Lexer -> Parser -> AST -> Resolver -> Typecheck -> Diagnostics`).
 - [x] Project manifest format (`Seira.toml`) parsing and validation.
 - [x] Official CLI (`seira`) with `--version`, `--help`, `info`, and `check` commands wired to the compiler driver.
 - [x] Intermediate representation contracts (`HIR`, `MIR`) and backend emission interface.
 - [x] Runtime architecture boundaries (`RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, `HostAdapter`).
-- [x] Automated test suite across unit, integration, compiler, fixtures, runtime, and conformance (61 passing tests).
+- [x] Automated test suite across unit, integration, compiler, resolver, typecheck, fixtures, runtime, and conformance (87 passing tests).
 
 ### What is reserved / planned for future releases:
 - Full LLVM native code generator and WebAssembly emission backend.
-- Type checker, trait solver, and effect verification engine.
+- Full borrow checker and static algebraic effect system.
 - Complete standard library (`std/core`, `std/collections`, `std/io`, `std/fs`, `std/net`, `std/time`, etc.).
 - Runtime execution engine and async task scheduler.
 - Package manager network registry and dependency resolution.

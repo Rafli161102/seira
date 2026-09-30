@@ -19,7 +19,7 @@ export function runCheck(filePath?: string): number {
   }
 
   const driver = new CompilerDriver();
-  const result = driver.compileFile(filePath, { stopAfter: 'parse' });
+  const result = driver.compileFile(filePath, { stopAfter: 'typecheck' });
 
   if (!result.success) {
     const source = result.context.sourceManager.getFileByPath(filePath)?.text;
@@ -29,6 +29,6 @@ export function runCheck(filePath?: string): number {
   }
 
   const itemCount = result.ast?.items.length ?? 0;
-  console.log(`✓ Syntax check passed: '${filePath}' (${itemCount} top-level item${itemCount === 1 ? '' : 's'}).`);
+  console.log(`✓ Check passed: '${filePath}' (${itemCount} top-level item${itemCount === 1 ? '' : 's'}).`);
   return 0;
 }

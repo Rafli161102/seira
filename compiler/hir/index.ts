@@ -73,7 +73,7 @@ export class HIRLowering {
     );
 
     return {
-      version: '0.0.3-s',
+      version: '0.0.4-s',
       modules: [],
       functions: [],
     };
