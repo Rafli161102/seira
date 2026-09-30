@@ -13,6 +13,47 @@ and this project adheres to the Seira Staged Versioning Model:
 
 ---
 
+## [0.0.5-s] - 2026-09-30
+
+### Added
+- **Execution Foundation Pipeline (`runtime/execution/`)**:
+  - Connected execution pipeline: `Source -> Compiler (Frontend Check) -> Validated AST -> Tree-Walking Evaluator -> RuntimeOutcome`.
+  - Architecture deliberately employs tree-walking AST evaluation for 0.0.5-s to establish observable language semantics without premature backend coupling.
+- **Seira Value Model v0.1 (`runtime/execution/values.ts`)**:
+  - Implemented explicit runtime representations: `Int` (arbitrary-precision BigInt), `UInt`, `Float` (IEEE 754 double), `Bool` (strict true/false, no JS truthiness), `Char`, `String`, `Byte`, `Unit` (`()`), `Option<T>` (`Some`/`None`), `Result<T, E>` (`Ok`/`Err`), `List<T>`, `Function` (closure environment), and `Builtin`.
+  - Implemented structural runtime equality (`runtimeValuesEqual`) independent of JavaScript object references.
+  - Implemented Seira-idiomatic value formatting (`formatRuntimeValue`).
+- **Runtime Outcomes & Panics (`runtime/execution/outcomes.ts`)**:
+  - Defined explicit outcome categories: `NormalOutcome`, `ReturnOutcome` (function returns), and `PanicOutcome` (fatal runtime errors).
+  - Implemented structured runtime panic error family `E5xxx`:
+    - `E5001`: Division by zero.
+    - `E5002`: Call stack overflow (configurable stack depth limit).
+    - `E5003`: Invalid internal execution state.
+    - `E5004`: Unsupported runtime operation.
+- **Tree-Walking Evaluator (`runtime/execution/evaluator.ts`)**:
+  - Scoped runtime environments (`RuntimeEnvironment`) preserving lexical closure bindings.
+  - Top-level function hoisting allowing mutual and forward recursion.
+  - Automatic invocation of `main()` entry point with parameterless signature.
+  - Left-to-right deterministic operand evaluation order.
+  - Short-circuiting logical operations (`and`, `or`) requiring strict `Bool` operands.
+  - Pipeline operator evaluation: `data |> f` ≡ `f(data)`, `data |> f(extra)` ≡ `f(data, extra)`, and chained pipelines.
+  - Option fallback operator (`??`) and early propagation operator (`?`).
+  - Expression-oriented block semantics where trailing expression statements yield block values.
+  - Built-in functions: `println`, `print`, `Some`, `None`, `Ok`, `Err`, `open_resource`.
+- **Unified Execution Engine Interface (`runtime/execution/engine.ts`)**:
+  - `ExecutionEngine.executeSource(source, filePath, config)`: runs source with front-end validation.
+  - `ExecutionEngine.executeFile(filePath, config)`: runs file from disk with front-end validation.
+  - Returns `ExecutionResult` containing success status, final value, captured output, and diagnostics.
+- **Developer Tooling — `seira run` Command (`tools/cli/commands/run.ts`)**:
+  - Added `seira run <file.sra>` to CLI: compiles through typechecking and executes the program.
+  - Preserves compilation guard: syntax/type errors prevent execution and display formatted compiler diagnostics.
+- **Comprehensive Test Suite (`tests/unit/execution/`)**:
+  - Added 60 execution unit and integration tests covering value models, environments, arithmetic, control flow, pipelines, options, and error panics.
+  - Updated CLI integration tests with end-to-end `seira run` validation.
+  - Test suite now includes 150 automated tests with 100% passing rate.
+
+---
+
 ## [0.0.4-s] - 2026-09-30
 
 ### Added

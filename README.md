@@ -1,8 +1,8 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.4-s](https://img.shields.io/badge/Release-0.0.4--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Language Foundation](https://img.shields.io/badge/Status-Language%20Foundation-orange.svg)](#project-status)
+[![Release: 0.0.5-s](https://img.shields.io/badge/Release-0.0.5--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: Execution Foundation](https://img.shields.io/badge/Status-Execution%20Foundation-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Seed stage.
 
@@ -14,10 +14,10 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.4-s) — Language Foundation**  
+> **Current Status: Seed (0.0.5-s) — Execution Foundation**  
 > Seira is currently an early-stage experimental programming language project. The repository is establishing its compiler architecture, language foundation, tooling boundaries, and engineering infrastructure.  
 > **Seira is NOT production-ready, and Alpha is not yet released.**  
-> In the current 0.0.4-s release, the project provides a working front-end pipeline (lexing, parsing, name resolution, lexical scoping, and static type analysis) validated via `seira check`. Direct native code generation and WebAssembly emission will be implemented in subsequent phases.
+> In the current 0.0.5-s release, the project provides a working execution engine (`runtime/execution/`) that executes semantically validated Seira programs via tree-walking evaluation (`seira run`), backed by the full front-end compiler pipeline (lexing, parsing, name resolution, and static type analysis). Direct native code generation and WebAssembly emission will be implemented in subsequent phases.
 
 ---
 
@@ -83,10 +83,10 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 
 | Category | Definition | Subsystems / Features |
 | :--- | :--- | :--- |
-| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Basic type inference and static checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`)<br>• Compiler driver orchestrating front-end pipeline (`compiler/driver/`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira`) |
+| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Basic type inference and static checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`)<br>• Compiler driver orchestrating front-end pipeline (`compiler/driver/`)<br>• Tree-walking execution engine & Seira Value Model v0.1 (`runtime/execution/`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira check`, `seira run`) |
 | **Architecturally Prepared** | Formal contracts, interfaces, and boundary types defined | • High-Level Intermediate Representation (`compiler/hir/`)<br>• Mid-Level Intermediate Representation (`compiler/mir/`)<br>• Backend emission interfaces (`compiler/backend/`)<br>• Runtime session and service boundaries (`runtime/context.ts`, `services/`) |
 | **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics<br>• Scoped resource ownership model (`with` blocks, deterministic cleanup)<br>• Memory model, borrow checking, and zero-overhead abstractions<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts (`std/core`, `std/collections`, `std/io`, etc.) |
-| **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Direct executable compilation (`seira build`, `seira run`)<br>• Package manager registry and dependency resolution |
+| **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Ahead-of-time compilation (`seira build`)<br>• Package manager registry and dependency resolution |
 
 ### Completed Milestones
 
@@ -94,7 +94,8 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.2-s` — Repository Architecture**: Subsystem boundaries, source management, diagnostics bag, driver lifecycle, runtime contracts, backend interfaces.
 - **`0.0.3-s` — Compiler Foundation**: Lexer, Pratt parser, AST hierarchy, error recovery, token validation.
 - **`0.0.4-s` — Language Foundation**: Name resolution, lexical scoping, basic static type system, structural type equality, pipeline validation.
-- **`0.0.5-s` — NOT STARTED**: Scheduled next in the Seed series.
+- **`0.0.5-s` — Execution Foundation**: Tree-walking evaluator, Seira Value Model v0.1, runtime outcomes & panics, deterministic execution, and `seira run` CLI command.
+- **`0.0.6-s` — NOT STARTED**: Scheduled next in the Seed series.
 
 ---
 
@@ -143,7 +144,8 @@ PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [CURRENT PHASE]
   ├── 0.0.2-s: Repository Architecture (Complete)
   ├── 0.0.3-s: Compiler Foundation (Complete)
   ├── 0.0.4-s: Language Foundation (Complete)
-  └── 0.0.5-s → 0.0.10-s: (Not Started)
+  ├── 0.0.5-s: Execution Foundation (Complete)
+  └── 0.0.6-s → 0.0.10-s: (Not Started)
 
 PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)
   └── Toolchain maturation, intermediate representations, and effect checking.
@@ -198,13 +200,17 @@ npm ci
 ```bash
 # Check version
 ./bin/seira --version
-# Output: Seira 0.0.4-s
+# Output: Seira 0.0.5-s
 
 # Inspect environment and project
 ./bin/seira info
 
 # Validate syntax, scoping, and types of a Seira source file
 ./bin/seira check examples/hello_world.sra
+
+# Execute a validated Seira source file
+./bin/seira run examples/hello_world.sra
+# Output: Hello, Seira!
 ```
 
 ### Running Tests

@@ -12,7 +12,7 @@ import { SEIRA_VERSION } from './version.ts';
 export function runInfo(): void {
   console.log('Seira Environment & Toolchain Information');
   console.log('========================================');
-  console.log(`Seira Version:         ${SEIRA_VERSION} (Language Foundation)`);
+  console.log(`Seira Version:         ${SEIRA_VERSION} (Execution Foundation)`);
   console.log(`Language Axiom:        Everything is a Value. Programs are Transformations.`);
   console.log(`Host Platform:         ${platform()} (${arch()})`);
   console.log(`Host Node.js:          ${process.version}`);
@@ -28,6 +28,7 @@ export function runInfo(): void {
   console.log('  [x] Compiler Driver: Active (0.0.3-s)');
   console.log('  [x] Resolver:        Active (0.0.4-s)');
   console.log('  [x] Typecheck:       Active (0.0.4-s)');
+  console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s)');
   console.log('  [ ] HIR:             Skeleton (Reserved: 0.0.11-d)');
   console.log('  [ ] MIR:             Skeleton (Reserved: 0.0.11-d)');
   console.log('  [ ] Native Codegen:  Skeleton (Reserved: 0.1.0-alpha)');
