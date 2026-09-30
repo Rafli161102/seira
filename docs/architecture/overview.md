@@ -65,6 +65,7 @@ Detailed architecture documents provide deep-dive specifications for each bounda
 - [Testing Architecture](testing.md): Categorized suites (`unit`, `integration`, `compiler`, `diagnostics`, `runtime`, `conformance`, `fixtures`)
 - [Runtime Boundary Architecture](runtime-boundary.md): Decoupled runtime services (`RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, `HostAdapter`)
 - [Backend Boundary Architecture](backend-boundary.md): MIR-to-Backend boundary (`BackendEmitter`, Native LLVM, WebAssembly)
+- [Implementation Architecture Policy](implementation-policy.md): Multi-language repository policy, compiler implementation neutrality, and migration guidelines
 
 ---
 
