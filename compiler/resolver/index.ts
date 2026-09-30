@@ -42,20 +42,6 @@ import type {
   WithStmt,
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
-import {
-  INT_TYPE,
-  UINT_TYPE,
-  FLOAT_TYPE,
-  BOOL_TYPE,
-  CHAR_TYPE,
-  STRING_TYPE,
-  BYTE_TYPE,
-  UNIT_TYPE,
-  createOptionType,
-  createResultType,
-  UNKNOWN_TYPE,
-  createFunctionType,
-} from '../typecheck/types.ts';
 import { Scope, type ScopeKind, type SymbolInfo } from './scope.ts';
 
 export * from './scope.ts';
@@ -115,14 +101,12 @@ export class Resolver {
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createFunctionType([STRING_TYPE], UNIT_TYPE, true),
     });
     this.globalScope.define({
       name: 'print',
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createFunctionType([STRING_TYPE], UNIT_TYPE, true),
     });
 
     // Built-in constructors and utilities
@@ -131,35 +115,30 @@ export class Resolver {
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createFunctionType([UNKNOWN_TYPE], createOptionType(UNKNOWN_TYPE)),
     });
     this.globalScope.define({
       name: 'None',
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createOptionType(UNKNOWN_TYPE),
     });
     this.globalScope.define({
       name: 'Ok',
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createFunctionType([UNKNOWN_TYPE], createResultType(UNKNOWN_TYPE, UNKNOWN_TYPE)),
     });
     this.globalScope.define({
       name: 'Err',
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createFunctionType([UNKNOWN_TYPE], createResultType(UNKNOWN_TYPE, UNKNOWN_TYPE)),
     });
     this.globalScope.define({
       name: 'open_resource',
       kind: 'builtin',
       span: dummySpan,
       isMut: false,
-      type: createFunctionType([STRING_TYPE], { kind: 'Custom', name: 'Resource' }),
     });
   }
 

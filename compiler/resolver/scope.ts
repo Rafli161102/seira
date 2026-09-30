@@ -8,7 +8,6 @@
 
 import type { ASTNode } from '../ast/ast.ts';
 import type { Span } from '../source/span.ts';
-import type { Type } from '../typecheck/types.ts';
 
 export type ScopeKind = 'global' | 'module' | 'function' | 'block';
 
@@ -22,13 +21,13 @@ export type SymbolKind =
   | 'param'
   | 'builtin';
 
-export interface SymbolInfo {
+export interface SymbolInfo<TType = any> {
   readonly name: string;
   readonly kind: SymbolKind;
   readonly span: Span;
   readonly isMut: boolean;
   readonly declNode?: ASTNode;
-  type?: Type;
+  type?: TType;
 }
 
 export class Scope {
