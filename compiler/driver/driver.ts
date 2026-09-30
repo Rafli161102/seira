@@ -104,7 +104,7 @@ export class CompilerDriver {
     const sourceText = sourceFile?.text ?? '';
 
     // Stage 1: Lexical Analysis
-    const lexer = new Lexer(sourceText, filePath, context.diagnostics);
+    const lexer = new Lexer(sourceText, filePath, context.diagnostics, sourceFile?.id);
     const tokens = lexer.tokenize();
 
     if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Lex) {

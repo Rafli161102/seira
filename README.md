@@ -1,8 +1,8 @@
 # Seira Programming Language
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.2-s](https://img.shields.io/badge/Release-0.0.2--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Repository Architecture](https://img.shields.io/badge/Status-Repository%20Architecture-orange.svg)](#status)
+[![Release: 0.0.3-s](https://img.shields.io/badge/Release-0.0.3--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: Compiler Foundation](https://img.shields.io/badge/Status-Compiler%20Foundation-orange.svg)](#status)
 
 > **Simple to write. Predictable to run.**  
 > *Write less. Control more.*
@@ -11,9 +11,9 @@
 > *A fast, modern, predictable, and secure programming language for native and WebAssembly software.*
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.2-s) — Repository Architecture**  
+> **Current Status: Seed (0.0.3-s) — Compiler Foundation**  
 > Seira is in its earliest seed stage. **Alpha is not released yet.**  
-> Seira is under active development and is **not production-ready**. In this 0.0.2-s release, the project establishes decoupled repository architecture, source management, compiler driver orchestration, diagnostics architecture with ICE boundary, prepared AST node hierarchies, and formalized runtime/backend contracts. Direct native compilation and full execution will arrive during the Alpha series.
+> Seira is under active development and is **not production-ready**. In this 0.0.3-s release, the project establishes a real compiler foundation capable of lexing, parsing, and AST construction for a genuine subset of Seira source code, supported by source management, Pratt precedence climbing, error recovery, structured diagnostics, and driver orchestration. Direct native compilation and full execution will arrive during the Alpha series.
 
 ---
 
@@ -61,13 +61,13 @@ The following design decisions are architectural constraints locked in the Seira
 | **Language Name** | Seira |
 | **Source Extension** | `.sra` |
 | **Official CLI** | `seira` |
-| **Current Version** | `0.0.2-s` (*Repository Architecture*) |
+| **Current Version** | `0.0.3-s` (*Compiler Foundation*) |
 | **License** | [MIT License](LICENSE) |
 | **Target Backends** | Native (LLVM) & WebAssembly (Wasm) |
 
 ---
 
-## 4. Current Status: Release 0.0.2-s (Repository Architecture)
+## 4. Current Status: Release 0.0.3-s (Compiler Foundation)
 
 Seira follows a staged release model:
 
@@ -85,21 +85,21 @@ Release Candidates (0.1.0-rc.1 ...)
 Stable 1.0.0
 ```
 
-### What is implemented in `0.0.2-s`:
+### What is implemented in `0.0.3-s`:
 - [x] Official repository architecture and 3 permanent branches (`main`, `develop`, `dev-infra`).
 - [x] Source management subsystem (`compiler/source/`) with `SourceId`, `SourceFile`, `Span`, `Position`, `LineMap`, and `SourceManager`.
-- [x] Compiler driver subsystem (`compiler/driver/`) with `CompilerDriver`, `CompilerContext` session lifecycle, and `CompilerConfig`.
-- [x] Diagnostics engine with structured code families (`E1xxx`–`E9xxx`), source pointers, suggestions, and `InternalCompilerError` (ICE) boundary.
-- [x] Contributor documentation, governance model, and RFC process.
+- [x] Full lexical scanner (`compiler/lexer/`) supporting literals (`Int`, `UInt`, `Float`, `Bool`, `Char`, `String`), keywords, operators, delimiters, compound assignments (`+=`, `-=`, etc.), and ranges (`..`, `..<`).
+- [x] Rejection of banned operators (`++`, `--`, `&&`, `||`, `null`, `===`, `!==`, `::`) with targeted diagnostics and suggestions.
+- [x] Pratt precedence climbing parser (`compiler/parser/`) for expressions, functions (standard and expression-style `=>`), if expressions, block expressions, bare bindings (`name = expr;`, `mut name = expr;`), and let/const statements.
+- [x] Controlled error recovery (`synchronize()`) enabling multi-error diagnostic reporting across statements and blocks.
+- [x] Source-aware AST node hierarchy (`compiler/ast/`) preserving precise source spans across all constructs.
+- [x] Diagnostics engine (`compiler/diagnostics/`) with structured code families (`E1xxx`–`E9xxx`), line snippets, ASCII code pointers, help/suggestions, and `InternalCompilerError` (ICE) reporting.
+- [x] Compiler driver subsystem (`compiler/driver/`) orchestrating the pipeline (`Source -> SourceManager -> Lexer -> Parser -> AST -> Diagnostics`).
 - [x] Project manifest format (`Seira.toml`) parsing and validation.
-- [x] Official CLI (`seira`) with `--version`, `--help`, `info`, and `check` commands.
-- [x] Compiler pipeline (`lexer`, `parser`, `ast`, `source`, `diagnostics`, `driver`).
-- [x] Lexer for Seira tokens (keywords, symbols `|>`, `??`, `?`, `!`, `@`, literals, comments).
-- [x] Recursive descent parser for function definitions, statements, and expressions.
-- [x] Prepared AST node hierarchies (`ModuleDecl`, `ImportDecl`, `Attribute`, `Pattern`).
+- [x] Official CLI (`seira`) with `--version`, `--help`, `info`, and `check` commands wired to the compiler driver.
 - [x] Intermediate representation contracts (`HIR`, `MIR`) and backend emission interface.
 - [x] Runtime architecture boundaries (`RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, `HostAdapter`).
-- [x] Categorized automated test suites across unit, integration, compiler, diagnostics, runtime, and conformance (43 tests).
+- [x] Automated test suite across unit, integration, compiler, fixtures, runtime, and conformance (61 passing tests).
 
 ### What is reserved / planned for future releases:
 - Full LLVM native code generator and WebAssembly emission backend.

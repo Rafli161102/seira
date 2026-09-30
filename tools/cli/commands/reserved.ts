@@ -21,7 +21,7 @@ const RESERVED_ROADMAP: Record<string, string> = {
 
 export function runReserved(commandName: string): number {
   const milestone = RESERVED_ROADMAP[commandName] ?? 'Future Release';
-  console.log(`Seira ${SEIRA_VERSION} (Repository Architecture)`);
+  console.log(`Seira ${SEIRA_VERSION} (Compiler Foundation)`);
   console.log(`This command is not implemented in Seira ${SEIRA_VERSION}.`);
   console.log(`Command:               seira ${commandName}`);
   console.log(`Target Milestone:      ${milestone}`);

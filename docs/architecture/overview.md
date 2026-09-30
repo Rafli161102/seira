@@ -70,18 +70,18 @@ Detailed architecture documents provide deep-dive specifications for each bounda
 
 ## 4. Status Classification Matrix
 
-| Feature / Subsystem | Status in 0.0.2-s | Target Milestone | Description |
+| Feature / Subsystem | Status in 0.0.3-s | Target Milestone | Description |
 | :--- | :--- | :--- | :--- |
 | **Source Management** | **Implemented** | 0.0.2-s | `SourceManager`, `LineMap`, `Span`, `Position` |
-| **Compiler Driver & Lifecycle** | **Implemented** | 0.0.2-s | `CompilerDriver`, `CompilerContext`, `CompilerConfig` |
-| **Diagnostics & ICE** | **Implemented** | 0.0.2-s | Structured code families and `InternalCompilerError` boundary |
-| **Lexer Foundation** | **Implemented** | 0.0.1-s | Tokenization of keywords, symbols, literals, spans |
-| **Parser Foundation** | **Implemented** | 0.0.1-s | Recursive descent parsing of functions & expressions |
-| **AST Definitions** | **Implemented** | 0.0.2-s | Structured AST node representations and prepared nodes |
+| **Compiler Driver & Lifecycle** | **Implemented** | 0.0.3-s | `CompilerDriver`, `CompilerContext`, `CompilerConfig` |
+| **Diagnostics & ICE** | **Implemented** | 0.0.3-s | Structured code families and `InternalCompilerError` boundary |
+| **Lexer Foundation** | **Implemented** | 0.0.3-s | Tokenization of keywords, symbols, literals, spans, compound ops |
+| **Parser Foundation** | **Implemented** | 0.0.3-s | Pratt precedence parsing of functions, bindings, expressions |
+| **AST Definitions** | **Implemented** | 0.0.3-s | Structured AST node representations and prepared nodes |
 | **Manifest System** | **Implemented** | 0.0.1-s | `Seira.toml` specification, parser, and validator |
-| **CLI Core** | **Implemented** | 0.0.2-s | `seira --version`, `info`, `check`, `init`, `new` |
-| **Name Resolver** | **Architectural Skeleton** | Reserved (0.0.3-s) | Symbol tables, scope resolution, import graphs |
-| **Type Checker & Inference** | **Architectural Skeleton** | Reserved (0.0.3-s) | Strong typing, HM inference, trait resolution |
+| **CLI Core** | **Implemented** | 0.0.3-s | `seira --version`, `info`, `check`, `init`, `new` |
+| **Name Resolver** | **Architectural Skeleton** | Reserved (0.0.4-s) | Symbol tables, scope resolution, import graphs |
+| **Type Checker & Inference** | **Architectural Skeleton** | Reserved (0.0.4-s) | Strong typing, HM inference, trait resolution |
 | **Effect Checker** | **Architectural Skeleton** | Reserved (0.0.5-s) | Effect tracking (`!`) and purity verification |
 | **HIR / MIR Lowering** | **Architectural Skeleton** | Reserved (0.0.11-d) | High/Mid-level intermediate representations |
 | **LLVM Native Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Machine code emission for x86_64 and AArch64 |

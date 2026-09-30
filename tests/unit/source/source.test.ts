@@ -8,7 +8,7 @@ import {
   LineMap,
   SourceFile,
   SourceManager,
-} from '../../compiler/source/index.ts';
+} from '../../../compiler/source/index.ts';
 
 test('Source: Position creation and invariants', () => {
   const pos = createPosition(10, 5, 142);

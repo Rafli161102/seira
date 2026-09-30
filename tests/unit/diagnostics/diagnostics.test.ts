@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import { DiagnosticBag, formatDiagnostic } from '../../compiler/diagnostics/index.ts';
+import { DiagnosticBag, formatDiagnostic } from '../../../compiler/diagnostics/index.ts';
 
 test('Diagnostics: records errors and warnings accurately', () => {
   const bag = new DiagnosticBag();

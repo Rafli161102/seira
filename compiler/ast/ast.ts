@@ -1,12 +1,13 @@
 /**
  * Seira Abstract Syntax Tree (AST) Definitions
  *
- * Strongly typed node hierarchy reflecting locked Seira syntax semantics:
- * - Functions as first-class transformations
+ * Source-aware strongly typed node hierarchy reflecting locked Seira syntax semantics:
+ * - Functions as first-class transformations (both block body { ... } and expression body => expr)
  * - Pipelines (|>), Option/Result propagation (?), fallback (??)
  * - Explicit mutation (mut) and resource lifecycles (with)
+ * - Expression-oriented constructs (if expressions, block expressions, range expressions)
+ * - Bindings (immutable name = expr, mutable mut name = expr, let, const)
  * - Effect tracking (!)
- * - Prepared architecture for modules, imports, attributes, and patterns
  */
 
 import type { Span } from '../source/span.ts';
@@ -16,9 +17,16 @@ export type NodeKind =
   | 'ModuleDecl'
   | 'ImportDecl'
   | 'FunctionDecl'
+  | 'StructDecl'
+  | 'TraitDecl'
+  | 'EnumDecl'
+  | 'TypeAliasDecl'
   | 'Param'
   | 'Block'
   | 'LetStmt'
+  | 'ConstStmt'
+  | 'BindingStmt'
+  | 'AssignStmt'
   | 'ReturnStmt'
   | 'ExprStmt'
   | 'WithStmt'
@@ -27,13 +35,15 @@ export type NodeKind =
   | 'PipelineExpr'
   | 'OptionFallbackExpr'
   | 'OptionPropagateExpr'
+  | 'RangeExpr'
+  | 'IfExpr'
+  | 'BlockExpr'
+  | 'AssignmentExpr'
   | 'CallExpr'
   | 'MemberExpr'
   | 'Identifier'
   | 'Literal'
   | 'TypeAnnotation'
-  | 'StructDecl'
-  | 'TraitDecl'
   | 'Attribute'
   | 'IdentifierPattern'
   | 'LiteralPattern'
@@ -66,6 +76,8 @@ export type TopLevelItem =
   | FunctionDecl
   | StructDecl
   | TraitDecl
+  | EnumDecl
+  | TypeAliasDecl
   | Stmt;
 
 export interface ModuleDecl extends BaseNode {
@@ -77,6 +89,7 @@ export interface ImportDecl extends BaseNode {
   readonly kind: 'ImportDecl';
   readonly path: string;
   readonly alias?: string;
+  readonly importedItems?: ReadonlyArray<string>;
 }
 
 export interface Attribute extends BaseNode {
@@ -106,7 +119,39 @@ export interface FunctionDecl extends BaseNode {
   readonly params: Param[];
   readonly returnType?: TypeAnnotation;
   readonly body: Block;
+  readonly bodyExpr?: Expr;
+  readonly isExpressionBody?: boolean;
   readonly attributes?: ReadonlyArray<Attribute>;
+}
+
+export interface StructDecl extends BaseNode {
+  readonly kind: 'StructDecl';
+  readonly name: string;
+  readonly fields: { name: string; type: TypeAnnotation }[];
+}
+
+export interface EnumVariant {
+  readonly name: string;
+  readonly typeAnnotation?: TypeAnnotation;
+  readonly span: Span;
+}
+
+export interface EnumDecl extends BaseNode {
+  readonly kind: 'EnumDecl';
+  readonly name: string;
+  readonly variants: ReadonlyArray<EnumVariant>;
+}
+
+export interface TypeAliasDecl extends BaseNode {
+  readonly kind: 'TypeAliasDecl';
+  readonly name: string;
+  readonly targetType: TypeAnnotation;
+}
+
+export interface TraitDecl extends BaseNode {
+  readonly kind: 'TraitDecl';
+  readonly name: string;
+  readonly methods: FunctionDecl[];
 }
 
 export interface Block extends BaseNode {
@@ -114,7 +159,14 @@ export interface Block extends BaseNode {
   readonly statements: Stmt[];
 }
 
-export type Stmt = LetStmt | ReturnStmt | ExprStmt | WithStmt;
+export type Stmt =
+  | LetStmt
+  | ConstStmt
+  | BindingStmt
+  | AssignStmt
+  | ReturnStmt
+  | ExprStmt
+  | WithStmt;
 
 export interface LetStmt extends BaseNode {
   readonly kind: 'LetStmt';
@@ -122,6 +174,28 @@ export interface LetStmt extends BaseNode {
   readonly name: string;
   readonly typeAnnotation?: TypeAnnotation;
   readonly initializer?: Expr;
+}
+
+export interface ConstStmt extends BaseNode {
+  readonly kind: 'ConstStmt';
+  readonly name: string;
+  readonly typeAnnotation?: TypeAnnotation;
+  readonly initializer: Expr;
+}
+
+export interface BindingStmt extends BaseNode {
+  readonly kind: 'BindingStmt';
+  readonly isMut: boolean;
+  readonly name: string;
+  readonly typeAnnotation?: TypeAnnotation;
+  readonly initializer: Expr;
+}
+
+export interface AssignStmt extends BaseNode {
+  readonly kind: 'AssignStmt';
+  readonly operator: string; // '=', '+=', '-=', '*=', '/=', '%='
+  readonly target: Expr;
+  readonly value: Expr;
 }
 
 export interface ReturnStmt extends BaseNode {
@@ -164,6 +238,10 @@ export type Expr =
   | PipelineExpr
   | OptionFallbackExpr
   | OptionPropagateExpr
+  | RangeExpr
+  | IfExpr
+  | BlockExpr
+  | AssignmentExpr
   | CallExpr
   | MemberExpr
   | Identifier
@@ -171,7 +249,7 @@ export type Expr =
 
 export interface BinaryExpr extends BaseNode {
   readonly kind: 'BinaryExpr';
-  readonly operator: string; // '+', '-', '*', '/', '==', '!=', '<', '<=', '>', '>=', 'and', 'or'
+  readonly operator: string; // '+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', 'and', 'or'
   readonly left: Expr;
   readonly right: Expr;
 }
@@ -199,6 +277,32 @@ export interface OptionPropagateExpr extends BaseNode {
   readonly operand: Expr;
 }
 
+export interface RangeExpr extends BaseNode {
+  readonly kind: 'RangeExpr';
+  readonly start?: Expr;
+  readonly end?: Expr;
+  readonly isHalfOpen: boolean; // true for ..<, false for ..
+}
+
+export interface IfExpr extends BaseNode {
+  readonly kind: 'IfExpr';
+  readonly condition: Expr;
+  readonly thenBranch: Block;
+  readonly elseBranch?: Block | IfExpr;
+}
+
+export interface BlockExpr extends BaseNode {
+  readonly kind: 'BlockExpr';
+  readonly block: Block;
+}
+
+export interface AssignmentExpr extends BaseNode {
+  readonly kind: 'AssignmentExpr';
+  readonly operator: string; // '=', '+=', '-=', '*=', '/=', '%='
+  readonly target: Expr;
+  readonly value: Expr;
+}
+
 export interface CallExpr extends BaseNode {
   readonly kind: 'CallExpr';
   readonly callee: Expr;
@@ -221,16 +325,5 @@ export interface Literal extends BaseNode {
   readonly kind: 'Literal';
   readonly value: string | number | boolean;
   readonly raw: string;
-}
-
-export interface StructDecl extends BaseNode {
-  readonly kind: 'StructDecl';
-  readonly name: string;
-  readonly fields: { name: string; type: TypeAnnotation }[];
-}
-
-export interface TraitDecl extends BaseNode {
-  readonly kind: 'TraitDecl';
-  readonly name: string;
-  readonly methods: FunctionDecl[];
+  readonly literalKind?: 'int' | 'uint' | 'float' | 'string' | 'char' | 'bool';
 }
