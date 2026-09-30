@@ -25,21 +25,24 @@ and this project adheres to the Seira Staged Versioning Model:
   - Implemented Seira-idiomatic value formatting (`formatRuntimeValue`).
 - **Runtime Outcomes & Panics (`runtime/execution/outcomes.ts`)**:
   - Defined explicit outcome categories: `NormalOutcome`, `ReturnOutcome` (function returns), and `PanicOutcome` (fatal runtime errors).
-  - Implemented structured runtime panic error family `E5xxx`:
-    - `E5001`: Division by zero.
-    - `E5002`: Call stack overflow (configurable stack depth limit).
-    - `E5003`: Invalid internal execution state.
-    - `E5004`: Unsupported runtime operation.
+  - Implemented dedicated runtime diagnostic namespace `R0xxx` (preserving `E5xxx` for Pattern Matching):
+    - `R0001`: Division by zero.
+    - `R0002`: Unsupported runtime operation.
+    - `R0003`: Internal execution state error.
+    - `R0004`: Call stack depth exceeded (configurable stack depth limit safeguard).
+    - `R0005`: Unsigned integer underflow (`a - b` where `a < b` panics; does not clamp to 0u, wrap, or produce negative UInt).
 - **Tree-Walking Evaluator (`runtime/execution/evaluator.ts`)**:
   - Scoped runtime environments (`RuntimeEnvironment`) preserving lexical closure bindings.
   - Top-level function hoisting allowing mutual and forward recursion.
-  - Automatic invocation of `main()` entry point with parameterless signature.
+  - Application entry convention: `fn main()` is used as the application entry point when present. Top-level statements are not executed as an additional program body when `main()` is present (preventing dual execution). When `main()` is absent, top-level statements execute normally as scripts. `main` is an application entry convention, not a language keyword or mandatory requirement.
   - Left-to-right deterministic operand evaluation order.
   - Short-circuiting logical operations (`and`, `or`) requiring strict `Bool` operands.
   - Pipeline operator evaluation: `data |> f` ≡ `f(data)`, `data |> f(extra)` ≡ `f(data, extra)`, and chained pipelines.
   - Option fallback operator (`??`) and early propagation operator (`?`).
   - Expression-oriented block semantics where trailing expression statements yield block values.
-  - Built-in functions: `println`, `print`, `Some`, `None`, `Ok`, `Err`, `open_resource`.
+  - Built-in host I/O primitives: `println`, `print` (full effect system enforcement deferred to Phase 2).
+  - Built-in constructors: `Some`, `None`, `Ok`, `Err`.
+  - Resource compatibility: `open_resource` and `with` blocks are maintained as Seed-series compatibility mock stubs (production RAII/ownership deferred to Phase 2).
 - **Unified Execution Engine Interface (`runtime/execution/engine.ts`)**:
   - `ExecutionEngine.executeSource(source, filePath, config)`: runs source with front-end validation.
   - `ExecutionEngine.executeFile(filePath, config)`: runs file from disk with front-end validation.
@@ -48,9 +51,9 @@ and this project adheres to the Seira Staged Versioning Model:
   - Added `seira run <file.sra>` to CLI: compiles through typechecking and executes the program.
   - Preserves compilation guard: syntax/type errors prevent execution and display formatted compiler diagnostics.
 - **Comprehensive Test Suite (`tests/unit/execution/`)**:
-  - Added 60 execution unit and integration tests covering value models, environments, arithmetic, control flow, pipelines, options, and error panics.
+  - Added 69 execution unit and integration tests covering value models, environments, arithmetic, UInt underflow, control flow, pipelines, options, entry conventions, and error panics.
   - Updated CLI integration tests with end-to-end `seira run` validation.
-  - Test suite now includes 150 automated tests with 100% passing rate.
+  - Test suite now includes 159 automated tests with 100% passing rate.
 
 ---
 

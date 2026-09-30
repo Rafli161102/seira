@@ -59,6 +59,7 @@ import {
   panicOutcome,
   returnOutcome,
   stackOverflowError,
+  uintUnderflowError,
   unsupportedOperationError,
   type NormalOutcome,
   type PanicOutcome,
@@ -223,18 +224,29 @@ export class Evaluator {
     // Register built-in functions in the environment
     this.registerBuiltins(env);
 
-    // Execute top-level items (non-function declarations)
+    // ── Program Entry Model (Locked 0.0.5-s Decision B) ──────────────────────
+    // Mode 2 — Application Entry:
+    // If `fn main()` exists, it is the sole application entry point.
+    // Execute top-level definitions (const declarations) so main can reference them,
+    // but DO NOT execute top-level executable statements/expressions (prevents dual execution).
+    if (this.globalFunctions.has('main')) {
+      for (const item of program.items) {
+        if (item.kind === 'ConstStmt') {
+          const outcome = this.executeConstStmt(item as ConstStmt, env);
+          if (isPanic(outcome)) return outcome;
+        }
+      }
+      return this.callFunctionByName('main', [], undefined, env);
+    }
+
+    // Mode 1 — Top-Level Program:
+    // If no `fn main()` exists, execute top-level statements/expressions normally.
     let lastOutcome: RuntimeOutcome = normalOutcome(UNIT_VALUE);
     for (const item of program.items) {
       if (item.kind === 'FunctionDecl') continue; // already hoisted
       const outcome = this.executeStatement(item as Stmt, env);
       if (isPanic(outcome)) return outcome;
       lastOutcome = outcome;
-    }
-
-    // If main function is defined, invoke it as the entry point
-    if (this.globalFunctions.has('main')) {
-      return this.callFunctionByName('main', [], undefined, env);
     }
 
     return lastOutcome;
@@ -616,7 +628,12 @@ export class Evaluator {
         }
         switch (op) {
           case '+': return normalOutcome(rtUInt(l + r));
-          case '-': return normalOutcome(rtUInt(l >= r ? l - r : 0n)); // saturating subtraction
+          case '-': {
+            if (l < r) {
+              return panicOutcome(uintUnderflowError(l, r, span, this.ctx.config.fileName));
+            }
+            return normalOutcome(rtUInt(l - r));
+          }
           case '*': return normalOutcome(rtUInt(l * r));
           case '/': return normalOutcome(rtUInt(l / r));
           case '%': return normalOutcome(rtUInt(l % r));

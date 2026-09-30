@@ -73,7 +73,7 @@ fn compute_score(input: Option<Int>) -> Int {
 }
 ```
 
-*(Note: In 0.0.4-s, code is validated through syntax, scoping, and static type analysis using `seira check`. Executable code generation is planned for the Alpha series).*
+*(Note: In 0.0.5-s, code is validated by the front-end compiler pipeline and executable via the tree-walking engine with `seira run`. `main` is an application entry convention used by the execution layer; it is not a language keyword or required function, and top-level scripts execute directly without `main`).*
 
 ---
 
@@ -83,9 +83,9 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 
 | Category | Definition | Subsystems / Features |
 | :--- | :--- | :--- |
-| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Basic type inference and static checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`)<br>• Compiler driver orchestrating front-end pipeline (`compiler/driver/`)<br>• Tree-walking execution engine & Seira Value Model v0.1 (`runtime/execution/`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira check`, `seira run`) |
+| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Basic type inference and static checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`)<br>• Compiler driver orchestrating front-end pipeline (`compiler/driver/`)<br>• Tree-walking execution engine & Seira Value Model v0.1 (`runtime/execution/`) with dedicated runtime diagnostics (`R0xxx`), deterministic single-entry convention, and UInt underflow panic (`R0005`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira check`, `seira run`) |
 | **Architecturally Prepared** | Formal contracts, interfaces, and boundary types defined | • High-Level Intermediate Representation (`compiler/hir/`)<br>• Mid-Level Intermediate Representation (`compiler/mir/`)<br>• Backend emission interfaces (`compiler/backend/`)<br>• Runtime session and service boundaries (`runtime/context.ts`, `services/`) |
-| **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics<br>• Scoped resource ownership model (`with` blocks, deterministic cleanup)<br>• Memory model, borrow checking, and zero-overhead abstractions<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts (`std/core`, `std/collections`, `std/io`, etc.) |
+| **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics (basic host I/O primitives `println`/`print` executable; full effect enforcement in Phase 2)<br>• Scoped resource ownership model (`with` blocks, deterministic cleanup — `with` and `open_resource` exist in 0.0.5-s as mock compatibility stubs; production ownership in Phase 2)<br>• Memory model, borrow checking, and zero-overhead abstractions<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts (`std/core`, `std/collections`, `std/io`, etc.) |
 | **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Ahead-of-time compilation (`seira build`)<br>• Package manager registry and dependency resolution |
 
 ### Completed Milestones
@@ -94,7 +94,7 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.2-s` — Repository Architecture**: Subsystem boundaries, source management, diagnostics bag, driver lifecycle, runtime contracts, backend interfaces.
 - **`0.0.3-s` — Compiler Foundation**: Lexer, Pratt parser, AST hierarchy, error recovery, token validation.
 - **`0.0.4-s` — Language Foundation**: Name resolution, lexical scoping, basic static type system, structural type equality, pipeline validation.
-- **`0.0.5-s` — Execution Foundation**: Tree-walking evaluator, Seira Value Model v0.1, runtime outcomes & panics, deterministic execution, and `seira run` CLI command.
+- **`0.0.5-s` — Execution Foundation**: Tree-walking evaluator, Seira Value Model v0.1, dedicated runtime panic namespace (`R0xxx`), deterministic application entry convention, UInt underflow protection (`R0005`), and `seira run` CLI command.
 - **`0.0.6-s` — NOT STARTED**: Scheduled next in the Seed series.
 
 ---

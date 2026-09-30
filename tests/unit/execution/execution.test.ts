@@ -58,6 +58,8 @@ import {
   isReturn,
   isPanic,
   divisionByZeroError,
+  stackOverflowError,
+  uintUnderflowError,
 } from '../../../runtime/execution/outcomes.ts';
 import type { Diagnostic } from '../../../compiler/diagnostics/index.ts';
 
@@ -654,7 +656,7 @@ fn main() {
 // 16. Runtime Errors — Panics
 // ══════════════════════════════════════════════════════════════════════════════
 
-test('Execution: division by zero produces Panic', () => {
+test('Execution: division by zero produces Panic with R0001', () => {
   const r = run(`
 fn divide(a: Int, b: Int) -> Int => a / b
 fn main() {
@@ -663,9 +665,72 @@ fn main() {
 `);
   assert.strictEqual(r.success, false);
   assert.ok(
-    r.diagnostics.getErrors().some((d: Diagnostic) => d.code === 'E5001'),
-    `Expected E5001, got: ${JSON.stringify(r.diagnostics.getErrors().map((d: Diagnostic) => d.code))}`
+    r.diagnostics.getErrors().some((d: Diagnostic) => d.code === 'R0001'),
+    `Expected R0001, got: ${JSON.stringify(r.diagnostics.getErrors().map((d: Diagnostic) => d.code))}`
   );
+  // Verify NO runtime error uses E5xxx (reserved for Pattern Matching)
+  assert.ok(
+    r.diagnostics.getErrors().every((d: Diagnostic) => !d.code.startsWith('E5')),
+    'Runtime panic must not use E5xxx namespace'
+  );
+});
+
+test('Execution: call stack depth exceeded produces Panic with R0004', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+fn recurse() -> Int {
+  recurse()
+}
+fn main() {
+  recurse()
+}
+`, '<test>', { maxStackDepth: 10, enableOutput: false });
+  assert.strictEqual(r.success, false);
+  assert.ok(
+    r.diagnostics.getErrors().some((d: Diagnostic) => d.code === 'R0004'),
+    `Expected R0004, got: ${JSON.stringify(r.diagnostics.getErrors().map((d: Diagnostic) => d.code))}`
+  );
+});
+
+test('Execution: UInt subtraction valid (10u - 5u = 5u)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+fn main() {
+  v = 10u - 5u
+  println(v)
+}
+`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  assert.ok(r.output.includes('5u'), `Expected 5u in output: ${JSON.stringify(r.output)}`);
+});
+
+test('Execution: UInt subtraction zero boundary (0u - 0u = 0u)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+fn main() {
+  v = 0u - 0u
+  println(v)
+}
+`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  assert.ok(r.output.includes('0u'), `Expected 0u in output: ${JSON.stringify(r.output)}`);
+});
+
+test('Execution: UInt subtraction underflow produces Panic with R0005', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+fn main() {
+  v = 5u - 10u
+}
+`, '<test>', { enableOutput: false });
+  assert.strictEqual(r.success, false);
+  assert.ok(
+    r.diagnostics.getErrors().some((d: Diagnostic) => d.code === 'R0005'),
+    `Expected R0005, got: ${JSON.stringify(r.diagnostics.getErrors().map((d: Diagnostic) => d.code))}`
+  );
+  // Verify error message specifically notes underflow
+  const err = r.diagnostics.getErrors().find((d: Diagnostic) => d.code === 'R0005');
+  assert.ok(err?.message.includes('underflow'), `Expected 'underflow' in message, got: ${err?.message}`);
 });
 
 test('Execution: invalid Seira program fails at compile time, not execution', () => {
@@ -818,4 +883,64 @@ fn main() {
 `, '<test>', { enableOutput: false });
   assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
   assert.ok(r.output.includes('Hello, Seira!'));
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 17. Program Entry Model (Decision B Normative Examples)
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('Entry Model: Example A — Script (top-level only, no main required)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`println("Hello")`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  assert.deepStrictEqual(r.output, ['Hello']);
+});
+
+test('Entry Model: Example B — Application (main only)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+fn main() {
+  println("Hello")
+}
+`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  assert.deepStrictEqual(r.output, ['Hello']);
+});
+
+test('Entry Model: Example C — Definitions + main (no duplicate execution)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+fn greet() {
+  println("Hello")
+}
+fn main() {
+  greet()
+}
+`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  assert.deepStrictEqual(r.output, ['Hello']);
+});
+
+test('Entry Model: Example D — Top-level + main (ONLY main executes, no dual execution)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+println("Top level")
+fn main() {
+  println("Main")
+}
+`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  // Crucial test: Top level must NOT be executed!
+  assert.deepStrictEqual(r.output, ['Main']);
+  assert.ok(!r.output.includes('Top level'), 'Dual execution must not occur');
+});
+
+test('Entry Model: Example E — No main (top-level expression returns value)', () => {
+  const e = new ExecutionEngine();
+  const r = e.executeSource(`
+x = 10
+x + 20
+`, '<test>', { enableOutput: false });
+  assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
+  assert.strictEqual(r.displayValue, '30');
 });

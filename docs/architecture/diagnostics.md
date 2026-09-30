@@ -41,6 +41,21 @@ Every diagnostic message includes:
 | `W1xxx` | Warnings | Unused variables, dead code, deprecations | **Active (0.0.2-s)** |
 | `I1xxx` | Information | Milestone notices, compilation progress, hints | **Active (0.0.1-s)** |
 
+### Runtime Diagnostic Code Family (0.0.5-s+)
+
+Runtime diagnostics represent unrecoverable runtime errors (panics) triggered during execution:
+
+| Code Range | Category | Description | Status |
+|---|---|---|---|
+| `R0xxx` | Runtime Panics | Unrecoverable runtime errors (division by zero, underflow, stack overflow) | **Active (0.0.5-s)** |
+
+#### Locked Runtime Diagnostic Codes:
+- `R0001`: Division by zero
+- `R0002`: Unsupported runtime operation
+- `R0003`: Internal execution state error
+- `R0004`: Call stack depth exceeded
+- `R0005`: Unsigned integer underflow
+
 ---
 
 ## 3. Internal Compiler Error (ICE) Boundary

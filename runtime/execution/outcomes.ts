@@ -88,7 +88,7 @@ export function unwrapValue(outcome: NormalOutcome | ReturnOutcome): RuntimeValu
  */
 export function divisionByZeroError(span?: Span, file?: string): RuntimeError {
   return {
-    code: 'E5001',
+    code: 'R0001',
     message: 'Runtime error: Division by zero.',
     span,
     file,
@@ -102,7 +102,7 @@ export function divisionByZeroError(span?: Span, file?: string): RuntimeError {
  */
 export function unsupportedOperationError(op: string, span?: Span, file?: string): RuntimeError {
   return {
-    code: 'E5002',
+    code: 'R0002',
     message: `Runtime error: Unsupported operation '${op}' in current execution context.`,
     span,
     file,
@@ -115,7 +115,7 @@ export function unsupportedOperationError(op: string, span?: Span, file?: string
  */
 export function invalidStateError(message: string, span?: Span, file?: string): RuntimeError {
   return {
-    code: 'E5003',
+    code: 'R0003',
     message: `Internal execution error: ${message}`,
     span,
     file,
@@ -127,10 +127,24 @@ export function invalidStateError(message: string, span?: Span, file?: string): 
  */
 export function stackOverflowError(depth: number, span?: Span, file?: string): RuntimeError {
   return {
-    code: 'E5004',
+    code: 'R0004',
     message: `Runtime error: Call stack depth exceeded (depth: ${depth}).`,
     span,
     file,
     help: 'Check for unintended infinite recursion.',
+  };
+}
+
+/**
+ * Creates a structured runtime error for unsigned integer underflow.
+ */
+export function uintUnderflowError(lhs: bigint, rhs: bigint, span?: Span, file?: string): RuntimeError {
+  return {
+    code: 'R0005',
+    message: `Runtime error: Unsigned integer underflow: ${lhs}u - ${rhs}u cannot be represented as UInt.`,
+    span,
+    file,
+    notes: ['UInt values in Seira are non-negative and do not wrap or clamp.'],
+    help: 'Ensure the left operand is greater than or equal to the right operand before subtracting UInt values.',
   };
 }
