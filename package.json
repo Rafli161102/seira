@@ -1,6 +1,6 @@
 {
   "name": "seira",
-  "version": "0.0.6-s",
+  "version": "0.0.7-s",
   "description": "The Seira Programming Language — Data & Control Foundation",
   "type": "module",
   "bin": {

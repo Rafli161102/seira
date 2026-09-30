@@ -28,9 +28,11 @@ import type {
   ExprStmt,
   ForStmt,
   FunctionDecl,
+  GenericParamNode,
   Identifier,
   IdentifierPattern,
   IfExpr,
+  ImplDecl,
   IndexExpr,
   LambdaExpr,
   LetStmt,
@@ -49,6 +51,7 @@ import type {
   SetLiteral,
   Stmt,
   StructDecl,
+  TraitDecl,
   TupleLiteral,
   TypeAliasDecl,
   TypeAnnotation,
@@ -75,6 +78,7 @@ export class Resolver {
   private currentScope: Scope;
   private readonly resolvedSymbols = new Map<ASTNode, SymbolInfo>();
   private readonly declaredSymbols = new Map<ASTNode, SymbolInfo>();
+  private readonly implementedTraits = new Set<string>();
   private currentFile?: string;
   private loopDepth: number = 0;
 
@@ -269,6 +273,41 @@ export class Resolver {
           }
           break;
         }
+        case 'TraitDecl': {
+          const ok = this.globalScope.define({
+            name: item.name,
+            kind: 'trait',
+            span: item.span,
+            isMut: false,
+            declNode: item,
+          });
+          if (!ok) {
+            this.diagnostics.reportError(
+              'E2002',
+              `Duplicate declaration of trait '${item.name}' in the same scope.`,
+              item.span,
+              this.currentFile
+            );
+          } else {
+            const sym = this.globalScope.lookupLocal(item.name);
+            if (sym) this.declaredSymbols.set(item, sym);
+          }
+          break;
+        }
+        case 'ImplDecl': {
+          const key = `${item.targetType.name}::${item.traitName}`;
+          if (this.implementedTraits.has(key)) {
+            this.diagnostics.reportError(
+              'E4005',
+              `Duplicate implementation of trait '${item.traitName}' for type '${item.targetType.name}'.`,
+              item.span,
+              this.currentFile
+            );
+          } else {
+            this.implementedTraits.add(key);
+          }
+          break;
+        }
       }
     }
   }
@@ -287,6 +326,12 @@ export class Resolver {
       case 'TypeAliasDecl':
         this.resolveTypeAliasDecl(item as TypeAliasDecl);
         break;
+      case 'TraitDecl':
+        this.resolveTraitDecl(item as TraitDecl);
+        break;
+      case 'ImplDecl':
+        this.resolveImplDecl(item as ImplDecl);
+        break;
       default:
         this.resolveStatement(item as Stmt);
         break;
@@ -296,6 +341,32 @@ export class Resolver {
   private resolveFunctionDecl(fn: FunctionDecl): void {
     const parentScope = this.currentScope;
     this.currentScope = new Scope('function', parentScope);
+
+    // Define generic parameters in function scope
+    if (fn.genericParams) {
+      const seenGenerics = new Set<string>();
+      for (const gp of fn.genericParams) {
+        if (seenGenerics.has(gp.name)) {
+          this.diagnostics.reportError(
+            'E4001',
+            `Duplicate generic parameter '${gp.name}' in function '${fn.name}'.`,
+            gp.span,
+            this.currentFile
+          );
+        }
+        seenGenerics.add(gp.name);
+        this.currentScope.define({
+          name: gp.name,
+          kind: 'type',
+          span: gp.span,
+          isMut: false,
+          declNode: gp,
+        });
+        if (gp.constraint) {
+          this.resolveTypeAnnotation(gp.constraint);
+        }
+      }
+    }
 
     // Resolve parameter types and define parameter symbols in function scope
     for (const param of fn.params) {
@@ -336,6 +407,33 @@ export class Resolver {
   }
 
   private resolveStructDecl(struct: StructDecl): void {
+    const parentScope = this.currentScope;
+    if (struct.genericParams && struct.genericParams.length > 0) {
+      this.currentScope = new Scope('block', parentScope);
+      const seenGenerics = new Set<string>();
+      for (const gp of struct.genericParams) {
+        if (seenGenerics.has(gp.name)) {
+          this.diagnostics.reportError(
+            'E4001',
+            `Duplicate generic parameter '${gp.name}' in struct '${struct.name}'.`,
+            gp.span,
+            this.currentFile
+          );
+        }
+        seenGenerics.add(gp.name);
+        this.currentScope.define({
+          name: gp.name,
+          kind: 'type',
+          span: gp.span,
+          isMut: false,
+          declNode: gp,
+        });
+        if (gp.constraint) {
+          this.resolveTypeAnnotation(gp.constraint);
+        }
+      }
+    }
+
     const fieldNames = new Set<string>();
     for (const field of struct.fields) {
       if (fieldNames.has(field.name)) {
@@ -349,6 +447,8 @@ export class Resolver {
       fieldNames.add(field.name);
       this.resolveTypeAnnotation(field.type);
     }
+
+    this.currentScope = parentScope;
   }
 
   private resolveEnumDecl(enumDecl: EnumDecl): void {
@@ -370,12 +470,121 @@ export class Resolver {
   }
 
   private resolveTypeAliasDecl(alias: TypeAliasDecl): void {
+    const parentScope = this.currentScope;
+    if (alias.genericParams && alias.genericParams.length > 0) {
+      this.currentScope = new Scope('block', parentScope);
+      const seenGenerics = new Set<string>();
+      for (const gp of alias.genericParams) {
+        if (seenGenerics.has(gp.name)) {
+          this.diagnostics.reportError(
+            'E4001',
+            `Duplicate generic parameter '${gp.name}' in type alias '${alias.name}'.`,
+            gp.span,
+            this.currentFile
+          );
+        }
+        seenGenerics.add(gp.name);
+        this.currentScope.define({
+          name: gp.name,
+          kind: 'type',
+          span: gp.span,
+          isMut: false,
+          declNode: gp,
+        });
+        if (gp.constraint) {
+          this.resolveTypeAnnotation(gp.constraint);
+        }
+      }
+    }
+
     this.resolveTypeAnnotation(alias.targetType);
+    this.currentScope = parentScope;
+  }
+
+  private resolveTraitDecl(trait: TraitDecl): void {
+    const parentScope = this.currentScope;
+    if (trait.genericParams && trait.genericParams.length > 0) {
+      this.currentScope = new Scope('block', parentScope);
+      const seenGenerics = new Set<string>();
+      for (const gp of trait.genericParams) {
+        if (seenGenerics.has(gp.name)) {
+          this.diagnostics.reportError(
+            'E4001',
+            `Duplicate generic parameter '${gp.name}' in trait '${trait.name}'.`,
+            gp.span,
+            this.currentFile
+          );
+        }
+        seenGenerics.add(gp.name);
+        this.currentScope.define({
+          name: gp.name,
+          kind: 'type',
+          span: gp.span,
+          isMut: false,
+          declNode: gp,
+        });
+        if (gp.constraint) {
+          this.resolveTypeAnnotation(gp.constraint);
+        }
+      }
+    }
+
+    for (const method of trait.methods) {
+      this.resolveFunctionDecl(method);
+    }
+
+    this.currentScope = parentScope;
+  }
+
+  private resolveImplDecl(implDecl: ImplDecl): void {
+    const traitSym = this.globalScope.lookup(implDecl.traitName);
+    if (!traitSym || traitSym.kind !== 'trait') {
+      this.diagnostics.reportError(
+        'E4004',
+        `Cannot find trait '${implDecl.traitName}' in this scope.`,
+        implDecl.span,
+        this.currentFile
+      );
+    }
+
+    this.resolveTypeAnnotation(implDecl.targetType);
+
+    for (const method of implDecl.methods) {
+      this.resolveFunctionDecl(method);
+    }
   }
 
   private resolveTypeAnnotation(annotation: TypeAnnotation): void {
+    if (annotation.name === 'Union') {
+      if (annotation.unionTypes) {
+        for (const t of annotation.unionTypes) {
+          this.resolveTypeAnnotation(t);
+        }
+      }
+      return;
+    }
+
+    if (annotation.name === 'Function') {
+      if (annotation.functionParams) {
+        for (const p of annotation.functionParams) {
+          this.resolveTypeAnnotation(p);
+        }
+      }
+      if (annotation.returnType) {
+        this.resolveTypeAnnotation(annotation.returnType);
+      }
+      return;
+    }
+
     const sym = this.currentScope.lookup(annotation.name);
-    if (!sym || sym.kind !== 'type') {
+    if (
+      !sym ||
+      (sym.kind !== 'type' &&
+        sym.kind !== 'struct' &&
+        sym.kind !== 'enum' &&
+        sym.kind !== 'trait' &&
+        sym.kind !== 'builtin')
+    ) {
       this.diagnostics.reportError(
         'E2001',
         `Cannot find type '${annotation.name}' in this scope.`,
@@ -661,6 +870,13 @@ export class Resolver {
             this.currentFile,
             `Ensure '${id.name}' is declared in the current or an enclosing lexical scope.`
           );
+        } else if (sym.kind === 'type' && sym.declNode?.kind === 'GenericParam') {
+          this.diagnostics.reportError(
+            'E2001',
+            `'${id.name}' is a type parameter and cannot be used as a value.`,
+            id.span,
+            this.currentFile
+          );
         } else {
           this.resolvedSymbols.set(id, sym);
         }
@@ -680,6 +896,11 @@ export class Resolver {
       case 'CallExpr': {
         const call = expr as CallExpr;
         this.resolveExpression(call.callee);
+        if (call.typeArguments) {
+          for (const ta of call.typeArguments) {
+            this.resolveTypeAnnotation(ta);
+          }
+        }
         for (const arg of call.args) {
           this.resolveExpression(arg);
         }

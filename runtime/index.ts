@@ -38,11 +38,11 @@ export {
 export type { SeiraValue } from './value/index.ts';
 
 export interface RuntimeVersion {
-  readonly version: '0.0.6-s';
-  readonly status: 'Data & Control Foundation';
+  readonly version: '0.0.7-s';
+  readonly status: 'Type & Generic Foundation';
 }
 
 export const RUNTIME_INFO: RuntimeVersion = {
-  version: '0.0.6-s',
-  status: 'Data & Control Foundation',
+  version: '0.0.7-s',
+  status: 'Type & Generic Foundation',
 };

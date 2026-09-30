@@ -37,9 +37,11 @@ import type {
   ExprStmt,
   ForStmt,
   FunctionDecl,
+  GenericParamNode,
   Identifier,
   IdentifierPattern,
   IfExpr,
+  ImplDecl,
   IndexExpr,
   LambdaExpr,
   LetStmt,
@@ -60,7 +62,9 @@ import type {
   ReturnStmt,
   SetLiteral,
   Stmt,
+  TraitDecl,
   TupleLiteral,
+  TypeAliasDecl,
   TypeAnnotation,
   UnaryExpr,
   WhileStmt,
@@ -70,6 +74,7 @@ import type {
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
 import { Resolver, type ResolverResult, type SymbolInfo } from '../resolver/index.ts';
 import {
+  areTypesEqual,
   BOOL_TYPE,
   BYTE_TYPE,
   CHAR_TYPE,
@@ -92,11 +97,22 @@ import {
   isUInt,
   isUnknown,
   STRING_TYPE,
+  substituteType,
   UINT_TYPE,
+  unifyTypes,
   UNIT_TYPE,
   UNKNOWN_TYPE,
 } from './types.ts';
-import type { FunctionType, MapType, OptionType, ResultType, SetType, Type } from './types.ts';
+import type {
+  FunctionType,
+  GenericParamType,
+  MapType,
+  OptionType,
+  ResultType,
+  SetType,
+  Type,
+  UnionType,
+} from './types.ts';
 
 export * from './types.ts';
 
@@ -112,6 +128,12 @@ export class TypeChecker {
   private currentResolverResult?: ResolverResult;
   private currentFile?: string;
   private currentFunctionReturnType?: Type;
+
+  private readonly traits = new Map<string, TraitDecl>();
+  private readonly implementations = new Map<string, Set<string>>();
+  private readonly typeAliases = new Map<string, TypeAliasDecl>();
+  private currentGenericParams?: Map<string, GenericParamType>;
+  private readonly aliasExpansionStack = new Set<string>();
 
   constructor(diagnostics?: DiagnosticBag) {
     this.diagnostics = diagnostics ?? new DiagnosticBag();
@@ -139,14 +161,38 @@ export class TypeChecker {
     this.currentResolverResult = resolverResult;
     this.currentFile = targetFile;
 
-    // First pass: register function signatures so calls can be verified regardless of order
+    this.traits.clear();
+    this.implementations.clear();
+    this.typeAliases.clear();
+    this.currentGenericParams = undefined;
+    this.aliasExpansionStack.clear();
+
+    // Pass 1a: collect traits, type aliases, and trait implementations
+    for (const item of program.items) {
+      if (item.kind === 'TraitDecl') {
+        const trait = item as TraitDecl;
+        this.traits.set(trait.name, trait);
+      } else if (item.kind === 'TypeAliasDecl') {
+        const alias = item as TypeAliasDecl;
+        this.typeAliases.set(alias.name, alias);
+      } else if (item.kind === 'ImplDecl') {
+        const impl = item as ImplDecl;
+        const targetTypeName = impl.targetType.name;
+        if (!this.implementations.has(targetTypeName)) {
+          this.implementations.set(targetTypeName, new Set());
+        }
+        this.implementations.get(targetTypeName)!.add(impl.traitName);
+      }
+    }
+
+    // Pass 1b: register function signatures so calls can be verified regardless of order
     for (const item of program.items) {
       if (item.kind === 'FunctionDecl') {
         this.registerFunctionSignature(item as FunctionDecl);
       }
     }
 
-    // Second pass: typecheck declarations and statements
+    // Pass 2: typecheck declarations and statements
     for (const item of program.items) {
       this.checkDeclaration(item);
     }
@@ -159,6 +205,25 @@ export class TypeChecker {
   }
 
   private registerFunctionSignature(fn: FunctionDecl): void {
+    let genericParamTypes: GenericParamType[] | undefined;
+    const prevGenericParams = this.currentGenericParams;
+
+    if (fn.genericParams && fn.genericParams.length > 0) {
+      genericParamTypes = [];
+      const gMap = new Map<string, GenericParamType>();
+      for (const p of fn.genericParams) {
+        const constraintType = p.constraint ? this.resolveTypeAnnotation(p.constraint) : undefined;
+        const gType: GenericParamType = {
+          kind: 'GenericParam',
+          name: p.name,
+          constraint: constraintType,
+        };
+        genericParamTypes.push(gType);
+        gMap.set(p.name, gType);
+      }
+      this.currentGenericParams = gMap;
+    }
+
     const paramTypes: Type[] = fn.params.map((p) =>
       p.typeAnnotation ? this.resolveTypeAnnotation(p.typeAnnotation) : UNKNOWN_TYPE
     );
@@ -166,7 +231,9 @@ export class TypeChecker {
       ? this.resolveTypeAnnotation(fn.returnType)
       : UNIT_TYPE;
 
-    const fnType = createFunctionType(paramTypes, returnType, fn.isEffectful);
+    this.currentGenericParams = prevGenericParams;
+
+    const fnType = createFunctionType(paramTypes, returnType, fn.isEffectful, genericParamTypes);
     this.nodeTypes.set(fn, fnType);
 
     const sym = this.currentResolverResult?.globalScope.lookup(fn.name);
@@ -180,6 +247,12 @@ export class TypeChecker {
       case 'FunctionDecl':
         this.checkFunctionDecl(item as FunctionDecl);
         break;
+      case 'TraitDecl':
+        this.checkTraitDecl(item as TraitDecl);
+        break;
+      case 'ImplDecl':
+        this.checkImplDecl(item as ImplDecl);
+        break;
       case 'StructDecl':
       case 'EnumDecl':
       case 'TypeAliasDecl':
@@ -190,7 +263,113 @@ export class TypeChecker {
     }
   }
 
+  private checkTraitDecl(trait: TraitDecl): void {
+    for (const method of trait.methods) {
+      for (const param of method.params) {
+        if (param.typeAnnotation) {
+          this.resolveTypeAnnotation(param.typeAnnotation);
+        }
+      }
+      if (method.returnType) {
+        this.resolveTypeAnnotation(method.returnType);
+      }
+    }
+  }
+
+  private checkImplDecl(implDecl: ImplDecl): void {
+    const targetType = this.resolveTypeAnnotation(implDecl.targetType);
+    const traitDecl = this.traits.get(implDecl.traitName);
+
+    if (!traitDecl) {
+      this.diagnostics.reportError(
+        'E4004',
+        `Trait '${implDecl.traitName}' not found in implementation for '${formatType(targetType)}'.`,
+        implDecl.span,
+        this.currentFile
+      );
+      return;
+    }
+
+    // Verify all required methods from the trait are implemented
+    for (const reqMethod of traitDecl.methods) {
+      const implMethod = implDecl.methods.find((m) => m.name === reqMethod.name);
+      if (!implMethod) {
+        this.diagnostics.reportError(
+          'E4004',
+          `Type '${formatType(targetType)}' does not implement required method '${reqMethod.name}' from trait '${implDecl.traitName}'.`,
+          implDecl.span,
+          this.currentFile
+        );
+        continue;
+      }
+
+      const reqParamTypes = reqMethod.params.map((p) =>
+        p.typeAnnotation ? this.resolveTypeAnnotation(p.typeAnnotation) : UNKNOWN_TYPE
+      );
+      const reqRetType = reqMethod.returnType ? this.resolveTypeAnnotation(reqMethod.returnType) : UNIT_TYPE;
+
+      const implParamTypes = implMethod.params.map((p) =>
+        p.typeAnnotation ? this.resolveTypeAnnotation(p.typeAnnotation) : UNKNOWN_TYPE
+      );
+      const implRetType = implMethod.returnType ? this.resolveTypeAnnotation(implMethod.returnType) : UNIT_TYPE;
+
+      const paramMatch =
+        reqParamTypes.length === implParamTypes.length &&
+        reqParamTypes.every((p, idx) => areTypesEqual(p, implParamTypes[idx]));
+      const retMatch = areTypesEqual(reqRetType, implRetType);
+
+      if (!paramMatch || !retMatch) {
+        this.diagnostics.reportError(
+          'E4006',
+          `Method signature mismatch for '${implMethod.name}' in implementation of trait '${implDecl.traitName}': expected '(${reqParamTypes.map(formatType).join(', ')}) -> ${formatType(reqRetType)}', but found '(${implParamTypes.map(formatType).join(', ')}) -> ${formatType(implRetType)}'.`,
+          implMethod.span,
+          this.currentFile
+        );
+      }
+
+      // Check method body
+      this.checkFunctionDecl(implMethod);
+    }
+
+    // Check for extraneous methods
+    for (const implMethod of implDecl.methods) {
+      if (!traitDecl.methods.some((m) => m.name === implMethod.name)) {
+        this.diagnostics.reportError(
+          'E4004',
+          `Method '${implMethod.name}' is not declared in trait '${implDecl.traitName}'.`,
+          implMethod.span,
+          this.currentFile
+        );
+      }
+    }
+  }
+
+  private typeSatisfiesConstraint(type: Type, constraintName: string): boolean {
+    if (type.kind === 'Primitive' && type.name === 'Unknown') return true;
+    if (type.kind === 'TypeAlias') {
+      return this.typeSatisfiesConstraint(type.target, constraintName);
+    }
+    const typeName =
+      type.kind === 'Custom' ? type.name : type.kind === 'Primitive' ? type.name : formatType(type);
+    const implemented = this.implementations.get(typeName);
+    return implemented ? implemented.has(constraintName) : false;
+  }
+
   private checkFunctionDecl(fn: FunctionDecl): void {
+    const prevGenericParams = this.currentGenericParams;
+    if (fn.genericParams && fn.genericParams.length > 0) {
+      const gMap = new Map<string, GenericParamType>();
+      for (const p of fn.genericParams) {
+        const constraintType = p.constraint ? this.resolveTypeAnnotation(p.constraint) : undefined;
+        gMap.set(p.name, {
+          kind: 'GenericParam',
+          name: p.name,
+          constraint: constraintType,
+        });
+      }
+      this.currentGenericParams = gMap;
+    }
+
     const declaredReturn = fn.returnType
       ? this.resolveTypeAnnotation(fn.returnType)
       : UNIT_TYPE;
@@ -210,7 +389,7 @@ export class TypeChecker {
     this.currentFunctionReturnType = declaredReturn;
 
     if (fn.isExpressionBody && fn.bodyExpr) {
-      const exprType = this.checkExpression(fn.bodyExpr);
+      const exprType = this.checkExpression(fn.bodyExpr, declaredReturn);
       if (fn.returnType && !isTypeAssignable(declaredReturn, exprType) && !isUnknown(exprType)) {
         this.diagnostics.reportError(
           'E3004',
@@ -246,12 +425,18 @@ export class TypeChecker {
     }
 
     this.currentFunctionReturnType = prevReturn;
+    this.currentGenericParams = prevGenericParams;
   }
 
   private checkBindingStmt(stmt: BindingStmt): void {
+    let declaredType: Type | undefined;
+    if (stmt.typeAnnotation) {
+      declaredType = this.resolveTypeAnnotation(stmt.typeAnnotation);
+    }
+
     let initType: Type = UNKNOWN_TYPE;
     if (stmt.initializer) {
-      initType = this.checkExpression(stmt.initializer);
+      initType = this.checkExpression(stmt.initializer, declaredType);
     }
 
     // Check if this was a bare reassignment to an existing local variable
@@ -273,8 +458,7 @@ export class TypeChecker {
     }
 
     let finalType = initType;
-    if (stmt.typeAnnotation) {
-      const declaredType = this.resolveTypeAnnotation(stmt.typeAnnotation);
+    if (declaredType) {
       if (stmt.initializer && !isTypeAssignable(declaredType, initType) && !isUnknown(initType)) {
         this.diagnostics.reportError(
           'E3001',
@@ -296,14 +480,18 @@ export class TypeChecker {
   }
 
   private checkLetStmt(stmt: LetStmt): void {
+    let declaredType: Type | undefined;
+    if (stmt.typeAnnotation) {
+      declaredType = this.resolveTypeAnnotation(stmt.typeAnnotation);
+    }
+
     let initType: Type = UNKNOWN_TYPE;
     if (stmt.initializer) {
-      initType = this.checkExpression(stmt.initializer);
+      initType = this.checkExpression(stmt.initializer, declaredType);
     }
 
     let finalType = initType;
-    if (stmt.typeAnnotation) {
-      const declaredType = this.resolveTypeAnnotation(stmt.typeAnnotation);
+    if (declaredType) {
       if (stmt.initializer && !isTypeAssignable(declaredType, initType) && !isUnknown(initType)) {
         this.diagnostics.reportError(
           'E3001',
@@ -325,11 +513,14 @@ export class TypeChecker {
   }
 
   private checkConstStmt(stmt: ConstStmt): void {
-    const initType = this.checkExpression(stmt.initializer);
+    let declaredType: Type | undefined;
+    if (stmt.typeAnnotation) {
+      declaredType = this.resolveTypeAnnotation(stmt.typeAnnotation);
+    }
+    const initType = this.checkExpression(stmt.initializer, declaredType);
     let finalType = initType;
 
-    if (stmt.typeAnnotation) {
-      const declaredType = this.resolveTypeAnnotation(stmt.typeAnnotation);
+    if (declaredType) {
       if (!isTypeAssignable(declaredType, initType) && !isUnknown(initType)) {
         this.diagnostics.reportError(
           'E3001',
@@ -364,7 +555,7 @@ export class TypeChecker {
       targetType = this.checkExpression(stmt.target);
     }
 
-    const valType = this.checkExpression(stmt.value);
+    const valType = this.checkExpression(stmt.value, targetType);
 
     if (stmt.operator === '=') {
       if (!isUnknown(targetType) && !isUnknown(valType)) {
@@ -401,7 +592,9 @@ export class TypeChecker {
   }
 
   private checkReturnStmt(stmt: ReturnStmt): void {
-    const valType = stmt.value ? this.checkExpression(stmt.value) : UNIT_TYPE;
+    const valType = stmt.value
+      ? this.checkExpression(stmt.value, this.currentFunctionReturnType)
+      : UNIT_TYPE;
 
     if (this.currentFunctionReturnType) {
       if (!isTypeAssignable(this.currentFunctionReturnType, valType) && !isUnknown(valType)) {
@@ -525,7 +718,7 @@ export class TypeChecker {
     this.checkBlock(stmt.body);
   }
 
-  public checkExpression(expr: Expr): Type {
+  public checkExpression(expr: Expr, expectedType?: Type): Type {
     let resultType: Type = UNKNOWN_TYPE;
 
     switch (expr.kind) {
@@ -557,6 +750,14 @@ export class TypeChecker {
       }
       case 'Identifier': {
         const id = expr as Identifier;
+        if (id.name === 'None') {
+          if (expectedType && expectedType.kind === 'Option') {
+            resultType = expectedType;
+          } else {
+            resultType = createOptionType(UNKNOWN_TYPE);
+          }
+          break;
+        }
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);
         if (sym && sym.type) {
           resultType = sym.type;
@@ -602,7 +803,7 @@ export class TypeChecker {
       }
       case 'CallExpr': {
         const call = expr as CallExpr;
-        resultType = this.checkCall(call);
+        resultType = this.checkCall(call, expectedType);
         break;
       }
       case 'PipelineExpr': {
@@ -816,7 +1017,7 @@ export class TypeChecker {
         break;
       }
       case 'LambdaExpr': {
-        resultType = this.checkLambdaExpr(expr as LambdaExpr);
+        resultType = this.checkLambdaExpr(expr as LambdaExpr, expectedType);
         break;
       }
     }
@@ -828,6 +1029,62 @@ export class TypeChecker {
   private checkBinaryOp(op: string, left: Type, right: Type, span: Span): Type {
     if (isUnknown(left) || isUnknown(right)) {
       return UNKNOWN_TYPE;
+    }
+
+    // Union handling: binary operations on a union type are only permitted
+    // if valid for all constituent variants
+    if (left.kind === 'Union' || right.kind === 'Union') {
+      const leftVariants = left.kind === 'Union' ? (left as UnionType).types : [left];
+      const rightVariants = right.kind === 'Union' ? (right as UnionType).types : [right];
+      const resultVariants: Type[] = [];
+
+      for (const lv of leftVariants) {
+        for (const rv of rightVariants) {
+          if (op === '==' || op === '!=') {
+            resultVariants.push(BOOL_TYPE);
+            continue;
+          }
+          if (op === '<' || op === '>' || op === '<=' || op === '>=') {
+            const valid =
+              (isInt(lv) && isInt(rv)) ||
+              (isUInt(lv) && isUInt(rv)) ||
+              (isFloat(lv) && isFloat(rv));
+            if (!valid) {
+              this.diagnostics.reportError(
+                'E3002',
+                `Comparison operator '${op}' cannot compare '${formatType(left)}' and '${formatType(right)}'.`,
+                span,
+                this.currentFile,
+                `Union variants include '${formatType(lv)}' and '${formatType(rv)}' which cannot be compared.`
+              );
+              return BOOL_TYPE;
+            }
+            resultVariants.push(BOOL_TYPE);
+            continue;
+          }
+          if (op === '+' || op === '-' || op === '*' || op === '/' || op === '%') {
+            const validNumeric =
+              (isInt(lv) && isInt(rv)) ||
+              (isUInt(lv) && isUInt(rv)) ||
+              (isFloat(lv) && isFloat(rv));
+            const validString = op === '+' && isString(lv) && isString(rv);
+            if (!validNumeric && !validString) {
+              this.diagnostics.reportError(
+                'E3002',
+                `Operator '${op}' cannot be applied to '${formatType(left)}' and '${formatType(right)}'.`,
+                span,
+                this.currentFile,
+                `Union operation is invalid for variant combination '${formatType(lv)}' and '${formatType(rv)}'.`
+              );
+              return UNKNOWN_TYPE;
+            }
+            resultVariants.push(validString ? STRING_TYPE : lv);
+            continue;
+          }
+        }
+      }
+      if (resultVariants.length === 1) return resultVariants[0];
+      return { kind: 'Union', types: resultVariants };
     }
 
     // Boolean operations: and, or
@@ -900,7 +1157,7 @@ export class TypeChecker {
     return UNKNOWN_TYPE;
   }
 
-  private checkCall(call: CallExpr): Type {
+  private checkCall(call: CallExpr, expectedType?: Type): Type {
     let calleeType: Type = UNKNOWN_TYPE;
     let calleeName = 'anonymous';
 
@@ -908,21 +1165,34 @@ export class TypeChecker {
       const id = call.callee as Identifier;
       calleeName = id.name;
 
-      // Built-in constructors
+      // Built-in constructors with contextual expected type propagation
       if (calleeName === 'Some' && call.args.length === 1) {
-        const innerType = this.checkExpression(call.args[0]);
+        const expectedInner =
+          expectedType && expectedType.kind === 'Option' ? expectedType.inner : undefined;
+        const innerType = this.checkExpression(call.args[0], expectedInner);
         return createOptionType(innerType);
       }
       if (calleeName === 'None') {
+        if (expectedType && expectedType.kind === 'Option') {
+          return expectedType;
+        }
         return createOptionType(UNKNOWN_TYPE);
       }
       if (calleeName === 'Ok' && call.args.length === 1) {
-        const okType = this.checkExpression(call.args[0]);
-        return createResultType(okType, UNKNOWN_TYPE);
+        const expectedOk =
+          expectedType && expectedType.kind === 'Result' ? expectedType.ok : undefined;
+        const expectedErr =
+          expectedType && expectedType.kind === 'Result' ? expectedType.err : UNKNOWN_TYPE;
+        const okType = this.checkExpression(call.args[0], expectedOk);
+        return createResultType(okType, expectedErr);
       }
       if (calleeName === 'Err' && call.args.length === 1) {
-        const errType = this.checkExpression(call.args[0]);
-        return createResultType(UNKNOWN_TYPE, errType);
+        const expectedErr =
+          expectedType && expectedType.kind === 'Result' ? expectedType.err : undefined;
+        const expectedOk =
+          expectedType && expectedType.kind === 'Result' ? expectedType.ok : UNKNOWN_TYPE;
+        const errType = this.checkExpression(call.args[0], expectedErr);
+        return createResultType(expectedOk, errType);
       }
       if (calleeName === 'println' || calleeName === 'print') {
         for (const arg of call.args) {
@@ -945,36 +1215,169 @@ export class TypeChecker {
       calleeType = this.checkExpression(call.callee);
     }
 
-    const argTypes = call.args.map((a) => this.checkExpression(a));
-
     if (calleeType.kind === 'Function') {
       const fnType = calleeType as FunctionType;
+      if (fnType.genericParams && fnType.genericParams.length > 0) {
+        return this.checkGenericFunctionCall(call, calleeName, fnType);
+      }
+      return this.checkConcreteFunctionCall(call, calleeName, fnType);
+    }
 
-      if (argTypes.length !== fnType.params.length) {
+    return UNKNOWN_TYPE;
+  }
+
+  private checkGenericFunctionCall(
+    call: CallExpr,
+    calleeName: string,
+    fnType: FunctionType
+  ): Type {
+    const genericParams = fnType.genericParams!;
+    const substitutions = new Map<string, Type>();
+
+    if (call.typeArguments && call.typeArguments.length > 0) {
+      if (call.typeArguments.length !== genericParams.length) {
         this.diagnostics.reportError(
-          'E3003',
-          `Function '${calleeName}' expects ${fnType.params.length} argument${fnType.params.length === 1 ? '' : 's'}, but got ${argTypes.length}.`,
+          'E4001',
+          `Generic argument count mismatch in call to '${calleeName}': expected ${genericParams.length}, but found ${call.typeArguments.length}.`,
           call.span,
           this.currentFile
         );
-      } else {
-        for (let i = 0; i < argTypes.length; i++) {
-          const paramType = fnType.params[i];
-          const argType = argTypes[i];
-          if (!isTypeAssignable(paramType, argType) && !isUnknown(argType) && !isUnknown(paramType)) {
+        return UNKNOWN_TYPE;
+      }
+
+      for (let i = 0; i < genericParams.length; i++) {
+        const gParam = genericParams[i];
+        const argType = this.resolveTypeAnnotation(call.typeArguments[i]);
+        substitutions.set(gParam.name, argType);
+
+        if (gParam.constraint) {
+          const constraintName = formatType(gParam.constraint);
+          if (!this.typeSatisfiesConstraint(argType, constraintName)) {
             this.diagnostics.reportError(
-              'E3003',
-              `Argument ${i + 1} type mismatch in call to '${calleeName}': expected '${formatType(paramType)}', but found '${formatType(argType)}'.`,
-              call.args[i].span,
+              'E4003',
+              `Type '${formatType(argType)}' does not satisfy trait constraint '${constraintName}' in call to '${calleeName}'.`,
+              call.typeArguments[i].span,
               this.currentFile
             );
           }
         }
       }
-      return fnType.returnType;
+    } else {
+      // Generic argument inference:
+      // Pass 1: infer from non-lambda arguments
+      for (let i = 0; i < call.args.length; i++) {
+        if (call.args[i].kind !== 'LambdaExpr') {
+          const argType = this.checkExpression(call.args[i]);
+          if (i < fnType.params.length) {
+            unifyTypes(fnType.params[i], argType, substitutions);
+          }
+        }
+      }
+
+      // Pass 2: check lambda arguments using contextual types from partial substitutions
+      for (let i = 0; i < call.args.length; i++) {
+        if (call.args[i].kind === 'LambdaExpr') {
+          const expectedParamType =
+            i < fnType.params.length ? substituteType(fnType.params[i], substitutions) : UNKNOWN_TYPE;
+          const lambdaType = this.checkLambdaExpr(call.args[i] as LambdaExpr, expectedParamType);
+          if (i < fnType.params.length) {
+            unifyTypes(fnType.params[i], lambdaType, substitutions);
+          }
+        }
+      }
+
+      // Verify that all generic parameters were inferred
+      for (const gParam of genericParams) {
+        if (!substitutions.has(gParam.name)) {
+          this.diagnostics.reportError(
+            'E4002',
+            `Cannot infer generic parameter '${gParam.name}' for function '${calleeName}'. Please provide explicit type arguments.`,
+            call.span,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+
+        // Verify trait constraints on inferred types
+        if (gParam.constraint) {
+          const inferredType = substitutions.get(gParam.name)!;
+          const constraintName = formatType(gParam.constraint);
+          if (!this.typeSatisfiesConstraint(inferredType, constraintName)) {
+            this.diagnostics.reportError(
+              'E4003',
+              `Inferred type '${formatType(inferredType)}' does not satisfy trait constraint '${constraintName}' for parameter '${gParam.name}' in call to '${calleeName}'.`,
+              call.span,
+              this.currentFile
+            );
+          }
+        }
+      }
     }
 
-    return UNKNOWN_TYPE;
+    const concreteParams = fnType.params.map((p) => substituteType(p, substitutions));
+    const concreteReturn = substituteType(fnType.returnType, substitutions);
+
+    if (call.args.length !== concreteParams.length) {
+      this.diagnostics.reportError(
+        'E3003',
+        `Function '${calleeName}' expects ${concreteParams.length} argument${concreteParams.length === 1 ? '' : 's'}, but got ${call.args.length}.`,
+        call.span,
+        this.currentFile
+      );
+    } else {
+      for (let i = 0; i < call.args.length; i++) {
+        const expectedP = concreteParams[i];
+        const argType = this.checkExpression(call.args[i], expectedP);
+        if (!isTypeAssignable(expectedP, argType) && !isUnknown(argType) && !isUnknown(expectedP)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Argument ${i + 1} type mismatch in call to '${calleeName}': expected '${formatType(expectedP)}', but found '${formatType(argType)}'.`,
+            call.args[i].span,
+            this.currentFile
+          );
+        }
+      }
+    }
+
+    return concreteReturn;
+  }
+
+  private checkConcreteFunctionCall(
+    call: CallExpr,
+    calleeName: string,
+    fnType: FunctionType
+  ): Type {
+    if (call.typeArguments && call.typeArguments.length > 0) {
+      this.diagnostics.reportError(
+        'E4001',
+        `Function '${calleeName}' is not generic and does not accept type arguments.`,
+        call.span,
+        this.currentFile
+      );
+    }
+
+    if (call.args.length !== fnType.params.length) {
+      this.diagnostics.reportError(
+        'E3003',
+        `Function '${calleeName}' expects ${fnType.params.length} argument${fnType.params.length === 1 ? '' : 's'}, but got ${call.args.length}.`,
+        call.span,
+        this.currentFile
+      );
+    } else {
+      for (let i = 0; i < call.args.length; i++) {
+        const paramType = fnType.params[i];
+        const argType = this.checkExpression(call.args[i], paramType);
+        if (!isTypeAssignable(paramType, argType) && !isUnknown(argType) && !isUnknown(paramType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Argument ${i + 1} type mismatch in call to '${calleeName}': expected '${formatType(paramType)}', but found '${formatType(argType)}'.`,
+            call.args[i].span,
+            this.currentFile
+          );
+        }
+      }
+    }
+    return fnType.returnType;
   }
 
   private checkPipeline(pipe: PipelineExpr): Type {
@@ -998,21 +1401,33 @@ export class TypeChecker {
 
       if (calleeType.kind === 'Function') {
         const fnType = calleeType as FunctionType;
-        const totalArgs = [valType, ...call.args.map((a) => this.checkExpression(a))];
+        const totalArgs: Expr[] = [pipe.left, ...call.args];
+        if (fnType.genericParams && fnType.genericParams.length > 0) {
+          const syntheticCall: CallExpr = {
+            kind: 'CallExpr',
+            callee: call.callee,
+            args: totalArgs,
+            typeArguments: call.typeArguments,
+            span: pipe.span,
+          };
+          return this.checkGenericFunctionCall(syntheticCall, calleeName, fnType);
+        }
 
-        if (totalArgs.length !== fnType.params.length) {
+        const totalArgTypes = [valType, ...call.args.map((a) => this.checkExpression(a))];
+
+        if (totalArgTypes.length !== fnType.params.length) {
           this.diagnostics.reportError(
             'E3003',
-            `Pipeline call to '${calleeName}' expects ${fnType.params.length} arguments (including pipeline value), but got ${totalArgs.length}.`,
+            `Pipeline call to '${calleeName}' expects ${fnType.params.length} arguments (including pipeline value), but got ${totalArgTypes.length}.`,
             call.span,
             this.currentFile
           );
         } else {
-          for (let i = 0; i < totalArgs.length; i++) {
-            if (!isTypeAssignable(fnType.params[i], totalArgs[i]) && !isUnknown(totalArgs[i])) {
+          for (let i = 0; i < totalArgTypes.length; i++) {
+            if (!isTypeAssignable(fnType.params[i], totalArgTypes[i]) && !isUnknown(totalArgTypes[i])) {
               this.diagnostics.reportError(
                 'E3003',
-                `Pipeline argument ${i + 1} type mismatch: expected '${formatType(fnType.params[i])}', got '${formatType(totalArgs[i])}'.`,
+                `Pipeline argument ${i + 1} type mismatch: expected '${formatType(fnType.params[i])}', got '${formatType(totalArgTypes[i])}'.`,
                 pipe.span,
                 this.currentFile
               );
@@ -1022,9 +1437,32 @@ export class TypeChecker {
         return fnType.returnType;
       }
     } else {
-      const rightType = this.checkExpression(pipe.right);
-      if (rightType.kind === 'Function') {
-        const fnType = rightType as FunctionType;
+      let calleeType: Type = UNKNOWN_TYPE;
+      let calleeName = 'anonymous';
+
+      if (pipe.right.kind === 'Identifier') {
+        const id = pipe.right as Identifier;
+        calleeName = id.name;
+        const sym = this.currentResolverResult?.resolvedSymbols.get(id);
+        if (sym && sym.type) {
+          calleeType = sym.type;
+        }
+      } else {
+        calleeType = this.checkExpression(pipe.right);
+      }
+
+      if (calleeType.kind === 'Function') {
+        const fnType = calleeType as FunctionType;
+        if (fnType.genericParams && fnType.genericParams.length > 0) {
+          const syntheticCall: CallExpr = {
+            kind: 'CallExpr',
+            callee: pipe.right,
+            args: [pipe.left],
+            span: pipe.span,
+          };
+          return this.checkGenericFunctionCall(syntheticCall, calleeName, fnType);
+        }
+
         if (fnType.params.length < 1) {
           this.diagnostics.reportError(
             'E3003',
@@ -1048,6 +1486,33 @@ export class TypeChecker {
   }
 
   private resolveTypeAnnotation(annotation: TypeAnnotation): Type {
+    if (this.currentGenericParams?.has(annotation.name)) {
+      return this.currentGenericParams.get(annotation.name)!;
+    }
+
+    if (this.typeAliases.has(annotation.name)) {
+      if (this.aliasExpansionStack.has(annotation.name)) {
+        return UNKNOWN_TYPE;
+      }
+      this.aliasExpansionStack.add(annotation.name);
+      const alias = this.typeAliases.get(annotation.name)!;
+      let target = this.resolveTypeAnnotation(alias.targetType);
+      if (alias.genericParams && annotation.generics) {
+        const substitutions = new Map<string, Type>();
+        for (let i = 0; i < alias.genericParams.length; i++) {
+          const gParam = alias.genericParams[i];
+          const arg =
+            i < annotation.generics.length
+              ? this.resolveTypeAnnotation(annotation.generics[i])
+              : UNKNOWN_TYPE;
+          substitutions.set(gParam.name, arg);
+        }
+        target = substituteType(target, substitutions);
+      }
+      this.aliasExpansionStack.delete(annotation.name);
+      return target;
+    }
+
     switch (annotation.name) {
       case 'Int':
         return INT_TYPE;
@@ -1065,6 +1530,19 @@ export class TypeChecker {
         return BYTE_TYPE;
       case 'Unit':
         return UNIT_TYPE;
+      case 'Function': {
+        const params = annotation.functionParams
+          ? annotation.functionParams.map((p) => this.resolveTypeAnnotation(p))
+          : [];
+        const ret = annotation.returnType ? this.resolveTypeAnnotation(annotation.returnType) : UNIT_TYPE;
+        return createFunctionType(params, ret, false);
+      }
+      case 'Union': {
+        const types = annotation.unionTypes
+          ? annotation.unionTypes.map((t) => this.resolveTypeAnnotation(t))
+          : [];
+        return { kind: 'Union', types };
+      }
       case 'Option': {
         const inner = annotation.generics && annotation.generics.length > 0
           ? this.resolveTypeAnnotation(annotation.generics[0])
@@ -1381,12 +1859,26 @@ export class TypeChecker {
     return UNKNOWN_TYPE;
   }
 
-  private checkLambdaExpr(lambda: LambdaExpr): Type {
+  private checkLambdaExpr(lambda: LambdaExpr, contextualType?: Type): Type {
     const prevReturn = this.currentFunctionReturnType;
     const paramTypes: Type[] = [];
+    const contextualFn =
+      contextualType && contextualType.kind === 'Function'
+        ? (contextualType as FunctionType)
+        : undefined;
 
-    for (const param of lambda.params) {
-      const pType = param.typeAnnotation ? this.resolveTypeAnnotation(param.typeAnnotation) : UNKNOWN_TYPE;
+    for (let i = 0; i < lambda.params.length; i++) {
+      const param = lambda.params[i];
+      let pType: Type = UNKNOWN_TYPE;
+
+      if (param.typeAnnotation) {
+        pType = this.resolveTypeAnnotation(param.typeAnnotation);
+      } else if (contextualFn && i < contextualFn.params.length && !isUnknown(contextualFn.params[i])) {
+        pType = contextualFn.params[i];
+      } else {
+        pType = UNKNOWN_TYPE;
+      }
+
       paramTypes.push(pType);
       const sym = this.currentResolverResult?.declaredSymbols.get(param);
       if (sym) {
@@ -1394,11 +1886,13 @@ export class TypeChecker {
       }
     }
 
-    this.currentFunctionReturnType = undefined;
+    const expectedReturn = contextualFn?.returnType;
+    this.currentFunctionReturnType = expectedReturn;
+
     const bodyType =
       lambda.body.kind === 'Block'
         ? this.checkBlock(lambda.body as Block)
-        : this.checkExpression(lambda.body as Expr);
+        : this.checkExpression(lambda.body as Expr, expectedReturn);
 
     this.currentFunctionReturnType = prevReturn;
     return createFunctionType(paramTypes, bodyType);

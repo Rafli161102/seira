@@ -1,0 +1,51 @@
+// Seira 0.0.7-s: Generics, Type Aliases, Unions, and Traits
+
+type UserId = Int
+type Identifier = UserId | String
+
+trait Printable {
+    fn print()
+}
+
+impl Int: Printable {
+    fn print() {
+        println(42)
+    }
+}
+
+fn print_item<T: Printable>(item: T) -> T {
+    item
+}
+
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn apply<T, R>(f: (T) -> R, value: T) -> R {
+    f(value)
+}
+
+fn wrap<T>(value: T) -> Option<T> {
+    Some(value)
+}
+
+fn main() {
+    // 1. Generic function with inference
+    num = identity(42)
+    println(num)
+
+    // 2. Trait constraint validation
+    verified = print_item(100)
+    println(verified)
+
+    // 3. Higher-order generic function with lambda contextual typing
+    doubled = apply(x => x * 2, 21)
+    println(doubled)
+
+    // 4. Generic function composition with pipeline
+    boxed = 99 |> wrap
+    match boxed {
+        Some(v) => println(v)
+        None => println(0)
+    }
+}

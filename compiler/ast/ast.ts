@@ -62,7 +62,9 @@ export type NodeKind =
   | 'MapEntry'
   | 'SetLiteral'
   | 'IndexExpr'
-  | 'LambdaExpr';
+  | 'LambdaExpr'
+  | 'GenericParam'
+  | 'ImplDecl';
 
 export interface BaseNode {
   readonly kind: NodeKind;
@@ -80,7 +82,9 @@ export type ASTNode =
   | Attribute
   | Pattern
   | MatchArm
-  | MapEntry;
+  | MapEntry
+  | GenericParamNode
+  | ImplDecl;
 
 export interface Program extends BaseNode {
   readonly kind: 'Program';
@@ -93,6 +97,7 @@ export type TopLevelItem =
   | FunctionDecl
   | StructDecl
   | TraitDecl
+  | ImplDecl
   | EnumDecl
   | TypeAliasDecl
   | Stmt;
@@ -115,11 +120,20 @@ export interface Attribute extends BaseNode {
   readonly args?: ReadonlyArray<string>;
 }
 
+export interface GenericParamNode extends BaseNode {
+  readonly kind: 'GenericParam';
+  readonly name: string;
+  readonly constraint?: TypeAnnotation;
+}
+
 export interface TypeAnnotation extends BaseNode {
   readonly kind: 'TypeAnnotation';
   readonly name: string;
   readonly generics?: TypeAnnotation[];
   readonly isEffectful?: boolean; // marked with !
+  readonly functionParams?: TypeAnnotation[];
+  readonly returnType?: TypeAnnotation;
+  readonly unionTypes?: TypeAnnotation[];
 }
 
 export interface Param extends BaseNode {
@@ -133,6 +147,7 @@ export interface FunctionDecl extends BaseNode {
   readonly kind: 'FunctionDecl';
   readonly name: string;
   readonly isEffectful: boolean; // marked with ! (e.g. fn write!())
+  readonly genericParams?: GenericParamNode[];
   readonly params: Param[];
   readonly returnType?: TypeAnnotation;
   readonly body: Block;
@@ -144,6 +159,7 @@ export interface FunctionDecl extends BaseNode {
 export interface StructDecl extends BaseNode {
   readonly kind: 'StructDecl';
   readonly name: string;
+  readonly genericParams?: GenericParamNode[];
   readonly fields: { name: string; type: TypeAnnotation }[];
 }
 
@@ -162,12 +178,21 @@ export interface EnumDecl extends BaseNode {
 export interface TypeAliasDecl extends BaseNode {
   readonly kind: 'TypeAliasDecl';
   readonly name: string;
+  readonly genericParams?: GenericParamNode[];
   readonly targetType: TypeAnnotation;
 }
 
 export interface TraitDecl extends BaseNode {
   readonly kind: 'TraitDecl';
   readonly name: string;
+  readonly genericParams?: GenericParamNode[];
+  readonly methods: FunctionDecl[];
+}
+
+export interface ImplDecl extends BaseNode {
+  readonly kind: 'ImplDecl';
+  readonly targetType: TypeAnnotation;
+  readonly traitName: string;
   readonly methods: FunctionDecl[];
 }
 
@@ -368,6 +393,7 @@ export interface CallExpr extends BaseNode {
   readonly kind: 'CallExpr';
   readonly callee: Expr;
   readonly args: Expr[];
+  readonly typeArguments?: TypeAnnotation[];
 }
 
 export interface MemberExpr extends BaseNode {

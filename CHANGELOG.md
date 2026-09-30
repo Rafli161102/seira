@@ -11,6 +11,53 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
 
+## [0.0.7-s] - 2026-09-30
+
+### Added
+- **Generic Types & Functions**:
+  - Generic parameters on types and structs: `type Box<T> { value: T }`. Generic parameters exist strictly in type context; unknown generic parameter emits `E2001`, duplicate parameter emits `E4001`, and treating a generic parameter as a runtime value emits `E2001`.
+  - Generic functions: `fn identity<T>(value: T) -> T { value }`. Generic parameter scope is strictly lexical to the function declaration.
+  - Bidirectional generic argument inference (`unifyTypes`): infers type arguments from arguments (e.g. `identity(10)` -> `T = Int`).
+  - Explicit generic invocation: `identity<Int>(10)` supported with safe parser lookahead without ambiguity with `<` comparison. Explicit argument count mismatch emits `E4001`.
+  - Generic inference failure detection: functions with uninferred generic parameters produce structured diagnostic `E4002`.
+- **Type Aliases**:
+  - `type UserId = Int`: Transparent structural type equivalence (`UserId ≡ Int`). Does not introduce nominal newtype semantics.
+- **Union Types**:
+  - `type ID = Int | String`: Discriminated union maintaining a finite set of variants.
+  - Static safety: Operations must be valid across all union variants; invalid operations produce structured diagnostic `E3002`.
+  - Seamless integration with existing pattern matching (`match`).
+- **Function Types & Contextual Lambda Typing**:
+  - First-class function type syntax and semantics: `(Int) -> Int`, `(String, Int) -> Bool`.
+  - Parameter contravariance and return covariance compatibility checking.
+  - Higher-order generic functions: `fn apply<T, R>(f: (T) -> R, value: T) -> R { f(value) }`.
+  - Contextual lambda parameter typing: unannotated lambda parameters infer types from contextual function types (e.g. `apply(x => x * 2, 10)` infers `x: Int`).
+- **Option<T> & Result<T, E> Generic Integration**:
+  - Generic `Option<T>` (`Some(T)` and contextually-typed `None`).
+  - Generic `Result<T, E>` (`Ok(T)` and `Err(E)`). Validates both value and error parameters statically.
+  - Propagation (`?`) and fallback (`??`) compose cleanly with generic instantiations.
+- **Trait Foundation & Static Resolution**:
+  - Trait declarations: `trait Printable { fn print() }` defining compile-time contracts.
+  - Trait implementations: `impl Target: Trait { fn method() { ... } }` checked statically.
+  - Missing trait method raises `E4004`.
+  - Trait method signature mismatch raises `E4006`.
+  - Duplicate trait implementations for the same Type + Trait pair rejected with `E4005`.
+  - Trait constraints: `<T: Printable>` validated statically at call sites; unsatisfied constraints emit `E4003`.
+  - Static trait dispatch: resolved deterministically at compile time. Zero runtime dynamic dispatch, vtables, or `dyn Trait`.
+- **Pipeline Generic Typing**:
+  - Piped expressions (`value |> identity`) infer generic arguments directly from the piped input expression.
+- **Diagnostic Extensions (E4xxx Family)**:
+  - `E4001`: Duplicate generic parameter / Generic argument count mismatch.
+  - `E4002`: Generic inference failure.
+  - `E4003`: Trait constraint not satisfied.
+  - `E4004`: Trait not found / missing required trait method.
+  - `E4005`: Duplicate trait implementation.
+  - `E4006`: Trait method signature mismatch.
+- **Testing**:
+  - Added `tests/unit/typecheck/generics.test.ts` (36 test cases) covering all positive and negative generic, alias, union, function type, and trait semantics.
+  - Total test suite expanded to 232 tests with 100% pass rate.
+
+---
+
 ## [0.0.6-s] - 2026-09-30
 
 ### Added

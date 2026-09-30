@@ -31,8 +31,8 @@ Every diagnostic message includes:
 |---|---|---|---|
 | `E1xxx` | Syntax / Lexical / Parse | Grammar violations, banned tokens (`++`, `&&`), unclosed delimiters | **Active (0.0.1-s)** |
 | `E2xxx` | Name / Resolution | Undeclared identifiers, duplicate definitions, loop control violations | **Active (0.0.4-s / 0.0.6-s)** |
-| `E3xxx` | Type System | Type mismatch, operator types, collection indexing, iteration targets | **Active (0.0.4-s / 0.0.6-s)** |
-| `E4xxx` | Trait / Generics | Unimplemented trait methods, unsatisfied generic constraints | **Reserved** |
+| `E3xxx` | Type System | Type mismatch, operator types, collection indexing, iteration targets | **Active (0.0.4-s / 0.0.6-s / 0.0.7-s)** |
+| `E4xxx` | Trait / Generics | Generic argument mismatch, inference failure, unsatisfied trait constraints, invalid trait implementations | **Active (0.0.7-s)** |
 | `E5xxx` | Pattern Matching | Non-exhaustive patterns, invalid pattern kinds | **Active (0.0.6-s)** |
 | `E6xxx` | Effect System | Calling effectful function (`!`) outside effect context | **Architectural (0.0.2-s)** |
 | `E7xxx` | Resource / Ownership | Escaped scoped resource, use-after-move | **Architectural (0.0.2-s)** |
@@ -50,19 +50,27 @@ Every diagnostic message includes:
 - `E1004`: Parse syntax error / expected token
 
 #### Name Resolution (`E2xxx`):
-- `E2001`: Unresolved identifier reference
+- `E2001`: Unresolved identifier reference / generic parameter used as value
 - `E2002`: Duplicate binding declared in the same lexical scope
 - `E2003`: Reassignment to immutable binding
 - `E2004`: `break` or `continue` outside loop statement
 
 #### Type Analysis (`E3xxx`):
 - `E3001`: Type mismatch between expected and actual expression types
-- `E3002`: Operator type incompatibility
+- `E3002`: Operator type incompatibility / invalid operation on union type
 - `E3003`: Function call argument count or type mismatch
 - `E3004`: Function return type mismatch
 - `E3005`: Condition expression in `if` or `while` is not strictly `Bool`
 - `E3006`: Tuple index out of range or invalid numeric member access
 - `E3007`: Iteration target of `for` loop is not an iterable collection (`List` or `Set`)
+
+#### Trait & Generic Foundation (`E4xxx`):
+- `E4001`: Duplicate generic parameter / Generic argument count mismatch
+- `E4002`: Generic type inference failure (requires explicit type arguments)
+- `E4003`: Trait constraint not satisfied at call site
+- `E4004`: Trait not found / missing trait method implementation / undeclared method in trait
+- `E4005`: Duplicate trait implementation for the same Type and Trait pair
+- `E4006`: Method signature mismatch in trait implementation
 
 #### Pattern Matching (`E5xxx`):
 - `E5001`: Non-exhaustive pattern matching in `match` expression

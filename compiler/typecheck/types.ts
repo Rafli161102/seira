@@ -51,11 +51,13 @@ export interface FunctionType {
   readonly params: ReadonlyArray<Type>;
   readonly returnType: Type;
   readonly isEffectful: boolean;
+  readonly genericParams?: ReadonlyArray<GenericParamType>;
 }
 
 export interface GenericParamType {
   readonly kind: 'GenericParam';
   readonly name: string;
+  readonly constraint?: Type;
 }
 
 export interface TypeAliasType {
@@ -159,13 +161,15 @@ export function createSetType(element: Type): SetType {
 export function createFunctionType(
   params: ReadonlyArray<Type>,
   returnType: Type,
-  isEffectful = false
+  isEffectful = false,
+  genericParams?: ReadonlyArray<GenericParamType>
 ): FunctionType {
   return {
     kind: 'Function',
     params,
     returnType,
     isEffectful,
+    genericParams,
   };
 }
 
@@ -190,7 +194,11 @@ export function formatType(type: Type): string {
       return `Set<${formatType(type.element)}>`;
     case 'Function': {
       const effectMarker = type.isEffectful ? '!' : '';
-      return `(${type.params.map(formatType).join(', ')})${effectMarker} -> ${formatType(type.returnType)}`;
+      const generics =
+        type.genericParams && type.genericParams.length > 0
+          ? `<${type.genericParams.map((g) => g.name).join(', ')}>`
+          : '';
+      return `${generics}(${type.params.map(formatType).join(', ')})${effectMarker} -> ${formatType(type.returnType)}`;
     }
     case 'GenericParam':
       return type.name;
@@ -278,17 +286,141 @@ export function isTypeAssignable(target: Type, source: Type): boolean {
   if (target.kind === 'TypeAlias') return isTypeAssignable(target.target, source);
   if (source.kind === 'TypeAlias') return isTypeAssignable(target, source.target);
 
-  // Union targets accept any of their constituent variant types
-  if (target.kind === 'Union') {
-    return target.types.some((variant) => isTypeAssignable(variant, source));
-  }
-
   // Union sources require every variant to be assignable to the target
   if (source.kind === 'Union') {
     return source.types.every((variant) => isTypeAssignable(target, variant));
   }
 
+  // Union targets accept any of their constituent variant types
+  if (target.kind === 'Union') {
+    return target.types.some((variant) => isTypeAssignable(variant, source));
+  }
+
+  // Function type assignability
+  if (target.kind === 'Function' && source.kind === 'Function') {
+    if (target.params.length !== source.params.length) return false;
+    if (target.isEffectful !== source.isEffectful) return false;
+    if (!isTypeAssignable(target.returnType, source.returnType)) return false;
+    return target.params.every(
+      (tp, idx) => isTypeAssignable(tp, source.params[idx]) || isTypeAssignable(source.params[idx], tp)
+    );
+  }
+
+  // Tuple type assignability
+  if (target.kind === 'Tuple' && source.kind === 'Tuple') {
+    if (target.elements.length !== source.elements.length) return false;
+    return target.elements.every((elem, idx) => isTypeAssignable(elem, source.elements[idx]));
+  }
+
   return areTypesEqual(target, source);
+}
+
+/**
+ * Substitutes type variables (GenericParam) with concrete types according to a substitution map.
+ */
+export function substituteType(type: Type, substitutions: Map<string, Type>): Type {
+  switch (type.kind) {
+    case 'Primitive':
+      return type;
+    case 'GenericParam':
+      return substitutions.get(type.name) ?? type;
+    case 'Option':
+      return createOptionType(substituteType(type.inner, substitutions));
+    case 'Result':
+      return createResultType(
+        substituteType(type.ok, substitutions),
+        substituteType(type.err, substitutions)
+      );
+    case 'List':
+      return createListType(substituteType(type.element, substitutions));
+    case 'Tuple':
+      return createTupleType(type.elements.map((e) => substituteType(e, substitutions)));
+    case 'Map':
+      return createMapType(
+        substituteType(type.key, substitutions),
+        substituteType(type.value, substitutions)
+      );
+    case 'Set':
+      return createSetType(substituteType(type.element, substitutions));
+    case 'Function':
+      return createFunctionType(
+        type.params.map((p) => substituteType(p, substitutions)),
+        substituteType(type.returnType, substitutions),
+        type.isEffectful
+      );
+    case 'Union':
+      return {
+        kind: 'Union',
+        types: type.types.map((t) => substituteType(t, substitutions)),
+      };
+    case 'TypeAlias':
+      return {
+        kind: 'TypeAlias',
+        name: type.name,
+        target: substituteType(type.target, substitutions),
+      };
+    case 'Custom':
+      return {
+        kind: 'Custom',
+        name: type.name,
+        typeArguments: type.typeArguments?.map((t) => substituteType(t, substitutions)),
+      };
+  }
+}
+
+/**
+ * Unifies a parameter type (which may contain GenericParams) with an argument type.
+ * Populates bindings with resolved generic arguments.
+ */
+export function unifyTypes(paramType: Type, argType: Type, bindings: Map<string, Type>): boolean {
+  if (paramType.kind === 'GenericParam') {
+    if (bindings.has(paramType.name)) {
+      const existing = bindings.get(paramType.name)!;
+      return isTypeAssignable(existing, argType) || isTypeAssignable(argType, existing);
+    }
+    bindings.set(paramType.name, argType);
+    return true;
+  }
+  if (paramType.kind === 'TypeAlias') {
+    return unifyTypes(paramType.target, argType, bindings);
+  }
+  if (argType.kind === 'TypeAlias') {
+    return unifyTypes(paramType, argType.target, bindings);
+  }
+  if (paramType.kind === 'Option' && argType.kind === 'Option') {
+    return unifyTypes(paramType.inner, argType.inner, bindings);
+  }
+  if (paramType.kind === 'Result' && argType.kind === 'Result') {
+    return unifyTypes(paramType.ok, argType.ok, bindings) && unifyTypes(paramType.err, argType.err, bindings);
+  }
+  if (paramType.kind === 'List' && argType.kind === 'List') {
+    return unifyTypes(paramType.element, argType.element, bindings);
+  }
+  if (paramType.kind === 'Tuple' && argType.kind === 'Tuple') {
+    if (paramType.elements.length !== argType.elements.length) return false;
+    return paramType.elements.every((elem, idx) => unifyTypes(elem, argType.elements[idx], bindings));
+  }
+  if (paramType.kind === 'Map' && argType.kind === 'Map') {
+    return unifyTypes(paramType.key, argType.key, bindings) && unifyTypes(paramType.value, argType.value, bindings);
+  }
+  if (paramType.kind === 'Set' && argType.kind === 'Set') {
+    return unifyTypes(paramType.element, argType.element, bindings);
+  }
+  if (paramType.kind === 'Function' && argType.kind === 'Function') {
+    if (paramType.params.length !== argType.params.length) return false;
+    return (
+      paramType.params.every((p, idx) => unifyTypes(p, argType.params[idx], bindings)) &&
+      unifyTypes(paramType.returnType, argType.returnType, bindings)
+    );
+  }
+  if (paramType.kind === 'Custom' && argType.kind === 'Custom') {
+    if (paramType.name !== argType.name) return false;
+    const pArgs = paramType.typeArguments ?? [];
+    const aArgs = argType.typeArguments ?? [];
+    if (pArgs.length !== aArgs.length) return false;
+    return pArgs.every((p, idx) => unifyTypes(p, aArgs[idx], bindings));
+  }
+  return isTypeAssignable(paramType, argType);
 }
 
 export function isPrimitive(t: Type, name?: PrimitiveTypeName): boolean {

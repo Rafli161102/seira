@@ -224,8 +224,7 @@ export class Lexer {
           );
           return null;
         }
-        this.reportError('E1001', `Unexpected character '|'`, startCursor, this.cursor, startLine, startCol);
-        return null;
+        return this.makeToken(TokenType.Pipe, '|', startCursor, startLine, startCol);
 
       case '&':
         if (this.match('&')) {

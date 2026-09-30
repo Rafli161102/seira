@@ -30,12 +30,13 @@ The Seira runtime is responsible for program execution, memory layout, resource 
 
 ---
 
-## 3. Status in 0.0.6-s (Data & Control Foundation)
+## 3. Status in 0.0.7-s (Type & Generic Foundation)
 
-| Runtime Component | Status in 0.0.6-s | Target Milestone | Description |
+| Runtime Component | Status in 0.0.7-s | Target Milestone | Description |
 | :--- | :--- | :--- | :--- |
-| **Seira Value Model v0.2** | **Implemented** | 0.0.6-s | Primitives, Option, Result, List, Tuple, Map, Set, Function closures |
-| **Tree-Walking Evaluator** | **Implemented** | 0.0.5-s / 0.0.6-s | Deterministic AST evaluation engine (`seira run`) |
+| **Seira Value Model v0.2** | **Implemented** | 0.0.6-s / 0.0.7-s | Primitives, Option, Result, List, Tuple, Map, Set, Function closures |
+| **Tree-Walking Evaluator** | **Implemented** | 0.0.5-s / 0.0.7-s | Deterministic AST evaluation engine (`seira run`) |
+| **Static Trait Dispatch** | **Implemented** | 0.0.7-s | Compile-time resolved trait methods executed without runtime vtables |
 | **Control Flow & Pattern Matching** | **Implemented** | 0.0.6-s | Executable `if`, `while`, `for`, `loop`, `break`, `continue`, `match` |
 | **Runtime Diagnostics (`R0xxx`)** | **Implemented** | 0.0.5-s | Structured panics for division by zero, underflow, stack overflow |
 | **Scope Cleanup Foundation** | **Mock Compatibility Stub** | Phase 2 | Mock `with` and `open_resource` stubs (production RAII in Phase 2) |

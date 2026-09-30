@@ -36,9 +36,11 @@ import type {
   Expr,
   ForStmt,
   FunctionDecl,
+  GenericParamNode,
   Identifier,
   IdentifierPattern,
   IfExpr,
+  ImplDecl,
   ImportDecl,
   IndexExpr,
   LambdaExpr,
@@ -153,6 +155,9 @@ export class Parser {
     if (this.check(TokenType.Trait)) {
       return this.parseTraitDecl();
     }
+    if (this.check(TokenType.Impl)) {
+      return this.parseImplDecl();
+    }
     if (this.check(TokenType.Import)) {
       return this.parseImportDecl();
     }
@@ -164,13 +169,44 @@ export class Parser {
   // Declarations
   // ---------------------------------------------------------------------------
 
-  private parseFunctionDecl(): FunctionDecl {
+  private parseGenericParamList(): GenericParamNode[] {
+    this.consume(TokenType.Less, "Expected '<'.");
+    const params: GenericParamNode[] = [];
+    do {
+      const nameToken = this.consume(TokenType.Identifier, 'Expected generic parameter name.');
+      let constraint: TypeAnnotation | undefined;
+      if (this.match(TokenType.Colon)) {
+        constraint = this.parseTypeAnnotation();
+      }
+      params.push({
+        kind: 'GenericParam',
+        name: nameToken.lexeme,
+        constraint,
+        span: {
+          start: nameToken.span.start,
+          end: constraint ? constraint.span.end : nameToken.span.end,
+          sourceId: nameToken.span.sourceId,
+          line: nameToken.span.line,
+          column: nameToken.span.column,
+        },
+      });
+    } while (this.match(TokenType.Comma));
+    this.consume(TokenType.Greater, "Expected '>' after generic parameter list.");
+    return params;
+  }
+
+  private parseFunctionDecl(allowSignatureOnly = false): FunctionDecl {
     const fnToken = this.consume(TokenType.Fn, "Expected 'fn' keyword.");
     let isEffectful = false;
 
     const nameToken = this.consume(TokenType.Identifier, "Expected function name after 'fn'.");
     if (this.match(TokenType.Bang)) {
       isEffectful = true;
+    }
+
+    let genericParams: GenericParamNode[] | undefined;
+    if (this.check(TokenType.Less)) {
+      genericParams = this.parseGenericParamList();
     }
 
     this.consume(TokenType.OpenParen, "Expected '(' after function name.");
@@ -180,6 +216,36 @@ export class Parser {
     let returnType: TypeAnnotation | undefined;
     if (this.match(TokenType.Arrow)) {
       returnType = this.parseTypeAnnotation();
+    }
+
+    if (allowSignatureOnly && !this.check(TokenType.FatArrow) && !this.check(TokenType.OpenBrace)) {
+      return {
+        kind: 'FunctionDecl',
+        name: nameToken.lexeme,
+        isEffectful,
+        genericParams,
+        params,
+        returnType,
+        body: {
+          kind: 'Block',
+          statements: [],
+          span: {
+            start: fnToken.span.start,
+            end: this.previous().span.end,
+            sourceId: fnToken.span.sourceId,
+            line: fnToken.span.line,
+            column: fnToken.span.column,
+          },
+        },
+        isExpressionBody: false,
+        span: {
+          start: fnToken.span.start,
+          end: this.previous().span.end,
+          sourceId: fnToken.span.sourceId,
+          line: fnToken.span.line,
+          column: fnToken.span.column,
+        },
+      };
     }
 
     // Expression-style function: fn add(a, b) => a + b
@@ -210,6 +276,7 @@ export class Parser {
         kind: 'FunctionDecl',
         name: nameToken.lexeme,
         isEffectful,
+        genericParams,
         params,
         returnType,
         body: block,
@@ -232,6 +299,7 @@ export class Parser {
       kind: 'FunctionDecl',
       name: nameToken.lexeme,
       isEffectful,
+      genericParams,
       params,
       returnType,
       body,
@@ -279,6 +347,94 @@ export class Parser {
   }
 
   private parseTypeAnnotation(): TypeAnnotation {
+    const primary = this.parsePrimaryTypeAnnotation();
+
+    if (this.check(TokenType.Pipe)) {
+      const unionTypes: TypeAnnotation[] = [primary];
+      while (this.match(TokenType.Pipe)) {
+        unionTypes.push(this.parsePrimaryTypeAnnotation());
+      }
+      return {
+        kind: 'TypeAnnotation',
+        name: 'Union',
+        unionTypes,
+        span: {
+          start: primary.span.start,
+          end: unionTypes[unionTypes.length - 1].span.end,
+          sourceId: primary.span.sourceId,
+          line: primary.span.line,
+          column: primary.span.column,
+        },
+      };
+    }
+
+    return primary;
+  }
+
+  private parsePrimaryTypeAnnotation(): TypeAnnotation {
+    if (this.match(TokenType.OpenParen)) {
+      const startTok = this.previous();
+      const innerTypes: TypeAnnotation[] = [];
+      if (!this.check(TokenType.CloseParen)) {
+        do {
+          innerTypes.push(this.parseTypeAnnotation());
+        } while (this.match(TokenType.Comma));
+      }
+      const closeParen = this.consume(TokenType.CloseParen, "Expected ')' in type annotation.");
+
+      let isEffectful = false;
+      if (this.match(TokenType.Bang)) {
+        isEffectful = true;
+      }
+
+      if (this.match(TokenType.Arrow)) {
+        const returnType = this.parseTypeAnnotation();
+        return {
+          kind: 'TypeAnnotation',
+          name: 'Function',
+          functionParams: innerTypes,
+          returnType,
+          isEffectful,
+          span: {
+            start: startTok.span.start,
+            end: returnType.span.end,
+            sourceId: startTok.span.sourceId,
+            line: startTok.span.line,
+            column: startTok.span.column,
+          },
+        };
+      }
+
+      if (innerTypes.length === 0) {
+        return {
+          kind: 'TypeAnnotation',
+          name: 'Unit',
+          span: {
+            start: startTok.span.start,
+            end: closeParen.span.end,
+            sourceId: startTok.span.sourceId,
+            line: startTok.span.line,
+            column: startTok.span.column,
+          },
+        };
+      } else if (innerTypes.length === 1) {
+        return innerTypes[0];
+      } else {
+        return {
+          kind: 'TypeAnnotation',
+          name: 'Tuple',
+          generics: innerTypes,
+          span: {
+            start: startTok.span.start,
+            end: closeParen.span.end,
+            sourceId: startTok.span.sourceId,
+            line: startTok.span.line,
+            column: startTok.span.column,
+          },
+        };
+      }
+    }
+
     const nameToken = this.consume(TokenType.Identifier, 'Expected type name.');
     let isEffectful = false;
     if (this.match(TokenType.Bang)) {
@@ -311,6 +467,10 @@ export class Parser {
   private parseStructDecl(): StructDecl {
     const structToken = this.consume(TokenType.Struct, "Expected 'struct'.");
     const nameToken = this.consume(TokenType.Identifier, 'Expected struct name.');
+    let genericParams: GenericParamNode[] | undefined;
+    if (this.check(TokenType.Less)) {
+      genericParams = this.parseGenericParamList();
+    }
     this.consume(TokenType.OpenBrace, "Expected '{' after struct name.");
 
     const fields: { name: string; type: TypeAnnotation }[] = [];
@@ -326,6 +486,7 @@ export class Parser {
     return {
       kind: 'StructDecl',
       name: nameToken.lexeme,
+      genericParams,
       fields,
       span: {
         start: structToken.span.start,
@@ -379,9 +540,41 @@ export class Parser {
     };
   }
 
-  private parseTypeAliasDecl(): TypeAliasDecl {
+  private parseTypeAliasDecl(): TypeAliasDecl | StructDecl {
     const typeToken = this.consume(TokenType.Type, "Expected 'type'.");
-    const nameToken = this.consume(TokenType.Identifier, 'Expected type alias name.');
+    const nameToken = this.consume(TokenType.Identifier, 'Expected type name.');
+    let genericParams: GenericParamNode[] | undefined;
+    if (this.check(TokenType.Less)) {
+      genericParams = this.parseGenericParamList();
+    }
+
+    // type Box<T> { value: T }
+    if (this.check(TokenType.OpenBrace)) {
+      this.consume(TokenType.OpenBrace, "Expected '{'.");
+      const fields: { name: string; type: TypeAnnotation }[] = [];
+      while (!this.check(TokenType.CloseBrace) && !this.isAtEnd()) {
+        const fieldName = this.consume(TokenType.Identifier, 'Expected field name.');
+        this.consume(TokenType.Colon, "Expected ':' after field name.");
+        const fieldType = this.parseTypeAnnotation();
+        fields.push({ name: fieldName.lexeme, type: fieldType });
+        this.match(TokenType.Comma);
+      }
+      const closeBrace = this.consume(TokenType.CloseBrace, "Expected '}' after body.");
+      return {
+        kind: 'StructDecl',
+        name: nameToken.lexeme,
+        genericParams,
+        fields,
+        span: {
+          start: typeToken.span.start,
+          end: closeBrace.span.end,
+          sourceId: typeToken.span.sourceId,
+          line: typeToken.span.line,
+          column: typeToken.span.column,
+        },
+      };
+    }
+
     this.consume(TokenType.Equal, "Expected '=' after type alias name.");
     const targetType = this.parseTypeAnnotation();
     this.match(TokenType.Semicolon);
@@ -389,6 +582,7 @@ export class Parser {
     return {
       kind: 'TypeAliasDecl',
       name: nameToken.lexeme,
+      genericParams,
       targetType,
       span: {
         start: typeToken.span.start,
@@ -403,12 +597,16 @@ export class Parser {
   private parseTraitDecl(): TraitDecl {
     const traitToken = this.consume(TokenType.Trait, "Expected 'trait'.");
     const nameToken = this.consume(TokenType.Identifier, 'Expected trait name.');
+    let genericParams: GenericParamNode[] | undefined;
+    if (this.check(TokenType.Less)) {
+      genericParams = this.parseGenericParamList();
+    }
     this.consume(TokenType.OpenBrace, "Expected '{' after trait name.");
 
     const methods: FunctionDecl[] = [];
     while (!this.check(TokenType.CloseBrace) && !this.isAtEnd()) {
       if (this.check(TokenType.Fn)) {
-        methods.push(this.parseFunctionDecl());
+        methods.push(this.parseFunctionDecl(true));
       } else {
         this.advance();
       }
@@ -418,6 +616,7 @@ export class Parser {
     return {
       kind: 'TraitDecl',
       name: nameToken.lexeme,
+      genericParams,
       methods,
       span: {
         start: traitToken.span.start,
@@ -425,6 +624,38 @@ export class Parser {
         sourceId: traitToken.span.sourceId,
         line: traitToken.span.line,
         column: traitToken.span.column,
+      },
+    };
+  }
+
+  private parseImplDecl(): ImplDecl {
+    const implToken = this.consume(TokenType.Impl, "Expected 'impl'.");
+    const targetType = this.parseTypeAnnotation();
+    this.consume(TokenType.Colon, "Expected ':' after target type in impl.");
+    const traitToken = this.consume(TokenType.Identifier, "Expected trait name after ':' in impl.");
+    this.consume(TokenType.OpenBrace, "Expected '{' to start impl body.");
+
+    const methods: FunctionDecl[] = [];
+    while (!this.check(TokenType.CloseBrace) && !this.isAtEnd()) {
+      if (this.check(TokenType.Fn)) {
+        methods.push(this.parseFunctionDecl(false));
+      } else {
+        this.advance();
+      }
+    }
+
+    const closeBrace = this.consume(TokenType.CloseBrace, "Expected '}' after impl body.");
+    return {
+      kind: 'ImplDecl',
+      targetType,
+      traitName: traitToken.lexeme,
+      methods,
+      span: {
+        start: implToken.span.start,
+        end: closeBrace.span.end,
+        sourceId: implToken.span.sourceId,
+        line: implToken.span.line,
+        column: implToken.span.column,
       },
     };
   }
@@ -1133,6 +1364,34 @@ export class Parser {
             column: expr.span.column,
           },
         } as OptionPropagateExpr;
+      } else if (this.isGenericCall()) {
+        this.consume(TokenType.Less, "Expected '<'.");
+        const typeArguments: TypeAnnotation[] = [];
+        do {
+          typeArguments.push(this.parseTypeAnnotation());
+        } while (this.match(TokenType.Comma));
+        this.consume(TokenType.Greater, "Expected '>' after generic type arguments.");
+        this.consume(TokenType.OpenParen, "Expected '(' after generic type arguments.");
+        const args: Expr[] = [];
+        if (!this.check(TokenType.CloseParen)) {
+          do {
+            args.push(this.parseExpression());
+          } while (this.match(TokenType.Comma));
+        }
+        const closeParen = this.consume(TokenType.CloseParen, "Expected ')' after call arguments.");
+        expr = {
+          kind: 'CallExpr',
+          callee: expr,
+          args,
+          typeArguments,
+          span: {
+            start: expr.span.start,
+            end: closeParen.span.end,
+            sourceId: expr.span.sourceId,
+            line: expr.span.line,
+            column: expr.span.column,
+          },
+        } as CallExpr;
       } else if (this.match(TokenType.OpenParen)) {
         // Function call: expr(args)
         const args: Expr[] = [];
@@ -1218,6 +1477,34 @@ export class Parser {
     }
 
     return expr;
+  }
+
+  private isGenericCall(): boolean {
+    if (!this.check(TokenType.Less)) return false;
+    let i = 0;
+    let depth = 0;
+    while (this.current + i < this.tokens.length) {
+      const tok = this.tokens[this.current + i];
+      if (tok.type === TokenType.Less) {
+        depth++;
+      } else if (tok.type === TokenType.Greater) {
+        depth--;
+        if (depth === 0) {
+          const next = this.tokens[this.current + i + 1];
+          return next !== undefined && next.type === TokenType.OpenParen;
+        }
+      } else if (
+        tok.type === TokenType.Semicolon ||
+        tok.type === TokenType.OpenBrace ||
+        tok.type === TokenType.CloseBrace ||
+        tok.type === TokenType.Equal ||
+        tok.type === TokenType.Eof
+      ) {
+        return false;
+      }
+      i++;
+    }
+    return false;
   }
 
   // Precedence 13: Primary: Literals, Identifiers, Grouping, IfExpr, BlockExpr, Match, Collections
