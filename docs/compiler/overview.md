@@ -45,6 +45,6 @@ Source Code (.sra)
 1. **Deterministic Diagnostics**: Every error produced during compilation contains exact file path, line number, column number, and an unambiguous message.
 2. **No Mock Implementations**: Unimplemented compiler stages do not pretend to succeed. If a compiler phase is invoked that is not yet ready, a structured diagnostic is emitted:
    ```
-   [SEIRA-E0001] Phase 'resolver' is an architectural skeleton not yet enabled in 0.0.1-s.
+   [E2001] Phase 'resolver' is an architectural skeleton not yet enabled in 0.0.1-s.
    ```
 3. **Pluggable Architecture**: Backends are decoupled from front-end AST and HIR passes, enabling independent maintenance of LLVM native codegen and WebAssembly compilation.

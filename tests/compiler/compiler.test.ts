@@ -38,13 +38,13 @@ test('Compiler: architectural skeletons emit clear milestone diagnostics', () =>
   const resolver = new Resolver();
   const res = resolver.resolve(ast!);
   assert.strictEqual(res.success, true);
-  assert.ok(res.diagnostics.getDiagnostics().some((d) => d.code === 'SEIRA-E0300'));
+  assert.ok(res.diagnostics.getDiagnostics().some((d) => d.code === 'E2001'));
 
   // Typecheck skeleton
   const typechecker = new TypeChecker();
   const tcRes = typechecker.check(ast!);
   assert.strictEqual(tcRes.success, true);
-  assert.ok(tcRes.diagnostics.getDiagnostics().some((d) => d.code === 'SEIRA-E0400'));
+  assert.ok(tcRes.diagnostics.getDiagnostics().some((d) => d.code === 'E3001'));
 
   // HIR skeleton
   const hir = new HIRLowering();
@@ -56,5 +56,5 @@ test('Compiler: architectural skeletons emit clear milestone diagnostics', () =>
   const backendRes = backend.emit({ target: 'native', optLevel: 2, debug: false });
   assert.strictEqual(backendRes.success, false);
   assert.strictEqual(backendRes.diagnostics.hasErrors(), true);
-  assert.ok(backendRes.diagnostics.getDiagnostics().some((d) => d.code === 'SEIRA-E0600'));
+  assert.ok(backendRes.diagnostics.getDiagnostics().some((d) => d.code === 'E9001'));
 });

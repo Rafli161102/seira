@@ -47,32 +47,32 @@ test('Lexer: tokenizes boolean keywords and rejects && / ||', () => {
   const bagAnd = new DiagnosticBag();
   new Lexer('a && b', 'test.sra', bagAnd).tokenize();
   assert.strictEqual(bagAnd.hasErrors(), true);
-  assert.strictEqual(bagAnd.getDiagnostics()[0].code, 'SEIRA-E0104');
+  assert.strictEqual(bagAnd.getDiagnostics()[0].code, 'E1005');
 
   // Rejection of banned '||'
   const bagOr = new DiagnosticBag();
   new Lexer('a || b', 'test.sra', bagOr).tokenize();
   assert.strictEqual(bagOr.hasErrors(), true);
-  assert.strictEqual(bagOr.getDiagnostics()[0].code, 'SEIRA-E0103');
+  assert.strictEqual(bagOr.getDiagnostics()[0].code, 'E1004');
 });
 
 test('Lexer: rejects banned increment (++) and decrement (--)', () => {
   const bagInc = new DiagnosticBag();
   new Lexer('counter++', 'test.sra', bagInc).tokenize();
   assert.strictEqual(bagInc.hasErrors(), true);
-  assert.strictEqual(bagInc.getDiagnostics()[0].code, 'SEIRA-E0101');
+  assert.strictEqual(bagInc.getDiagnostics()[0].code, 'E1002');
 
   const bagDec = new DiagnosticBag();
   new Lexer('counter--', 'test.sra', bagDec).tokenize();
   assert.strictEqual(bagDec.hasErrors(), true);
-  assert.strictEqual(bagDec.getDiagnostics()[0].code, 'SEIRA-E0102');
+  assert.strictEqual(bagDec.getDiagnostics()[0].code, 'E1003');
 });
 
 test('Lexer: rejects null and suggests Option<T>', () => {
   const bag = new DiagnosticBag();
   new Lexer('let x = null', 'test.sra', bag).tokenize();
   assert.strictEqual(bag.hasErrors(), true);
-  assert.strictEqual(bag.getDiagnostics()[0].code, 'SEIRA-E0106');
+  assert.strictEqual(bag.getDiagnostics()[0].code, 'E1007');
 });
 
 test('Lexer: tokenizes numbers, strings, and comments', () => {

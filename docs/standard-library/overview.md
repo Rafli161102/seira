@@ -4,7 +4,7 @@
 
 - **Standard Library ≠ Core Language**: Primitive language semantics (syntax, types, effect markers) are defined in the compiler. General-purpose utilities and higher-level abstractions reside in `std/`.
 - **Minimal Core, Rich Extensibility**: The base standard library (`std/core`) requires zero host operating system dependencies and compiles cleanly to both bare-metal/native and WebAssembly.
-- **Explicit Effects for I/O**: Any standard library module interacting with the host environment (`std/io`, `std/sys`, `std/net`) explicitly declares effectful operations (`!`).
+- **Explicit Effects for I/O**: Any standard library module interacting with the host environment (`std/io`, `std/fs`, `std/net`, `std/time`, `std/sys`) explicitly declares effectful operations (`!`).
 
 ---
 
@@ -12,32 +12,23 @@
 
 ```
 std/
-├── core/       # Primitives, Option<T>, Result<T, E>, collections, traits
-├── io/         # Stream abstractions, file I/O, formatted output (println!)
-└── sys/        # Host OS abstractions, time, environment variables, processes
+├── core/         # Primitives, fundamental traits (Clone, Display)
+├── collections/  # Collections (List, Map, Set)
+├── text/         # String slices, formatting, text utilities
+├── option/       # Option<T> type and monadic combinators
+├── result/       # Result<T, E> error handling
+├── iterator/     # Iterator<Item> and pipeline adapters
+├── math/         # Numeric functions, constants (PI, E)
+├── io/           # Console streams and formatting (println!)
+├── fs/           # Filesystem streams and with resource blocks
+├── net/          # TCP/UDP networking with explicit effects (!)
+├── time/         # Clocks, Instant, Duration, sleep!
+└── sys/          # Host OS abstractions, arguments, exit!
 ```
-
-### Module Responsibilities
-
-#### `std/core`
-- **Foundation Types**:
-  - `Option<T>` (`Some(T)` or `None`)
-  - `Result<T, E>` (`Ok(T)` or `Err(E)`)
-  - Primitive numeric types (`Int`, `Int32`, `Int64`, `Float`, `Float32`, `Float64`, `Bool`, `Char`, `String`, `Unit`)
-- **Traits**:
-  - `Clone`, `Default`, `Display`, `Debug`, `Eq`, `Ord`, `Hash`
-
-#### `std/io`
-- Standard streams (`stdin`, `stdout`, `stderr`).
-- Formatted printing (`println`, `print`).
-- Buffer readers, writers, and byte stream traits.
-
-#### `std/sys`
-- Operating system details, memory queries, command-line arguments, environment inspection.
 
 ---
 
-## 3. Status in 0.0.1-s
+## 3. Status in 0.0.1-s (Seed Foundation)
 
 - **0.0.1-s (Seed Foundation)**: Architectural layout and module interface specifications established.
 - **0.0.2-s through 0.0.10-s (Seed Series)**: Definition of core traits and AST/type representations.

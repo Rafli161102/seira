@@ -1,12 +1,21 @@
-# Seira Standard Library
+# Seira Standard Library Foundation
 
-The Seira standard library adheres to the architectural rule:
+The Seira standard library adheres strictly to the architectural axiom:
 > **Standard Library ≠ Core Language**
 
 ## Layout
-- `core/`: Primitives, `Option<T>`, `Result<T, E>`, traits, and fundamental collections. Zero OS dependencies.
-- `io/`: Formatted output, file system abstractions, and streams. Declares explicit effects (`!`).
-- `sys/`: Host system interrogation, environment, arguments, and process lifecycles.
+- `core/`: Primitives, fundamental traits (`Clone`, `Display`). Zero OS dependencies.
+- `collections/`: Foundational collections (`List`, `Map`, `Set`).
+- `text/`: String slices, formatting, and unicode abstractions.
+- `option/`: `Option<T>` (`Some(T)`, `None`) and functional combinators.
+- `result/`: `Result<T, E>` (`Ok(T)`, `Err(E)`) error handling.
+- `iterator/`: `Iterator<Item>` trait and pipeline transformation primitives.
+- `math/`: Core numeric operations and constants (`PI`, `E`).
+- `io/`: Formatted console output (`println!`, `print!`). Declares explicit effects (`!`).
+- `fs/`: File system abstractions with deterministic `with` scopes. Explicit effects (`!`).
+- `net/`: Network sockets and streams. Explicit effects (`!`).
+- `time/`: High-resolution clocks, `Instant`, `Duration`, and `sleep!`.
 
-## Status in 0.0.1-s
-The standard library specification and interface contracts are defined here. The implementation will be populated during the Seed and Development series and compiled to native/Wasm during the Alpha series.
+## Status in 0.0.1-s (Seed Foundation)
+In **0.0.1-s**, these modules provide **architectural contracts and type specifications** only.
+They establish the layout for the upcoming Seed Series (`0.0.2-s` through `0.0.10-s`) and will be natively compiled during the Alpha series.

@@ -116,7 +116,7 @@ export class Lexer {
       case '+':
         if (this.match('+')) {
           this.reportBanned(
-            'SEIRA-E0101',
+            'E1002',
             "Increment operator '++' is not permitted in Seira.",
             startCursor,
             this.cursor,
@@ -131,7 +131,7 @@ export class Lexer {
       case '-':
         if (this.match('-')) {
           this.reportBanned(
-            'SEIRA-E0102',
+            'E1003',
             "Decrement operator '--' is not permitted in Seira.",
             startCursor,
             this.cursor,
@@ -152,7 +152,7 @@ export class Lexer {
         }
         if (this.match('|')) {
           this.reportBanned(
-            'SEIRA-E0103',
+            'E1004',
             "Logical operator '||' is not permitted in Seira.",
             startCursor,
             this.cursor,
@@ -162,13 +162,13 @@ export class Lexer {
           );
           return null;
         }
-        this.reportError('SEIRA-E0100', `Unexpected character '|'`, startCursor, this.cursor, startLine, startCol);
+        this.reportError('E1001', `Unexpected character '|'`, startCursor, this.cursor, startLine, startCol);
         return null;
 
       case '&':
         if (this.match('&')) {
           this.reportBanned(
-            'SEIRA-E0104',
+            'E1005',
             "Logical operator '&&' is not permitted in Seira.",
             startCursor,
             this.cursor,
@@ -178,7 +178,7 @@ export class Lexer {
           );
           return null;
         }
-        this.reportError('SEIRA-E0100', `Unexpected character '&'`, startCursor, this.cursor, startLine, startCol);
+        this.reportError('E1001', `Unexpected character '&'`, startCursor, this.cursor, startLine, startCol);
         return null;
 
       case '?':
@@ -209,7 +209,7 @@ export class Lexer {
           return this.scanIdentifier(startCursor, startLine, startCol);
         }
 
-        this.reportError('SEIRA-E0100', `Unexpected character '${ch}'`, startCursor, this.cursor, startLine, startCol);
+        this.reportError('E1001', `Unexpected character '${ch}'`, startCursor, this.cursor, startLine, startCol);
         return null;
     }
   }
@@ -249,7 +249,7 @@ export class Lexer {
     }
 
     if (this.isAtEnd()) {
-      this.reportError('SEIRA-E0105', 'Unterminated string literal', startCursor, this.cursor, startLine, startCol);
+      this.reportError('E1006', 'Unterminated string literal', startCursor, this.cursor, startLine, startCol);
       return null;
     }
 
@@ -337,7 +337,7 @@ export class Lexer {
     // Check for locked language violation: 'null'
     if (lexeme === 'null') {
       this.reportBanned(
-        'SEIRA-E0106',
+        'E1007',
         "Seira does not have 'null'.",
         startCursor,
         this.cursor,

@@ -70,7 +70,7 @@ test('CLI: reserved commands return clear notification', () => {
   try {
     const code = main(['build']);
     assert.strictEqual(code, 0);
-    assert.ok(logged.includes("Command 'seira build' is reserved"));
+    assert.ok(logged.includes('This command is not implemented in Seira 0.0.1-s.'));
     assert.ok(logged.includes('0.1.0-alpha'));
   } finally {
     console.log = originalLog;
