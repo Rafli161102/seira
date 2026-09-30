@@ -1,0 +1,6 @@
+use shared.lib.greet
+
+fn main() {
+    msg = greet("Seira")
+    println(msg)
+}

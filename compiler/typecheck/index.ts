@@ -72,6 +72,7 @@ import type {
   WithStmt,
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
+import type { SeiraModule } from '../module/module.ts';
 import { Resolver, type ResolverResult, type SymbolInfo } from '../resolver/index.ts';
 import {
   areTypesEqual,
@@ -166,6 +167,17 @@ export class TypeChecker {
     this.typeAliases.clear();
     this.currentGenericParams = undefined;
     this.aliasExpansionStack.clear();
+
+    // Populate imported traits and type aliases from resolver global scope
+    if (resolverResult) {
+      for (const [name, sym] of resolverResult.globalScope.getLocalSymbols()) {
+        if (sym.declNode?.kind === 'TraitDecl') {
+          this.traits.set(name, sym.declNode as TraitDecl);
+        } else if (sym.declNode?.kind === 'TypeAliasDecl') {
+          this.typeAliases.set(name, sym.declNode as TypeAliasDecl);
+        }
+      }
+    }
 
     // Pass 1a: collect traits, type aliases, and trait implementations
     for (const item of program.items) {
@@ -989,6 +1001,40 @@ export class TypeChecker {
           }
         } else {
           resultType = UNKNOWN_TYPE;
+          if (mem.object.kind === 'Identifier') {
+            const id = mem.object as Identifier;
+            const sym = this.currentResolverResult?.resolvedSymbols.get(id);
+            if (sym && sym.kind === 'module' && sym.moduleRef) {
+              const mod = sym.moduleRef as SeiraModule;
+              const exp = mod.exports.get(mem.property);
+              if (exp && exp.declNode && exp.declNode.kind === 'FunctionDecl') {
+                const fnDecl = exp.declNode as FunctionDecl;
+                const prevGenericParams = this.currentGenericParams;
+                const genericParamTypes: GenericParamType[] = [];
+                if (fnDecl.genericParams && fnDecl.genericParams.length > 0) {
+                  const gMap = new Map<string, GenericParamType>();
+                  for (const p of fnDecl.genericParams) {
+                    const gType: GenericParamType = {
+                      kind: 'GenericParam',
+                      name: p.name,
+                      constraint: p.constraint ? this.resolveTypeAnnotation(p.constraint) : undefined,
+                    };
+                    genericParamTypes.push(gType);
+                    gMap.set(p.name, gType);
+                  }
+                  this.currentGenericParams = gMap;
+                }
+                const paramTypes: Type[] = fnDecl.params.map((p) =>
+                  p.typeAnnotation ? this.resolveTypeAnnotation(p.typeAnnotation) : UNKNOWN_TYPE
+                );
+                const returnType: Type = fnDecl.returnType
+                  ? this.resolveTypeAnnotation(fnDecl.returnType)
+                  : UNIT_TYPE;
+                this.currentGenericParams = prevGenericParams;
+                resultType = createFunctionType(paramTypes, returnType, fnDecl.isEffectful, genericParamTypes);
+              }
+            }
+          }
         }
         break;
       }
@@ -1210,6 +1256,32 @@ export class TypeChecker {
       const sym = this.currentResolverResult?.resolvedSymbols.get(id);
       if (sym && sym.type) {
         calleeType = sym.type;
+      } else if (sym && !sym.type && sym.declNode && sym.declNode.kind === 'FunctionDecl') {
+        const fnDecl = sym.declNode as FunctionDecl;
+        const prevGenericParams = this.currentGenericParams;
+        const genericParamTypes: GenericParamType[] = [];
+        if (fnDecl.genericParams && fnDecl.genericParams.length > 0) {
+          const gMap = new Map<string, GenericParamType>();
+          for (const p of fnDecl.genericParams) {
+            const gType: GenericParamType = {
+              kind: 'GenericParam',
+              name: p.name,
+              constraint: p.constraint ? this.resolveTypeAnnotation(p.constraint) : undefined,
+            };
+            genericParamTypes.push(gType);
+            gMap.set(p.name, gType);
+          }
+          this.currentGenericParams = gMap;
+        }
+        const paramTypes: Type[] = fnDecl.params.map((p) =>
+          p.typeAnnotation ? this.resolveTypeAnnotation(p.typeAnnotation) : UNKNOWN_TYPE
+        );
+        const returnType: Type = fnDecl.returnType
+          ? this.resolveTypeAnnotation(fnDecl.returnType)
+          : UNIT_TYPE;
+        this.currentGenericParams = prevGenericParams;
+        calleeType = createFunctionType(paramTypes, returnType, fnDecl.isEffectful, genericParamTypes);
+        sym.type = calleeType;
       }
     } else {
       calleeType = this.checkExpression(call.callee);

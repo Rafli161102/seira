@@ -6,28 +6,29 @@
 import { SEIRA_VERSION } from './version.ts';
 
 export function runHelp(): void {
-  console.log(`Seira ${SEIRA_VERSION} — Data & Control Foundation
+  console.log(`Seira ${SEIRA_VERSION} — Module & Package Foundation
 Simple to write. Predictable to run.
 
 USAGE:
+    sr <COMMAND> [OPTIONS] [ARGUMENTS]
     seira <COMMAND> [OPTIONS] [ARGUMENTS]
 
 OPTIONS:
-    -v, --version      Print version information and exit
-    -h, --help         Print this help message and exit
+    -v, --version, v   Print version information and exit
+    -h, --help, h      Print this help message and exit
 
 CORE COMMANDS:
-    version            Display official Seira version (${SEIRA_VERSION})
-    info               Display environment, toolchain, and project status
-    check <file.sra>   Validate Seira source file syntax, names, and types
-    run <file.sra>     Execute Seira application via Tree-Walking engine
-    init               Initialize a new Seira project in the current directory
+    version, v         Display official Seira version (${SEIRA_VERSION})
+    info, i            Display environment, toolchain, and project status
+    check, c [target]  Validate Seira source file (.sr) or package (Seira.toml)
+    run, r [target]    Execute Seira file (.sr) or package via Tree-Walking engine
+    init               Initialize a new Seira package (Seira.toml and src/main.sr)
     new <name>         Create a new Seira project in a new directory
 
-TOOLCHAIN COMMANDS (Reserved / Planned for Future Releases):
-    build              Compile Seira package into native or Wasm binary (Planned: Alpha)
-    test               Execute package unit and integration tests (Planned: Alpha)
-    fmt                Format Seira source files according to style rules (Planned: Dev)
+TOOLCHAIN COMMANDS (Reserved / Planned for Future Milestones):
+    build, b           Compile Seira package (Planned: Alpha)
+    test, t            Execute package unit and integration tests (Planned: Alpha)
+    fmt, f             Format Seira source files according to style rules (Planned: Dev)
     doc                Generate documentation from source comments (Planned: Dev)
     clean              Remove build artifacts and intermediate files (Planned: Dev)
     cache              Inspect and manage compiler disk caches (Planned: Dev)

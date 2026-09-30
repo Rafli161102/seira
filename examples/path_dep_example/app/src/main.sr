@@ -1,0 +1,6 @@
+use shared_lib.lib.add
+
+fn main() {
+    result = add(20, 22)
+    println(result)
+}

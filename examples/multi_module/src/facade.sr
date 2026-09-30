@@ -1,0 +1,3 @@
+// Facade module: public re-export (pub use) of selected symbols
+pub use internal.User
+pub use internal.format_user_id

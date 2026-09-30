@@ -37,6 +37,7 @@ export const RuntimeTag = {
   Set: 'Set',
   Function: 'Function',
   Builtin: 'Builtin',
+  Module: 'Module',
 } as const;
 
 export type RuntimeTag = (typeof RuntimeTag)[keyof typeof RuntimeTag];
@@ -135,6 +136,13 @@ export interface BuiltinRuntimeValue {
   readonly name: string;
 }
 
+/** Runtime module value representing an imported module namespace. */
+export interface ModuleRuntimeValue {
+  readonly tag: 'Module';
+  readonly name: string;
+  readonly exports: Map<string, RuntimeValue>;
+}
+
 export type RuntimeValue =
   | UnitRuntimeValue
   | IntRuntimeValue
@@ -151,7 +159,8 @@ export type RuntimeValue =
   | MapRuntimeValue
   | SetRuntimeValue
   | FunctionRuntimeValue
-  | BuiltinRuntimeValue;
+  | BuiltinRuntimeValue
+  | ModuleRuntimeValue;
 
 // ─── Constructors ─────────────────────────────────────────────────────────────
 
@@ -244,6 +253,10 @@ export function rtBuiltin(name: string): BuiltinRuntimeValue {
   return { tag: 'Builtin', name };
 }
 
+export function rtModule(name: string, exports: Map<string, RuntimeValue>): ModuleRuntimeValue {
+  return { tag: 'Module', name, exports };
+}
+
 // ─── Value Formatting ─────────────────────────────────────────────────────────
 
 /** Returns the Seira-idiomatic string representation of a runtime value. */
@@ -285,6 +298,8 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return `<fn ${v.name}>`;
     case 'Builtin':
       return `<builtin ${v.name}>`;
+    case 'Module':
+      return `<module ${v.name}>`;
   }
 }
 
@@ -351,6 +366,8 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       return a.name === (b as FunctionRuntimeValue).name;
     case 'Builtin':
       return a.name === (b as BuiltinRuntimeValue).name;
+    case 'Module':
+      return a.name === (b as ModuleRuntimeValue).name;
   }
 }
 

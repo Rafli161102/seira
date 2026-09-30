@@ -19,7 +19,8 @@ export type SymbolKind =
   | 'type'
   | 'trait'
   | 'param'
-  | 'builtin';
+  | 'builtin'
+  | 'module';
 
 export interface SymbolInfo<TType = any> {
   readonly name: string;
@@ -27,6 +28,8 @@ export interface SymbolInfo<TType = any> {
   readonly span: Span;
   readonly isMut: boolean;
   readonly declNode?: ASTNode;
+  readonly isPublic?: boolean;
+  readonly moduleRef?: any;
   type?: TType;
 }
 

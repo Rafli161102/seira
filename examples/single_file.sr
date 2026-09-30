@@ -1,0 +1,13 @@
+// Seira Single-File Program (.sr)
+// Executed directly without Seira.toml:
+//   sr run examples/single_file.sr
+
+fn square(x: Int) -> Int {
+    x * x
+}
+
+fn main() {
+    println("Hello from Seira 0.0.8-s!")
+    result = square(8)
+    println(result)
+}

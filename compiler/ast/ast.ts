@@ -16,6 +16,7 @@ export type NodeKind =
   | 'Program'
   | 'ModuleDecl'
   | 'ImportDecl'
+  | 'UseDecl'
   | 'FunctionDecl'
   | 'StructDecl'
   | 'TraitDecl'
@@ -94,6 +95,7 @@ export interface Program extends BaseNode {
 export type TopLevelItem =
   | ModuleDecl
   | ImportDecl
+  | UseDecl
   | FunctionDecl
   | StructDecl
   | TraitDecl
@@ -112,6 +114,14 @@ export interface ImportDecl extends BaseNode {
   readonly path: string;
   readonly alias?: string;
   readonly importedItems?: ReadonlyArray<string>;
+  readonly isPublic?: boolean;
+}
+
+export interface UseDecl extends BaseNode {
+  readonly kind: 'UseDecl';
+  readonly path: string;
+  readonly alias?: string;
+  readonly isPublic?: boolean;
 }
 
 export interface Attribute extends BaseNode {
@@ -153,6 +163,7 @@ export interface FunctionDecl extends BaseNode {
   readonly body: Block;
   readonly bodyExpr?: Expr;
   readonly isExpressionBody?: boolean;
+  readonly isPublic?: boolean;
   readonly attributes?: ReadonlyArray<Attribute>;
 }
 
@@ -161,6 +172,7 @@ export interface StructDecl extends BaseNode {
   readonly name: string;
   readonly genericParams?: GenericParamNode[];
   readonly fields: { name: string; type: TypeAnnotation }[];
+  readonly isPublic?: boolean;
 }
 
 export interface EnumVariant {
@@ -173,6 +185,7 @@ export interface EnumDecl extends BaseNode {
   readonly kind: 'EnumDecl';
   readonly name: string;
   readonly variants: ReadonlyArray<EnumVariant>;
+  readonly isPublic?: boolean;
 }
 
 export interface TypeAliasDecl extends BaseNode {
@@ -180,6 +193,7 @@ export interface TypeAliasDecl extends BaseNode {
   readonly name: string;
   readonly genericParams?: GenericParamNode[];
   readonly targetType: TypeAnnotation;
+  readonly isPublic?: boolean;
 }
 
 export interface TraitDecl extends BaseNode {
@@ -187,6 +201,7 @@ export interface TraitDecl extends BaseNode {
   readonly name: string;
   readonly genericParams?: GenericParamNode[];
   readonly methods: FunctionDecl[];
+  readonly isPublic?: boolean;
 }
 
 export interface ImplDecl extends BaseNode {
@@ -254,6 +269,7 @@ export interface ConstStmt extends BaseNode {
   readonly name: string;
   readonly typeAnnotation?: TypeAnnotation;
   readonly initializer: Expr;
+  readonly isPublic?: boolean;
 }
 
 export interface BindingStmt extends BaseNode {

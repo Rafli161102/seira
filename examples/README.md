@@ -1,37 +1,43 @@
 # Seira Language Examples
 
-This directory contains introductory code examples demonstrating the syntax and semantics of the **Seira** programming language.
+This directory contains introductory and architecture-level code examples demonstrating the syntax, module system, and package model of the **Seira** programming language.
 
 ---
 
-## Important Notice: Release 0.0.7-s Status
+## Seira 0.0.8-s Status: Module & Package Foundation
 
 > [!NOTE]
-> In release **0.0.7-s (Type & Generic Foundation)**, the Seira toolchain provides full front-end static analysis via `seira check` and interactive execution via `seira run`.
-> Language features supported include generic types, generic functions, type aliases, union types, function types, trait definitions, trait constraints, static trait resolution, collections, pattern matching, closures, and functional pipelines.
-> Direct native compilation (`seira build`) is planned for the Alpha series once backend code generation (LLVM / WebAssembly) is introduced.
+> In release **0.0.8-s (Module & Package Foundation)**, Seira provides canonical `.sr` source extension support and the `sr` CLI tool.
+> Seira operates seamlessly in two modes:
+> 1. **Single-file mode**: execute standalone source scripts directly (`sr run script.sr`) without requiring a package manifest.
+> 2. **Package/Project mode**: compile and execute multi-module projects managed by `Seira.toml` and verified by `Seira.lock`.
 
 ---
 
-## Examples in this Directory
+## Standalone Examples (.sr)
 
-### 1. `hello_world.sra`
-Minimal canonical program illustrating a function declaration and string output:
-```sra
+### 1. `single_file.sr` / `hello_world.sr`
+Minimal canonical program illustrating standalone single-file execution without a package manifest:
+```sr
+fn square(x: Int) -> Int {
+    x * x
+}
+
 fn main() {
-    println("Hello, Seira!")
+    println("Hello from Seira 0.0.8-s!")
+    println(square(8))
 }
 ```
 
 Check and run:
 ```bash
-seira check examples/hello_world.sra
-seira run examples/hello_world.sra
+sr check examples/single_file.sr
+sr run examples/single_file.sr
 ```
 
-### 2. `pipeline.sra`
+### 2. `pipeline.sr`
 Illustrates function composition via the pipeline operator (`|>`) and Option fallback (`??`):
-```sra
+```sr
 fn double(x: Int) -> Int {
     x * 2
 }
@@ -46,74 +52,82 @@ fn compute_score(input: Option<Int>) -> Int {
         |> double
         |> add_bonus(10)
 }
-```
-
-Check with:
-```bash
-seira check examples/pipeline.sra
-```
-
-### 3. `control_flow.sra`
-Illustrates loops, branch expressions, collections, and pattern matching.
-
-Check and run:
-```bash
-seira check examples/control_flow.sra
-seira run examples/control_flow.sra
-```
-
-### 4. `generics_and_traits.sra`
-Demonstrates generic types, generic functions, type aliases, union types, trait contracts, trait constraints, and higher-order generic functions:
-```sra
-type UserId = Int
-type Identifier = UserId | String
-
-trait Printable {
-    fn print()
-}
-
-impl Int: Printable {
-    fn print() {
-        println(42)
-    }
-}
-
-fn print_item<T: Printable>(item: T) -> T {
-    item
-}
-
-fn identity<T>(value: T) -> T {
-    value
-}
-
-fn apply<T, R>(f: (T) -> R, value: T) -> R {
-    f(value)
-}
-
-fn wrap<T>(value: T) -> Option<T> {
-    Some(value)
-}
 
 fn main() {
-    num = identity(42)
-    println(num)
-
-    verified = print_item(100)
-    println(verified)
-
-    doubled = apply(x => x * 2, 21)
-    println(doubled)
-
-    boxed = 99 |> wrap
-    match boxed {
-        Some(v) => println(v)
-        None => println(0)
-    }
+    println(compute_score(Some(5)))
 }
 ```
 
 Check and run:
 ```bash
-seira check examples/generics_and_traits.sra
-seira run examples/generics_and_traits.sra
+sr check examples/pipeline.sr
+sr run examples/pipeline.sr
+```
+
+### 3. `control_flow.sr`
+Illustrates loops, branch expressions, collections, and pattern matching.
+```bash
+sr check examples/control_flow.sr
+sr run examples/control_flow.sr
+```
+
+### 4. `generics_and_traits.sr`
+Demonstrates generic functions, type aliases, union types, trait contracts (`trait Printable`), trait implementations (`impl Int: Printable`), trait constraints (`<T: Printable>`), and higher-order generic functions (`apply<T, R>`).
+```bash
+sr check examples/generics_and_traits.sr
+sr run examples/generics_and_traits.sr
+```
+
+---
+
+## Multi-Module & Package Examples
+
+### 5. `multi_module/`
+Demonstrates a multi-module package layout:
+```
+multi_module/
+├── Seira.toml
+└── src/
+    ├── main.sr       # Entry module (fn main)
+    ├── box.sr        # Generic functions across modules
+    ├── internal.sr   # Private helpers & public types (pub type User)
+    ├── facade.sr     # Public re-export (pub use internal.User)
+    └── printable.sr  # Cross-module trait contract (pub trait Printable)
+```
+
+Highlights:
+- **Filesystem module mapping**: `src/internal.sr` -> module `internal`.
+- **Visibility**: default private, exported with `pub`.
+- **Import / Use**: `import box`, `use facade.User as AppUser`.
+- **Re-export**: `pub use internal.User`.
+- **Cross-module traits and generics**: implementations and constraints checked across module boundaries.
+
+Check and run:
+```bash
+sr check examples/multi_module
+sr run examples/multi_module
+```
+
+### 6. `path_dep_example/`
+Demonstrates path dependency declaration (`[dependencies] shared_lib = { path = "../shared" }`) where `app` depends on `shared_lib`.
+```bash
+sr run examples/path_dep_example/app
+```
+
+### 7. `workspace_example/`
+Demonstrates multi-package workspace management:
+```
+workspace_example/
+├── Seira.toml        # [workspace] members = ["app", "shared"]
+├── shared/
+│   ├── Seira.toml
+│   └── src/lib.sr
+└── app/
+    ├── Seira.toml    # shared = { path = "../shared" }
+    └── src/main.sr
+```
+
+Run workspace member:
+```bash
+sr run examples/workspace_example/app
 ```

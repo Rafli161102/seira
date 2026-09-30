@@ -42,6 +42,7 @@ import type {
   IdentifierPattern,
   IfExpr,
   ImplDecl,
+  ImportDecl,
   IndexExpr,
   LambdaExpr,
   LetStmt,
@@ -63,12 +64,14 @@ import type {
   Stmt,
   TupleLiteral,
   UnaryExpr,
+  UseDecl,
   WhileStmt,
   WildcardPattern,
   WithStmt,
 } from '../../compiler/ast/ast.ts';
 import type { Span } from '../../compiler/source/span.ts';
 import { DiagnosticBag } from '../../compiler/diagnostics/index.ts';
+import type { SeiraModule } from '../../compiler/module/module.ts';
 import {
   breakOutcome,
   continueOutcome,
@@ -104,6 +107,7 @@ import {
   rtLambda,
   rtList,
   rtMap,
+  rtModule,
   rtNone,
   rtOk,
   rtSet,
@@ -120,6 +124,7 @@ import {
   type IntRuntimeValue,
   type ListRuntimeValue,
   type MapRuntimeValue,
+  type ModuleRuntimeValue,
   type OptionRuntimeValue,
   type ResultRuntimeValue,
   type RuntimeValue,
@@ -239,9 +244,91 @@ export class Evaluator {
    * Hoists all top-level function declarations, then executes top-level statements
    * and expression statements in order.
    */
-  public executeProgram(program: Program): RuntimeOutcome {
+  public executeProgram(program: Program, dependencyModules?: SeiraModule[]): RuntimeOutcome {
     // Build the global execution environment
     const env = new RuntimeEnvironment(undefined, 'global');
+
+    // Register built-in functions in the environment
+    this.registerBuiltins(env);
+
+    // If dependency modules are provided, hoist their declarations and register modules
+    if (dependencyModules && dependencyModules.length > 0) {
+      for (const mod of dependencyModules) {
+        if (!mod.ast) continue;
+        const modExports = new Map<string, RuntimeValue>();
+
+        for (const item of mod.ast.items) {
+          if (item.kind === 'FunctionDecl') {
+            const fn = item as FunctionDecl;
+            this.globalFunctions.set(fn.name, fn);
+            const fnVal = rtFunction(fn.name, fn, env);
+            env.define(fn.name, fnVal, false);
+            modExports.set(fn.name, fnVal);
+          } else if (item.kind === 'ImplDecl') {
+            const impl = item as ImplDecl;
+            for (const method of impl.methods) {
+              this.globalFunctions.set(method.name, method);
+              const fnVal = rtFunction(method.name, method, env);
+              env.define(method.name, fnVal, false);
+              modExports.set(method.name, fnVal);
+            }
+          } else if (item.kind === 'ConstStmt') {
+            const cs = item as ConstStmt;
+            const outcome = this.executeConstStmt(cs, env);
+            if (isPanic(outcome)) return outcome;
+            const binding = env.lookup(cs.name);
+            if (binding) {
+              modExports.set(cs.name, binding.value);
+            }
+          }
+        }
+
+        const modVal = rtModule(mod.id.path, modExports);
+        env.define(mod.id.path, modVal, false);
+        if (mod.id.path.includes('.')) {
+          const leaf = mod.id.path.split('.').pop()!;
+          if (!env.lookup(leaf)) {
+            env.define(leaf, modVal, false);
+          }
+          const root = mod.id.path.split('.')[0];
+          if (!env.lookup(root)) {
+            env.define(root, modVal, false);
+          }
+        }
+      }
+    }
+
+    // Process use and import declarations in program
+    for (const item of program.items) {
+      if (item.kind === 'UseDecl') {
+        const use = item as UseDecl;
+        if (use.path !== '*') {
+          const parts = use.path.split('.');
+          if (parts.length >= 2) {
+            const modPath = parts.slice(0, -1).join('.');
+            const symName = parts[parts.length - 1];
+            const localName = use.alias ?? symName;
+            const modBinding = env.lookup(modPath);
+            if (modBinding && modBinding.value.tag === 'Module') {
+              const modVal = modBinding.value as ModuleRuntimeValue;
+              const val = modVal.exports.get(symName);
+              if (val) {
+                env.define(localName, val, false);
+              }
+            }
+          }
+        }
+      } else if (item.kind === 'ImportDecl') {
+        const imp = item as ImportDecl;
+        if (imp.path !== '*') {
+          const modBinding = env.lookup(imp.path);
+          if (modBinding && modBinding.value.tag === 'Module') {
+            const leafName = imp.alias ?? (imp.path.includes('.') ? imp.path.split('.').pop()! : imp.path);
+            env.define(leafName, modBinding.value, false);
+          }
+        }
+      }
+    }
 
     // Hoist all top-level function declarations and impl methods into the global environment.
     // This allows forward references to functions declared after their call site.
@@ -260,9 +347,6 @@ export class Evaluator {
         }
       }
     }
-
-    // Register built-in functions in the environment
-    this.registerBuiltins(env);
 
     // ── Program Entry Model (Locked 0.0.5-s Decision B) ──────────────────────
     // Mode 2 — Application Entry:
@@ -289,7 +373,9 @@ export class Evaluator {
         item.kind === 'TraitDecl' ||
         item.kind === 'ImplDecl' ||
         item.kind === 'TypeAliasDecl' ||
-        item.kind === 'EnumDecl'
+        item.kind === 'EnumDecl' ||
+        item.kind === 'ImportDecl' ||
+        item.kind === 'UseDecl'
       ) {
         continue; // already hoisted or compile-time declarations
       }
@@ -1365,6 +1451,19 @@ export class Evaluator {
       if (target.tag === 'String') {
         return normalOutcome(rtInt(BigInt(target.value.length)));
       }
+    }
+
+    // Module exported symbol access: e.g. client.send, math.add
+    if (target.tag === 'Module') {
+      const mod = target as ModuleRuntimeValue;
+      const val = mod.exports.get(expr.property);
+      if (val !== undefined) {
+        return normalOutcome(val);
+      }
+      return panicOutcome(invalidStateError(
+        `Module '${mod.name}' has no exported symbol '${expr.property}'.`,
+        expr.span, this.ctx.config.fileName
+      ));
     }
 
     return panicOutcome(unsupportedOperationError(

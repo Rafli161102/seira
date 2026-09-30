@@ -1,0 +1,16 @@
+// Internal module: private by default, selective pub exports
+
+pub type User {
+    id: Int
+    name: String
+}
+
+// Private helper — accessible only within internal module
+fn internal_secret() -> String {
+    "internal_secret"
+}
+
+// Public API
+pub fn format_user_id(id: Int) -> String {
+    "User#"
+}

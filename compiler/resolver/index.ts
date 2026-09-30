@@ -33,6 +33,7 @@ import type {
   IdentifierPattern,
   IfExpr,
   ImplDecl,
+  ImportDecl,
   IndexExpr,
   LambdaExpr,
   LetStmt,
@@ -56,13 +57,21 @@ import type {
   TypeAliasDecl,
   TypeAnnotation,
   UnaryExpr,
+  UseDecl,
   WhileStmt,
   WithStmt,
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
+import type { SeiraModule } from '../module/module.ts';
 import { Scope, type ScopeKind, type SymbolInfo } from './scope.ts';
 
 export * from './scope.ts';
+
+export interface ResolverOptions {
+  readonly availableModules?: Map<string, SeiraModule>;
+  readonly currentModule?: SeiraModule;
+  readonly isModuleMode?: boolean;
+}
 
 export interface ResolverResult {
   readonly success: boolean;
@@ -79,13 +88,19 @@ export class Resolver {
   private readonly resolvedSymbols = new Map<ASTNode, SymbolInfo>();
   private readonly declaredSymbols = new Map<ASTNode, SymbolInfo>();
   private readonly implementedTraits = new Set<string>();
+  private readonly availableModules?: Map<string, SeiraModule>;
+  private readonly currentModule?: SeiraModule;
+  private readonly isModuleMode: boolean;
   private currentFile?: string;
   private loopDepth: number = 0;
 
-  constructor(diagnostics?: DiagnosticBag) {
+  constructor(diagnostics?: DiagnosticBag, options?: ResolverOptions) {
     this.diagnostics = diagnostics ?? new DiagnosticBag();
     this.globalScope = new Scope('global');
     this.currentScope = this.globalScope;
+    this.availableModules = options?.availableModules;
+    this.currentModule = options?.currentModule;
+    this.isModuleMode = options?.isModuleMode ?? (options?.availableModules !== undefined);
     this.registerBuiltins();
   }
 
@@ -188,6 +203,14 @@ export class Resolver {
   private hoistTopLevelDeclarations(program: Program): void {
     for (const item of program.items) {
       switch (item.kind) {
+        case 'ImportDecl': {
+          this.resolveImportDecl(item as ImportDecl);
+          break;
+        }
+        case 'UseDecl': {
+          this.resolveUseDecl(item as UseDecl);
+          break;
+        }
         case 'FunctionDecl': {
           const ok = this.globalScope.define({
             name: item.name,
@@ -195,6 +218,7 @@ export class Resolver {
             span: item.span,
             isMut: false,
             declNode: item,
+            isPublic: item.isPublic ?? false,
           });
           if (!ok) {
             this.diagnostics.reportError(
@@ -217,6 +241,7 @@ export class Resolver {
             span: item.span,
             isMut: false,
             declNode: item,
+            isPublic: item.isPublic ?? false,
           });
           if (!ok) {
             this.diagnostics.reportError(
@@ -238,6 +263,7 @@ export class Resolver {
             span: item.span,
             isMut: false,
             declNode: item,
+            isPublic: item.isPublic ?? false,
           });
           if (!ok) {
             this.diagnostics.reportError(
@@ -259,6 +285,7 @@ export class Resolver {
             span: item.span,
             isMut: false,
             declNode: item,
+            isPublic: item.isPublic ?? false,
           });
           if (!ok) {
             this.diagnostics.reportError(
@@ -280,6 +307,7 @@ export class Resolver {
             span: item.span,
             isMut: false,
             declNode: item,
+            isPublic: item.isPublic ?? false,
           });
           if (!ok) {
             this.diagnostics.reportError(
@@ -314,6 +342,10 @@ export class Resolver {
 
   private resolveDeclaration(item: ASTNode): void {
     switch (item.kind) {
+      case 'ImportDecl':
+      case 'UseDecl':
+        // Already processed during declaration hoisting
+        break;
       case 'FunctionDecl':
         this.resolveFunctionDecl(item as FunctionDecl);
         break;
@@ -554,6 +586,176 @@ export class Resolver {
     }
   }
 
+  private resolveUseDecl(item: UseDecl): void {
+    if (item.path === '*') {
+      return;
+    }
+
+    const parts = item.path.split('.');
+    if (parts.length < 2) {
+      this.diagnostics.reportError(
+        'E6007',
+        `Invalid use path '${item.path}'. Expected 'module.Symbol'.`,
+        item.span,
+        this.currentFile,
+        undefined,
+        "Use 'use module.Symbol' or 'import module'."
+      );
+      return;
+    }
+
+    const symbolName = parts[parts.length - 1];
+    const modulePath = parts.slice(0, -1).join('.');
+    const localName = item.alias ?? symbolName;
+
+    const targetMod = this.availableModules?.get(modulePath);
+    if (!targetMod) {
+      this.diagnostics.reportError(
+        'E6001',
+        `Module '${modulePath}' not found.`,
+        item.span,
+        this.currentFile,
+        undefined,
+        `Ensure module '${modulePath}' exists in the source root.`
+      );
+      return;
+    }
+
+    const exp = targetMod.exports.get(symbolName);
+    const reexp = !exp ? targetMod.reexports.get(symbolName) : undefined;
+
+    if (!exp && !reexp) {
+      this.diagnostics.reportError(
+        'E6002',
+        `Symbol '${symbolName}' not found in module '${modulePath}'.`,
+        item.span,
+        this.currentFile,
+        undefined,
+        `Check if '${symbolName}' is declared in module '${modulePath}'.`
+      );
+      return;
+    }
+
+    if (exp && !exp.isPublic) {
+      if (item.isPublic) {
+        this.diagnostics.reportError(
+          'E6015',
+          `Cannot re-export private symbol '${symbolName}' from module '${modulePath}'.`,
+          item.span,
+          this.currentFile,
+          undefined,
+          `Declare '${symbolName}' as 'pub' in '${modulePath}' before re-exporting it.`
+        );
+      } else {
+        this.diagnostics.reportError(
+          'E6005',
+          `Cannot access private symbol '${symbolName}' in module '${modulePath}'.`,
+          item.span,
+          this.currentFile,
+          undefined,
+          `Declare '${symbolName}' as 'pub' in '${modulePath}' to make it accessible.`
+        );
+      }
+      return;
+    }
+
+    const existing = this.globalScope.lookupLocal(localName);
+    if (existing) {
+      this.diagnostics.reportError(
+        'E6004',
+        `Duplicate declaration of '${localName}' in the same scope.`,
+        item.span,
+        this.currentFile,
+        undefined,
+        `A symbol with name '${localName}' already exists in this scope.`
+      );
+      return;
+    }
+
+    const kind = exp ? (
+      exp.kind === 'function' ? 'function' :
+      exp.kind === 'struct' ? 'struct' :
+      exp.kind === 'enum' ? 'enum' :
+      exp.kind === 'trait' ? 'trait' :
+      exp.kind === 'const' ? 'variable' : 'type'
+    ) : 'type';
+
+    this.globalScope.define({
+      name: localName,
+      kind,
+      span: item.span,
+      isMut: false,
+      declNode: exp?.declNode,
+      isPublic: item.isPublic ?? false,
+    });
+
+    const sym = this.globalScope.lookupLocal(localName);
+    if (sym) {
+      this.declaredSymbols.set(item, sym);
+    }
+  }
+
+  private resolveImportDecl(item: ImportDecl): void {
+    if (item.path === '*') {
+      return;
+    }
+
+    const targetMod = this.availableModules?.get(item.path);
+    if (!targetMod) {
+      this.diagnostics.reportError(
+        'E6001',
+        `Module '${item.path}' not found.`,
+        item.span,
+        this.currentFile,
+        undefined,
+        `Ensure module '${item.path}' exists in the source root.`
+      );
+      return;
+    }
+
+    const leafName = item.alias ?? (item.path.includes('.') ? item.path.split('.').pop()! : item.path);
+    const existing = this.globalScope.lookupLocal(leafName);
+    if (existing) {
+      this.diagnostics.reportError(
+        'E6004',
+        `Duplicate declaration of '${leafName}' in the same scope.`,
+        item.span,
+        this.currentFile,
+        undefined,
+        `A symbol with name '${leafName}' already exists in this scope.`
+      );
+      return;
+    }
+
+    this.globalScope.define({
+      name: leafName,
+      kind: 'module',
+      span: item.span,
+      isMut: false,
+      moduleRef: targetMod,
+      isPublic: item.isPublic ?? false,
+    });
+
+    const sym = this.globalScope.lookupLocal(leafName);
+    if (sym) {
+      this.declaredSymbols.set(item, sym);
+    }
+
+    if (!item.alias && item.path.includes('.')) {
+      const rootName = item.path.split('.')[0];
+      if (!this.globalScope.lookupLocal(rootName)) {
+        this.globalScope.define({
+          name: rootName,
+          kind: 'module',
+          span: item.span,
+          isMut: false,
+          moduleRef: targetMod,
+          isPublic: item.isPublic ?? false,
+        });
+      }
+    }
+  }
+
   private resolveTypeAnnotation(annotation: TypeAnnotation): void {
     if (annotation.name === 'Union') {
       if (annotation.unionTypes) {
@@ -572,6 +774,61 @@ export class Resolver {
       }
       if (annotation.returnType) {
         this.resolveTypeAnnotation(annotation.returnType);
+      }
+      return;
+    }
+
+    if (annotation.name.includes('.')) {
+      const lastDot = annotation.name.lastIndexOf('.');
+      const modPath = annotation.name.slice(0, lastDot);
+      const typeName = annotation.name.slice(lastDot + 1);
+
+      let targetMod: SeiraModule | undefined;
+      const modSym = this.currentScope.lookup(modPath);
+      if (modSym && modSym.kind === 'module' && modSym.moduleRef) {
+        targetMod = modSym.moduleRef as SeiraModule;
+      } else if (this.availableModules?.has(modPath)) {
+        targetMod = this.availableModules.get(modPath);
+      }
+
+      if (!targetMod) {
+        this.diagnostics.reportError(
+          'E6001',
+          `Module '${modPath}' not found.`,
+          annotation.span,
+          this.currentFile
+        );
+        return;
+      }
+
+      const exp = targetMod.exports.get(typeName);
+      if (!exp) {
+        const reexp = targetMod.reexports.get(typeName);
+        if (!reexp) {
+          this.diagnostics.reportError(
+            'E6002',
+            `Symbol '${typeName}' not found in module '${modPath}'.`,
+            annotation.span,
+            this.currentFile
+          );
+          return;
+        }
+      } else if (!exp.isPublic) {
+        this.diagnostics.reportError(
+          'E6005',
+          `Cannot access private symbol '${typeName}' in module '${modPath}'.`,
+          annotation.span,
+          this.currentFile,
+          undefined,
+          `Declare '${typeName}' as 'pub' in '${modPath}' to make it accessible.`
+        );
+        return;
+      }
+
+      if (annotation.generics) {
+        for (const gen of annotation.generics) {
+          this.resolveTypeAnnotation(gen);
+        }
       }
       return;
     }
@@ -600,6 +857,16 @@ export class Resolver {
   }
 
   private resolveBindingStmt(stmt: BindingStmt): void {
+    if (this.isModuleMode && this.currentScope === this.globalScope && stmt.isMut) {
+      this.diagnostics.reportError(
+        'E2003',
+        `Global mutable state is forbidden at module scope.`,
+        stmt.span,
+        this.currentFile,
+        `Mutable variable '${stmt.name}' cannot be declared at module scope. Use 'const' for module-level constants.`
+      );
+    }
+
     if (stmt.initializer) {
       this.resolveExpression(stmt.initializer);
     }
@@ -644,6 +911,16 @@ export class Resolver {
   }
 
   private resolveLetStmt(stmt: LetStmt): void {
+    if (this.isModuleMode && this.currentScope === this.globalScope && stmt.isMut) {
+      this.diagnostics.reportError(
+        'E2003',
+        `Global mutable state is forbidden at module scope.`,
+        stmt.span,
+        this.currentFile,
+        `Mutable variable '${stmt.name}' cannot be declared at module scope. Use 'const' for module-level constants.`
+      );
+    }
+
     if (stmt.initializer) {
       this.resolveExpression(stmt.initializer);
     }
@@ -982,6 +1259,34 @@ export class Resolver {
       case 'MemberExpr': {
         const mem = expr as MemberExpr;
         this.resolveExpression(mem.object);
+        if (mem.object.kind === 'Identifier') {
+          const id = mem.object as Identifier;
+          const sym = this.resolvedSymbols.get(id);
+          if (sym && sym.kind === 'module' && sym.moduleRef) {
+            const mod = sym.moduleRef as SeiraModule;
+            const exp = mod.exports.get(mem.property);
+            if (!exp) {
+              const reexp = mod.reexports.get(mem.property);
+              if (!reexp) {
+                this.diagnostics.reportError(
+                  'E6002',
+                  `Symbol '${mem.property}' not found in module '${mod.id.path}'.`,
+                  mem.span,
+                  this.currentFile
+                );
+              }
+            } else if (!exp.isPublic) {
+              this.diagnostics.reportError(
+                'E6005',
+                `Cannot access private symbol '${mem.property}' in module '${mod.id.path}'.`,
+                mem.span,
+                this.currentFile,
+                undefined,
+                `Declare '${mem.property}' as 'pub' in '${mod.id.path}' to make it accessible.`
+              );
+            }
+          }
+        }
         break;
       }
       case 'Literal':

@@ -23,12 +23,12 @@ export function main(argv: string[] = process.argv.slice(2)): number {
   const firstArg = argv[0];
 
   // Global flags
-  if (firstArg === '--version' || firstArg === '-v' || firstArg === 'version') {
+  if (firstArg === '--version' || firstArg === '-v' || firstArg === 'version' || firstArg === 'v') {
     runVersion();
     return 0;
   }
 
-  if (firstArg === '--help' || firstArg === '-h' || firstArg === 'help') {
+  if (firstArg === '--help' || firstArg === '-h' || firstArg === 'help' || firstArg === 'h') {
     runHelp();
     return 0;
   }
@@ -36,25 +36,31 @@ export function main(argv: string[] = process.argv.slice(2)): number {
   // Subcommands
   switch (firstArg) {
     case 'info':
+    case 'i':
       runInfo();
       return 0;
 
     case 'check':
+    case 'c':
       return runCheck(argv[1]);
 
     case 'run':
+    case 'r':
       return runRun(argv[1]);
 
     case 'init':
-      return runInit();
+      return runInit(argv[1]);
 
     case 'new':
       return runNew(argv[1]);
 
     // Reserved long-term toolchain commands
     case 'build':
+    case 'b':
     case 'test':
+    case 't':
     case 'fmt':
+    case 'f':
     case 'doc':
     case 'clean':
     case 'cache':
@@ -66,7 +72,7 @@ export function main(argv: string[] = process.argv.slice(2)): number {
 
     default:
       console.error(`Error: Unknown command or flag '${firstArg}'.`);
-      console.error(`Run 'seira --help' for available commands.`);
+      console.error(`Run 'sr --help' for available commands.`);
       return 1;
   }
 }

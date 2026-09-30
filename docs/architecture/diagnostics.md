@@ -34,9 +34,9 @@ Every diagnostic message includes:
 | `E3xxx` | Type System | Type mismatch, operator types, collection indexing, iteration targets | **Active (0.0.4-s / 0.0.6-s / 0.0.7-s)** |
 | `E4xxx` | Trait / Generics | Generic argument mismatch, inference failure, unsatisfied trait constraints, invalid trait implementations | **Active (0.0.7-s)** |
 | `E5xxx` | Pattern Matching | Non-exhaustive patterns, invalid pattern kinds | **Active (0.0.6-s)** |
-| `E6xxx` | Effect System | Calling effectful function (`!`) outside effect context | **Architectural (0.0.2-s)** |
+| `E6xxx` | Module / Package | Module not found, symbol not found, duplicate module/decl, private access, cycles | **Active (0.0.8-s)** |
 | `E7xxx` | Resource / Ownership | Escaped scoped resource, use-after-move | **Architectural (0.0.2-s)** |
-| `E8xxx` | Module / Visibility | Private item access, circular module imports | **Reserved** |
+| `E8xxx` | Effect / Concurrency | Calling effectful function (`!`) outside effect context | **Architectural (0.0.2-s)** |
 | `E9xxx` | Build / Backend | Unsupported target, missing file, code emission error | **Active (0.0.2-s)** |
 | `W1xxx` | Warnings | Unused variables, dead code, deprecations | **Active (0.0.2-s)** |
 | `I1xxx` | Information | Milestone notices, compilation progress, hints | **Active (0.0.1-s)** |
@@ -75,6 +75,23 @@ Every diagnostic message includes:
 #### Pattern Matching (`E5xxx`):
 - `E5001`: Non-exhaustive pattern matching in `match` expression
 - `E5002`: Pattern kind is invalid for the matched expression type
+
+#### Module & Package Foundation (`E6xxx`):
+- `E6001`: Module not found
+- `E6002`: Symbol not found in module
+- `E6003`: Duplicate module identity or declaration
+- `E6004`: Duplicate declaration across imported symbols or local scope
+- `E6005`: Private symbol access (symbol is not marked `pub`)
+- `E6006`: Invalid import declaration (e.g. wildcard import `import *`)
+- `E6007`: Invalid use declaration (e.g. wildcard import `use *`)
+- `E6008`: Cyclic module dependency detected
+- `E6009`: Package not found (dependency path not found or missing package)
+- `E6010`: Invalid package manifest (`Seira.toml`)
+- `E6011`: Invalid dependency declaration in manifest
+- `E6012`: Cyclic package dependency detected
+- `E6013`: Invalid module path (path traversal outside package boundary)
+- `E6014`: Duplicate package name in dependencies or workspace
+- `E6015`: Invalid re-export (`pub use` of private or non-existent symbol)
 
 ### Runtime Diagnostic Code Family (0.0.5-s+)
 

@@ -1,0 +1,4 @@
+// Cross-module trait contract
+pub trait Printable {
+    fn print_val() -> String
+}

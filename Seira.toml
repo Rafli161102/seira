@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.7-s Type & Generic Foundation
+# Specification: 0.0.8-s Module & Package Foundation
 
 [package]
 name = "seira"
-version = "0.0.7-s"
+version = "0.0.8-s"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — Type & Generic Foundation"
+description = "The Seira Programming Language — Module & Package Foundation"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 
