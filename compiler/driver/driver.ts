@@ -16,6 +16,13 @@ import { HIRLowering, type HIRProgram } from '../hir/index.ts';
 import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
 import { MIRBuilder, type MIRModule } from '../mir/index.ts';
+import {
+  ModuleGraph,
+  PackageGraph,
+  PackageLoader,
+  SeiraModule,
+  SeiraPackage,
+} from '../module/index.ts';
 import { Parser } from '../parser/parser.ts';
 import { Resolver, type ResolverResult } from '../resolver/index.ts';
 import { TypeChecker } from '../typecheck/index.ts';
@@ -26,6 +33,15 @@ import { CompilerStage, isStageAtLeast } from './stage.ts';
 export interface DriverOptions {
   readonly stopAfter?: CompilerStage;
   readonly config?: Partial<CompilerConfig>;
+}
+
+export interface PackageCompilationResult {
+  readonly success: boolean;
+  readonly package?: SeiraPackage;
+  readonly modules: Map<string, SeiraModule>;
+  readonly sortedModules: SeiraModule[];
+  readonly diagnostics: DiagnosticBag;
+  readonly entryModule?: SeiraModule;
 }
 
 export interface CompilationResult {
@@ -78,6 +94,131 @@ export class CompilerDriver {
 
     const source = readFileSync(filePath, 'utf-8');
     return this.compile(source, filePath, options);
+  }
+
+  public compilePackage(packageDir: string, options?: DriverOptions): PackageCompilationResult {
+    const diagnostics = new DiagnosticBag();
+    const pkg = PackageLoader.load(packageDir, diagnostics);
+
+    if (!pkg || diagnostics.hasErrors()) {
+      return {
+        success: false,
+        package: pkg ?? undefined,
+        modules: new Map(),
+        sortedModules: [],
+        diagnostics,
+      };
+    }
+
+    // Resolve package dependencies via PackageGraph
+    const packageGraph = new PackageGraph(diagnostics);
+    const resolvedPackages = packageGraph.resolvePackage(packageDir);
+
+    if (diagnostics.hasErrors()) {
+      return {
+        success: false,
+        package: pkg,
+        modules: pkg.modules,
+        sortedModules: [],
+        diagnostics,
+      };
+    }
+
+    // Collect all available modules across packages
+    const availableModules = new Map<string, SeiraModule>();
+    const allModulesToCompile: SeiraModule[] = [];
+
+    // First, modules from dependent packages
+    for (const depPkg of resolvedPackages) {
+      if (depPkg.name === pkg.name) continue;
+      for (const [modPath, mod] of depPkg.modules) {
+        availableModules.set(`${depPkg.name}.${modPath}`, mod);
+        availableModules.set(`${depPkg.name}::${modPath}`, mod);
+        allModulesToCompile.push(mod);
+      }
+    }
+
+    // Modules from current package
+    for (const [modPath, mod] of pkg.modules) {
+      availableModules.set(modPath, mod);
+      availableModules.set(`${pkg.name}.${modPath}`, mod);
+      availableModules.set(`${pkg.name}::${modPath}`, mod);
+      allModulesToCompile.push(mod);
+    }
+
+    // Lex and parse each module
+    for (const mod of allModulesToCompile) {
+      if (mod.ast) continue;
+      try {
+        const sourceText = readFileSync(mod.filePath, 'utf-8');
+        const lexer = new Lexer(sourceText, mod.filePath, diagnostics);
+        const tokens = lexer.tokenize();
+        const parser = new Parser(tokens, mod.filePath, diagnostics);
+        const ast = parser.parse();
+        mod.collectDeclarations(ast);
+      } catch (err: any) {
+        diagnostics.reportError(
+          'E9002',
+          `Failed to read or parse module '${mod.id.path}': ${err.message}`,
+          { start: 0, end: 0, line: 1, column: 1 },
+          mod.filePath
+        );
+      }
+    }
+
+    if (diagnostics.hasErrors()) {
+      return {
+        success: false,
+        package: pkg,
+        modules: pkg.modules,
+        sortedModules: [],
+        diagnostics,
+      };
+    }
+
+    // Build module dependency graph and detect module cycles (E6008)
+    const moduleMap = new Map<string, SeiraModule>();
+    for (const mod of allModulesToCompile) {
+      moduleMap.set(mod.id.path, mod);
+    }
+    const moduleGraph = new ModuleGraph(moduleMap, diagnostics);
+    const sortedModules = moduleGraph.resolveOrder();
+
+    if (diagnostics.hasErrors()) {
+      return {
+        success: false,
+        package: pkg,
+        modules: pkg.modules,
+        sortedModules: [],
+        diagnostics,
+      };
+    }
+
+    // Resolve and typecheck modules in topological order
+    for (const mod of sortedModules) {
+      const resolver = new Resolver(diagnostics, {
+        availableModules,
+        currentModule: mod,
+        isModuleMode: true,
+      });
+      const resResult = resolver.resolve(mod.ast!, mod.filePath);
+
+      if (!diagnostics.hasErrors()) {
+        const typeChecker = new TypeChecker(diagnostics);
+        typeChecker.check(mod.ast!, resResult, mod.filePath);
+      }
+    }
+
+    const entryModule = pkg.entryModule;
+
+    return {
+      success: !diagnostics.hasErrors(),
+      package: pkg,
+      modules: pkg.modules,
+      sortedModules,
+      diagnostics,
+      entryModule,
+    };
   }
 
   public compileSession(

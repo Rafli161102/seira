@@ -1,0 +1,8 @@
+// Generic functions across modules
+pub fn wrap_value<T>(value: T) -> Option<T> {
+    Some(value)
+}
+
+pub fn identity<T>(value: T) -> T {
+    value
+}

@@ -1,0 +1,24 @@
+// Entry module: demonstrates import, use, alias, re-export, generics, and traits
+import box
+use facade.User as AppUser
+use facade.format_user_id
+use printable.Printable
+use box.identity
+
+impl Int: Printable {
+    fn print_val() -> String {
+        "Int"
+    }
+}
+
+fn describe<T: Printable>(item: T) -> String {
+    "Printable"
+}
+
+fn main() {
+    println("Seira Multi-Module Demo")
+    println(format_user_id(42))
+    println(describe(42))
+    val = identity(100)
+    println(val)
+}

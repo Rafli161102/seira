@@ -135,28 +135,9 @@ export function generateInitialManifest(projectName: string): string {
   return `# Seira Project Manifest
 [package]
 name = "${projectName}"
-version = "0.0.1-s"
+version = "0.1.0"
 edition = "2026"
-authors = []
-license = "MIT"
-description = "A new Seira application"
-
-[target]
-default = "native"
-supported = [
-    "native",
-    "wasm32-unknown-unknown"
-]
 
 [dependencies]
-# Dependencies will be resolved during future releases
-
-[profile.dev]
-opt-level = 0
-debug = true
-
-[profile.release]
-opt-level = 3
-debug = false
 `;
 }

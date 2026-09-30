@@ -1,15 +1,17 @@
 {
   "name": "seira",
-  "version": "0.0.7-s",
-  "description": "The Seira Programming Language — Data & Control Foundation",
+  "version": "0.0.8-s",
+  "description": "The Seira Programming Language — Module & Package Foundation",
   "type": "module",
   "bin": {
-    "seira": "./bin/seira"
+    "seira": "./bin/seira",
+    "sr": "./bin/sr"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test 'tests/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
-    "seira": "./bin/seira"
+    "seira": "./bin/seira",
+    "sr": "./bin/sr"
   },
   "keywords": [
     "seira",

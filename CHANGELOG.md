@@ -11,6 +11,67 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
 
+## [0.0.8-s] - 2026-10-01
+
+### Added
+- **Canonical `.sr` Extension & `sr` CLI**:
+  - Adopted `.sr` as the canonical source file extension for Seira, preserving full backward compatibility with `.sra`.
+  - Added canonical `sr` command launcher (`bin/sr`) and CLI short command aliases (`r`, `c`, `b`, `t`, `f`, `i`, `v`, `h`).
+  - Added `sr info` reporting active module and package pipeline stages, platform details, and active manifest metadata.
+  - Added `sr init [path]` scaffolding standard project manifest (`Seira.toml`) and entry point (`src/main.sr`).
+- **Single-File & Package Mode Compatibility**:
+  - **Single-file mode**: execute standalone source scripts directly (`sr run script.sr`, `sr check script.sr`) without requiring a package manifest.
+  - **Package mode**: execute and check full projects (`sr run`, `sr check`) driven by `Seira.toml`.
+- **Filesystem Module Model & Deterministic Discovery**:
+  - Filesystem is the module map: `src/user.sr` maps to module `user`, `src/http/client.sr` maps to module `http.client`. No mandatory file-top module declaration required.
+  - Deterministic module ordering across platforms.
+  - Source root boundaries strictly enforced; directory traversal escaping package source root rejected with `E6013`.
+  - Duplicate module identities rejected with `E6003`.
+- **Package Manifest (`Seira.toml`) & SHA-256 Lockfile (`Seira.lock`)**:
+  - Manifest parser and semantic validator (`compiler/module/manifest.ts`) enforcing package name, SemVer 2.x versions, edition, dependencies, and workspace sections.
+  - Duplicate keys/sections rejected with `E6010`.
+  - Malformed dependencies rejected with `E6011`.
+  - Deterministic SHA-256 source integrity lockfile (`Seira.lock`) architecture.
+- **Import, Use, Alias & Re-Export Semantics**:
+  - `import module [as alias]`: module-level import allowing qualified symbol access (`module.Symbol`).
+  - `use module.Symbol [as alias]`: symbol import bringing declarations into local lexical scope. Aliases change local name without altering type identity.
+  - `pub use module.Symbol`: public re-export enabling package facade modules (`src/lib.sr`). Re-exporting private symbols rejected with `E6015`.
+  - Wildcard imports strictly forbidden: `use *` and `import *` rejected with `E6007` and `E6006`.
+- **Visibility & Cross-Module Boundaries**:
+  - Declarations are private by default; public declarations require `pub` modifier (`pub fn`, `pub type`, `pub trait`, `pub const`).
+  - Accessing private declarations from outside their module boundary rejected with `E6005`.
+  - Cross-module nominal type identity preserved across packages and modules (`package::module::declaration`).
+  - Generic types, generic functions, type aliases, union types, and traits operate seamlessly across module boundaries.
+- **Cycle Detection**:
+  - Deterministic topological dependency sorting and circular dependency rejection for internal modules (`E6008`).
+  - Deterministic package dependency graph resolution and circular package dependency rejection (`E6012`).
+- **Global Mutable State Prohibition**:
+  - Prohibited module-scope mutable bindings (`mut x = ...`) with `E2003`. Module-level constants (`const`) are fully supported.
+- **Workspace Foundation**:
+  - Multi-package workspace support via `[workspace] members = [...]` in root `Seira.toml`.
+  - Deterministic member package discovery and workspace dependency resolution (`shared = { path = "../shared" }`).
+- **Diagnostic Family (E6xxx — Module & Package)**:
+  - `E6001`: Module not found
+  - `E6002`: Symbol not found
+  - `E6003`: Duplicate module
+  - `E6004`: Duplicate declaration
+  - `E6005`: Private symbol access
+  - `E6006`: Invalid import (wildcard import rejected)
+  - `E6007`: Invalid use (wildcard use rejected)
+  - `E6008`: Cyclic module dependency detected
+  - `E6009`: Package not found
+  - `E6010`: Invalid package manifest
+  - `E6011`: Invalid dependency
+  - `E6012`: Cyclic package dependency detected
+  - `E6013`: Invalid module path
+  - `E6014`: Duplicate package
+  - `E6015`: Invalid re-export
+- **Testing & Quality Assurance**:
+  - Added comprehensive test suites: `tests/unit/module/module.test.ts` (25 test suites) and `tests/unit/cli/cli.test.ts` (7 test suites).
+  - Test suite expanded from 232 to 264 passing tests with 100% pass rate.
+
+---
+
 ## [0.0.7-s] - 2026-09-30
 
 ### Added

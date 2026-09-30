@@ -20,30 +20,17 @@
  */
 
 import { existsSync } from 'node:fs';
-import { ExecutionEngine } from '../../../runtime/execution/engine.ts';
+import { join } from 'node:path';
+import { ExecutionEngine, type ExecutionResult } from '../../../runtime/execution/engine.ts';
 import { formatRuntimeValue } from '../../../runtime/execution/values.ts';
 
-export function runRun(filePath?: string): number {
-  if (!filePath) {
-    console.error('Error: Missing file path for run.');
-    console.error('Usage: seira run <file.sra>');
-    return 1;
-  }
-
-  if (!existsSync(filePath)) {
-    console.error(`Error: File not found: '${filePath}'`);
-    return 1;
-  }
-
-  const engine = new ExecutionEngine();
-  const result = engine.executeFile(filePath);
-
+function handleExecutionResult(result: ExecutionResult, targetName: string): number {
   if (!result.success) {
     const diagnostics = result.diagnostics.format();
     if (diagnostics) {
       console.error(diagnostics);
     }
-    console.error(`\nExecution failed in '${filePath}'.`);
+    console.error(`\nExecution failed in '${targetName}'.`);
     return 1;
   }
 
@@ -51,11 +38,39 @@ export function runRun(filePath?: string): number {
   // If the program produced a non-Unit final value, display it.
   if (result.value && result.value.tag !== 'Unit') {
     const display = formatRuntimeValue(result.value);
-    // Only show the final value if nothing was already printed by println
     if (result.output.length === 0) {
       console.log(display);
     }
   }
 
   return 0;
+}
+
+export function runRun(targetPath?: string): number {
+  const engine = new ExecutionEngine();
+
+  // If no target provided, check for Seira.toml in current directory
+  if (!targetPath) {
+    if (existsSync('Seira.toml')) {
+      const result = engine.executePackage(process.cwd());
+      return handleExecutionResult(result, 'package');
+    }
+    console.error('Error: Missing target for run.');
+    console.error('Usage: sr run [file.sr] or run inside a package directory with Seira.toml');
+    return 1;
+  }
+
+  // If target directory has Seira.toml
+  if (existsSync(join(targetPath, 'Seira.toml'))) {
+    const result = engine.executePackage(targetPath);
+    return handleExecutionResult(result, targetPath);
+  }
+
+  if (!existsSync(targetPath)) {
+    console.error(`Error: File not found: '${targetPath}'`);
+    return 1;
+  }
+
+  const result = engine.executeFile(targetPath);
+  return handleExecutionResult(result, targetPath);
 }

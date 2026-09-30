@@ -1,0 +1,6 @@
+// Seira Canonical Hello World Example (.sr)
+// «Simple to write. Predictable to run.»
+
+fn main() {
+    println("Hello, Seira!")
+}

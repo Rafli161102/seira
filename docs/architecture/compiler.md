@@ -48,10 +48,11 @@ compiler/
 ├── lexer/           # Lexical scanner, Token stream, Symbol table [IMPLEMENTED]
 ├── parser/          # Pratt precedence parser, Error recovery [IMPLEMENTED]
 ├── ast/             # Abstract Syntax Tree node hierarchy [IMPLEMENTED]
+├── module/          # Module discovery, PackageGraph, Lockfile, Workspace [IMPLEMENTED]
 ├── diagnostics/     # Diagnostics engine, Formatter, ICE [IMPLEMENTED]
 ├── driver/          # Pipeline orchestrator, CompilerContext [IMPLEMENTED]
-├── resolver/        # Lexical scoping, Symbol resolution, Shadowing [IMPLEMENTED]
-├── typecheck/       # Static type inference, Semantic validator [IMPLEMENTED]
+├── resolver/        # Lexical scoping, Symbol resolution, Shadowing, Visibility [IMPLEMENTED]
+├── typecheck/       # Static type inference, Semantic validator, Cross-module types [IMPLEMENTED]
 ├── hir/             # High-Level IR [ARCHITECTURAL SKELETON — DEFERRED]
 ├── mir/             # Mid-Level IR & CFG [ARCHITECTURAL SKELETON — DEFERRED]
 └── backend/         # Native LLVM & Wasm emitters [ARCHITECTURAL SKELETON — DEFERRED]
@@ -65,12 +66,13 @@ compiler/
 |---|---|---|---|
 | `source/` | **IMPLEMENTED** | 0.0.2-s | `SourceManager`, `LineMap` (binary search offset-to-line), `Span` tracking |
 | `lexer/` | **IMPLEMENTED** | 0.0.3-s | Left-to-right lexical scanner with full token model, literals, compound operators, and banned token rejection |
-| `parser/` | **IMPLEMENTED** | 0.0.3-s | Pratt precedence climbing parser, bare bindings, expression functions, if/block expressions, and `synchronize()` error recovery |
-| `ast/` | **IMPLEMENTED** | 0.0.3-s | Source-aware AST preserving exact spans on all declarations, statements, expressions, and patterns |
-| `diagnostics/` | **IMPLEMENTED** | 0.0.3-s | Structured diagnostic bags with `E1xxx`–`E9xxx` error families, source snippet formatting, code pointers, suggestions, and ICE crash reporting |
-| `driver/` | **IMPLEMENTED** | 0.0.3-s | `CompilerDriver`, `CompilerContext` session lifecycle, `CompilerConfig`, milestone diagnostics |
-| `resolver/` | **IMPLEMENTED** | 0.0.7-s | Lexical scope hierarchy (global, module, function, block, generic parameter scope), predictable shadowing, declaration hoisting (including traits), duplicate detection (`E2002`), duplicate trait impl detection (`E4005`), unresolved reference detection (`E2001`), generic parameter value usage rejection (`E2001`), immutable reassignment rejection (`E2003`), loop control validation (`E2004`) |
-| `typecheck/` | **IMPLEMENTED** | 0.0.7-s | Static type inference, generic types and functions, generic argument inference (`unifyTypes`), type constraints, explicit type argument checking (`E4001`), generic inference failure detection (`E4002`), trait constraints validation (`E4003`), trait implementation completeness checking (`E4004`), trait method signature contract validation (`E4006`), transparent type alias equivalence (`UserId ≡ Int`), static union type checking, function types, contextual lambda typing, Option/Result generic semantics, and pipeline generic typing |
+| `parser/` | **IMPLEMENTED** | 0.0.8-s | Pratt precedence climbing parser, `pub` modifier, `use`, `import`, aliases, dotted type paths, error recovery |
+| `ast/` | **IMPLEMENTED** | 0.0.8-s | Source-aware AST preserving exact spans on all nodes, `UseDecl`, and `isPublic` visibility markers |
+| `module/` | **IMPLEMENTED** | 0.0.8-s | Filesystem-as-module-map, deterministic module discovery, `Seira.toml` parser, SHA-256 `Seira.lock`, `ModuleGraph`, `PackageGraph`, `WorkspaceLoader`, cycle detection (`E6008`, `E6012`) |
+| `diagnostics/` | **IMPLEMENTED** | 0.0.8-s | Structured diagnostic bags with `E1xxx`–`E9xxx` error families, including `E6xxx` (Module & Package) |
+| `driver/` | **IMPLEMENTED** | 0.0.8-s | `CompilerDriver`, single-file compilation, and multi-module package compilation (`compilePackage`) |
+| `resolver/` | **IMPLEMENTED** | 0.0.8-s | Lexical scope hierarchy, cross-module symbol resolution, module-level import (`import`), symbol use (`use`), aliases (`as`), public re-exports (`pub use`), declaration visibility checking (`E6005`, `E6015`), and module-scope mutability prohibition (`E2003`) |
+| `typecheck/` | **IMPLEMENTED** | 0.0.8-s | Static type inference, cross-module generic types and functions, cross-module trait implementations and constraints, type aliases, union types, function types, contextual lambda typing, Option/Result generic semantics, and pipeline generic typing |
 | `hir/` | **ARCHITECTURAL SKELETON** | Planned (0.0.11-d) | Contracts for `HIRProgram`, `HIRModule`, `HIRFunction`, `HIRBlock` |
 | `mir/` | **ARCHITECTURAL SKELETON** | Planned (0.0.11-d) | Contracts for `MIRModule`, `BasicBlock`, `MIROperation`, `MIRResourceOp` |
 | `backend/` | **ARCHITECTURAL SKELETON** | Reserved (0.1.0-alpha) | Contracts for `BackendEmitter`, `BackendOptions`, `BackendResult` |

@@ -71,6 +71,7 @@ import type {
   TupleLiteral,
   TypeAliasDecl,
   TypeAnnotation,
+  UseDecl,
   WhileStmt,
   WildcardPattern,
   WithStmt,
@@ -140,6 +141,41 @@ export class Parser {
   // ---------------------------------------------------------------------------
 
   private parseTopLevelItem(): TopLevelItem | null {
+    if (this.match(TokenType.Pub)) {
+      const pubToken = this.previous();
+      if (this.check(TokenType.Fn)) {
+        return this.parseFunctionDecl(false, true, pubToken);
+      }
+      if (this.check(TokenType.Struct)) {
+        return this.parseStructDecl(true, pubToken);
+      }
+      if (this.check(TokenType.Enum)) {
+        return this.parseEnumDecl(true, pubToken);
+      }
+      if (this.check(TokenType.Type)) {
+        return this.parseTypeAliasDecl(true, pubToken);
+      }
+      if (this.check(TokenType.Trait)) {
+        return this.parseTraitDecl(true, pubToken);
+      }
+      if (this.check(TokenType.Const)) {
+        return this.parseConstStatement(true, pubToken);
+      }
+      if (this.check(TokenType.Use)) {
+        return this.parseUseDecl(true, pubToken);
+      }
+      if (this.check(TokenType.Import)) {
+        return this.parseImportDecl(true, pubToken);
+      }
+      this.diagnostics.reportError(
+        'E1010',
+        "Expected 'fn', 'struct', 'enum', 'type', 'trait', 'const', 'use', or 'import' after 'pub'.",
+        pubToken.span,
+        this.file
+      );
+      return null;
+    }
+
     if (this.check(TokenType.Fn)) {
       return this.parseFunctionDecl();
     }
@@ -160,6 +196,9 @@ export class Parser {
     }
     if (this.check(TokenType.Import)) {
       return this.parseImportDecl();
+    }
+    if (this.check(TokenType.Use)) {
+      return this.parseUseDecl();
     }
 
     return this.parseStatement();
@@ -195,8 +234,9 @@ export class Parser {
     return params;
   }
 
-  private parseFunctionDecl(allowSignatureOnly = false): FunctionDecl {
+  private parseFunctionDecl(allowSignatureOnly = false, isPublic: boolean = false, pubToken?: Token): FunctionDecl {
     const fnToken = this.consume(TokenType.Fn, "Expected 'fn' keyword.");
+    const startSpan = pubToken ? pubToken.span : fnToken.span;
     let isEffectful = false;
 
     const nameToken = this.consume(TokenType.Identifier, "Expected function name after 'fn'.");
@@ -226,24 +266,25 @@ export class Parser {
         genericParams,
         params,
         returnType,
+        isPublic,
         body: {
           kind: 'Block',
           statements: [],
           span: {
-            start: fnToken.span.start,
+            start: startSpan.start,
             end: this.previous().span.end,
-            sourceId: fnToken.span.sourceId,
-            line: fnToken.span.line,
-            column: fnToken.span.column,
+            sourceId: startSpan.sourceId,
+            line: startSpan.line,
+            column: startSpan.column,
           },
         },
         isExpressionBody: false,
         span: {
-          start: fnToken.span.start,
+          start: startSpan.start,
           end: this.previous().span.end,
-          sourceId: fnToken.span.sourceId,
-          line: fnToken.span.line,
-          column: fnToken.span.column,
+          sourceId: startSpan.sourceId,
+          line: startSpan.line,
+          column: startSpan.column,
         },
       };
     }
@@ -279,15 +320,16 @@ export class Parser {
         genericParams,
         params,
         returnType,
+        isPublic,
         body: block,
         bodyExpr: expr,
         isExpressionBody: true,
         span: {
-          start: fnToken.span.start,
+          start: startSpan.start,
           end: expr.span.end,
-          sourceId: fnToken.span.sourceId,
-          line: fnToken.span.line,
-          column: fnToken.span.column,
+          sourceId: startSpan.sourceId,
+          line: startSpan.line,
+          column: startSpan.column,
         },
       };
     }
@@ -302,14 +344,15 @@ export class Parser {
       genericParams,
       params,
       returnType,
+      isPublic,
       body,
       isExpressionBody: false,
       span: {
-        start: fnToken.span.start,
+        start: startSpan.start,
         end: body.span.end,
-        sourceId: fnToken.span.sourceId,
-        line: fnToken.span.line,
-        column: fnToken.span.column,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
       },
     };
   }
@@ -436,6 +479,14 @@ export class Parser {
     }
 
     const nameToken = this.consume(TokenType.Identifier, 'Expected type name.');
+    let typeName = nameToken.lexeme;
+    let endSpan = nameToken.span;
+    while (this.match(TokenType.Dot)) {
+      const part = this.consume(TokenType.Identifier, 'Expected identifier after dot in type name.');
+      typeName += '.' + part.lexeme;
+      endSpan = part.span;
+    }
+
     let isEffectful = false;
     if (this.match(TokenType.Bang)) {
       isEffectful = true;
@@ -451,7 +502,7 @@ export class Parser {
 
     return {
       kind: 'TypeAnnotation',
-      name: nameToken.lexeme,
+      name: typeName,
       generics: generics.length > 0 ? generics : undefined,
       isEffectful,
       span: {
@@ -464,8 +515,9 @@ export class Parser {
     };
   }
 
-  private parseStructDecl(): StructDecl {
+  private parseStructDecl(isPublic: boolean = false, pubToken?: Token): StructDecl {
     const structToken = this.consume(TokenType.Struct, "Expected 'struct'.");
+    const startSpan = pubToken ? pubToken.span : structToken.span;
     const nameToken = this.consume(TokenType.Identifier, 'Expected struct name.');
     let genericParams: GenericParamNode[] | undefined;
     if (this.check(TokenType.Less)) {
@@ -488,18 +540,20 @@ export class Parser {
       name: nameToken.lexeme,
       genericParams,
       fields,
+      isPublic,
       span: {
-        start: structToken.span.start,
+        start: startSpan.start,
         end: closeBrace.span.end,
-        sourceId: structToken.span.sourceId,
-        line: structToken.span.line,
-        column: structToken.span.column,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
       },
     };
   }
 
-  private parseEnumDecl(): EnumDecl {
+  private parseEnumDecl(isPublic: boolean = false, pubToken?: Token): EnumDecl {
     const enumToken = this.consume(TokenType.Enum, "Expected 'enum'.");
+    const startSpan = pubToken ? pubToken.span : enumToken.span;
     const nameToken = this.consume(TokenType.Identifier, 'Expected enum name.');
     this.consume(TokenType.OpenBrace, "Expected '{' after enum name.");
 
@@ -530,18 +584,20 @@ export class Parser {
       kind: 'EnumDecl',
       name: nameToken.lexeme,
       variants,
+      isPublic,
       span: {
-        start: enumToken.span.start,
+        start: startSpan.start,
         end: closeBrace.span.end,
-        sourceId: enumToken.span.sourceId,
-        line: enumToken.span.line,
-        column: enumToken.span.column,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
       },
     };
   }
 
-  private parseTypeAliasDecl(): TypeAliasDecl | StructDecl {
+  private parseTypeAliasDecl(isPublic: boolean = false, pubToken?: Token): TypeAliasDecl | StructDecl {
     const typeToken = this.consume(TokenType.Type, "Expected 'type'.");
+    const startSpan = pubToken ? pubToken.span : typeToken.span;
     const nameToken = this.consume(TokenType.Identifier, 'Expected type name.');
     let genericParams: GenericParamNode[] | undefined;
     if (this.check(TokenType.Less)) {
@@ -565,12 +621,13 @@ export class Parser {
         name: nameToken.lexeme,
         genericParams,
         fields,
+        isPublic,
         span: {
-          start: typeToken.span.start,
+          start: startSpan.start,
           end: closeBrace.span.end,
-          sourceId: typeToken.span.sourceId,
-          line: typeToken.span.line,
-          column: typeToken.span.column,
+          sourceId: startSpan.sourceId,
+          line: startSpan.line,
+          column: startSpan.column,
         },
       };
     }
@@ -584,18 +641,20 @@ export class Parser {
       name: nameToken.lexeme,
       genericParams,
       targetType,
+      isPublic,
       span: {
-        start: typeToken.span.start,
+        start: startSpan.start,
         end: targetType.span.end,
-        sourceId: typeToken.span.sourceId,
-        line: typeToken.span.line,
-        column: typeToken.span.column,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
       },
     };
   }
 
-  private parseTraitDecl(): TraitDecl {
+  private parseTraitDecl(isPublic: boolean = false, pubToken?: Token): TraitDecl {
     const traitToken = this.consume(TokenType.Trait, "Expected 'trait'.");
+    const startSpan = pubToken ? pubToken.span : traitToken.span;
     const nameToken = this.consume(TokenType.Identifier, 'Expected trait name.');
     let genericParams: GenericParamNode[] | undefined;
     if (this.check(TokenType.Less)) {
@@ -618,8 +677,9 @@ export class Parser {
       name: nameToken.lexeme,
       genericParams,
       methods,
+      isPublic,
       span: {
-        start: traitToken.span.start,
+        start: startSpan.start,
         end: closeBrace.span.end,
         sourceId: traitToken.span.sourceId,
         line: traitToken.span.line,
@@ -660,9 +720,65 @@ export class Parser {
     };
   }
 
-  private parseImportDecl(): ImportDecl {
+  private parseImportDecl(isPublic: boolean = false, pubToken?: Token): ImportDecl {
     const importToken = this.consume(TokenType.Import, "Expected 'import'.");
-    const pathToken = this.consume(TokenType.Identifier, 'Expected module path.');
+    const startSpan = pubToken ? pubToken.span : importToken.span;
+
+    // Check for wildcard import: import *
+    if (this.check(TokenType.Star)) {
+      const starToken = this.advance();
+      this.diagnostics.reportError(
+        'E6006',
+        "Wildcard imports ('import *') are forbidden in Seira.",
+        starToken.span,
+        this.file,
+        undefined,
+        "Import specific modules explicitly."
+      );
+      this.match(TokenType.Semicolon);
+      return {
+        kind: 'ImportDecl',
+        path: '*',
+        isPublic,
+        span: {
+          start: startSpan.start,
+          end: starToken.span.end,
+          sourceId: startSpan.sourceId,
+          line: startSpan.line,
+          column: startSpan.column,
+        },
+      };
+    }
+
+    const parts: string[] = [];
+    if (this.check(TokenType.Identifier)) {
+      parts.push(this.advance().lexeme);
+      while (this.match(TokenType.Dot)) {
+        if (this.check(TokenType.Star)) {
+          const starToken = this.advance();
+          this.diagnostics.reportError(
+            'E6006',
+            "Wildcard imports ('import ...*') are forbidden in Seira.",
+            starToken.span,
+            this.file,
+            undefined,
+            "Import specific modules explicitly."
+          );
+          break;
+        }
+        const part = this.consume(TokenType.Identifier, "Expected identifier after '.' in import path.");
+        parts.push(part.lexeme);
+      }
+    } else {
+      this.diagnostics.reportError(
+        'E6006',
+        "Expected module path after 'import'.",
+        this.peek().span,
+        this.file
+      );
+    }
+
+    const path = parts.join('.');
     let alias: string | undefined;
 
     if (this.match(TokenType.As)) {
@@ -674,14 +790,98 @@ export class Parser {
 
     return {
       kind: 'ImportDecl',
-      path: pathToken.lexeme,
+      path,
       alias,
+      isPublic,
       span: {
-        start: importToken.span.start,
+        start: startSpan.start,
         end: this.previous().span.end,
-        sourceId: importToken.span.sourceId,
-        line: importToken.span.line,
-        column: importToken.span.column,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
+      },
+    };
+  }
+
+  private parseUseDecl(isPublic: boolean = false, pubToken?: Token): UseDecl {
+    const useToken = this.consume(TokenType.Use, "Expected 'use'.");
+    const startSpan = pubToken ? pubToken.span : useToken.span;
+
+    // Check for wildcard use: use *
+    if (this.check(TokenType.Star)) {
+      const starToken = this.advance();
+      this.diagnostics.reportError(
+        'E6007',
+        "Wildcard imports ('use *') are forbidden in Seira.",
+        starToken.span,
+        this.file,
+        undefined,
+        "Import specific symbols explicitly with 'use path.Symbol'."
+      );
+      this.match(TokenType.Semicolon);
+      return {
+        kind: 'UseDecl',
+        path: '*',
+        isPublic,
+        span: {
+          start: startSpan.start,
+          end: starToken.span.end,
+          sourceId: startSpan.sourceId,
+          line: startSpan.line,
+          column: startSpan.column,
+        },
+      };
+    }
+
+    const parts: string[] = [];
+    if (this.check(TokenType.Identifier)) {
+      parts.push(this.advance().lexeme);
+      while (this.match(TokenType.Dot)) {
+        if (this.check(TokenType.Star)) {
+          const starToken = this.advance();
+          this.diagnostics.reportError(
+            'E6007',
+            "Wildcard imports ('use ...*') are forbidden in Seira.",
+            starToken.span,
+            this.file,
+            undefined,
+            "Import specific symbols explicitly."
+          );
+          break;
+        }
+        const part = this.consume(TokenType.Identifier, "Expected identifier after '.' in use path.");
+        parts.push(part.lexeme);
+      }
+    } else {
+      this.diagnostics.reportError(
+        'E6007',
+        "Expected symbol path after 'use'.",
+        this.peek().span,
+        this.file
+      );
+    }
+
+    const path = parts.join('.');
+    let alias: string | undefined;
+
+    if (this.match(TokenType.As)) {
+      const aliasToken = this.consume(TokenType.Identifier, "Expected identifier after 'as'.");
+      alias = aliasToken.lexeme;
+    }
+
+    this.match(TokenType.Semicolon);
+
+    return {
+      kind: 'UseDecl',
+      path,
+      alias,
+      isPublic,
+      span: {
+        start: startSpan.start,
+        end: this.previous().span.end,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
       },
     };
   }
@@ -696,6 +896,12 @@ export class Parser {
     }
     if (this.check(TokenType.Const)) {
       return this.parseConstStatement();
+    }
+    if (this.check(TokenType.Use)) {
+      return this.parseUseDecl() as unknown as Stmt;
+    }
+    if (this.check(TokenType.Import)) {
+      return this.parseImportDecl() as unknown as Stmt;
     }
     if (this.check(TokenType.Mut)) {
       return this.parseBareBindingStatement(true);
@@ -789,8 +995,9 @@ export class Parser {
     };
   }
 
-  private parseConstStatement(): ConstStmt {
+  private parseConstStatement(isPublic: boolean = false, pubToken?: Token): ConstStmt {
     const constToken = this.consume(TokenType.Const, "Expected 'const'.");
+    const startSpan = pubToken ? pubToken.span : constToken.span;
     const nameToken = this.consume(TokenType.Identifier, 'Expected identifier after const.');
     let typeAnnotation: TypeAnnotation | undefined;
     if (this.match(TokenType.Colon)) {
@@ -806,12 +1013,13 @@ export class Parser {
       name: nameToken.lexeme,
       typeAnnotation,
       initializer,
+      isPublic,
       span: {
-        start: constToken.span.start,
+        start: startSpan.start,
         end: initializer.span.end,
-        sourceId: constToken.span.sourceId,
-        line: constToken.span.line,
-        column: constToken.span.column,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
       },
     };
   }

@@ -7,9 +7,9 @@
  * - E3xxx: Type
  * - E4xxx: Trait / Generic
  * - E5xxx: Pattern
- * - E6xxx: Effect
+ * - E6xxx: Module / Package
  * - E7xxx: Resource / Ownership
- * - E8xxx: Module / Visibility
+ * - E8xxx: Effect / Concurrency
  * - E9xxx: Build / Dependency / Backend
  * - W1xxx: Warning
  * - I1xxx: Information

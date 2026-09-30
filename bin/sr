@@ -1,0 +1,14 @@
+#!/bin/sh
+# Resolves symlinks so that `npm link` or symlinks from /usr/local/bin work properly.
+PRG="$0"
+while [ -h "$PRG" ]; do
+  ls=$(ls -ld "$PRG")
+  link=$(expr "$ls" : '.*-> \(.*\)$')
+  if expr "$link" : '/.*' > /dev/null; then
+    PRG="$link"
+  else
+    PRG="$(dirname "$PRG")/$link"
+  fi
+done
+SCRIPT_DIR="$(cd "$(dirname "$PRG")" && pwd -P)"
+exec node --experimental-strip-types "$SCRIPT_DIR/../tools/cli/index.ts" "$@"

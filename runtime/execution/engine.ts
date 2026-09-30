@@ -120,6 +120,42 @@ export class ExecutionEngine {
     return this.buildResult(outcome, ctx);
   }
 
+  /**
+   * Compiles and executes a Seira package directory containing `Seira.toml`.
+   */
+  public executePackage(
+    packageDir: string,
+    config?: Partial<ExecutionConfig>
+  ): ExecutionResult {
+    const pkgResult = this.compilerDriver.compilePackage(packageDir);
+
+    if (!pkgResult.success || !pkgResult.entryModule || !pkgResult.entryModule.ast) {
+      if (pkgResult.success && (!pkgResult.entryModule || !pkgResult.entryModule.ast)) {
+        pkgResult.diagnostics.reportError(
+          'E6001',
+          `No executable entry point found in package '${pkgResult.package?.name ?? packageDir}'. Expected 'src/main.sr' with 'fn main()'.`,
+          { start: 0, end: 0, line: 1, column: 1 },
+          packageDir
+        );
+      }
+      return {
+        success: false,
+        diagnostics: pkgResult.diagnostics,
+        output: [],
+      };
+    }
+
+    const ctx = new ExecutionContext(
+      { ...config, fileName: pkgResult.entryModule.filePath },
+      pkgResult.diagnostics
+    );
+    const evaluator = new Evaluator(ctx);
+    const depModules = pkgResult.sortedModules.filter((m) => m !== pkgResult.entryModule);
+    const outcome = evaluator.executeProgram(pkgResult.entryModule.ast, depModules);
+
+    return this.buildResult(outcome, ctx);
+  }
+
   private buildResult(outcome: RuntimeOutcome, ctx: ExecutionContext): ExecutionResult {
     const output = Array.from(ctx.getCapturedOutput());
 
