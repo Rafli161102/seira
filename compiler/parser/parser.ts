@@ -647,7 +647,7 @@ export class Parser {
 
     const currentToken = this.peek();
     this.diagnostics.reportError(
-      'SEIRA-E0200',
+      'E1010',
       `Unexpected token '${currentToken.lexeme || currentToken.type}' in expression`,
       currentToken.span,
       this.file
@@ -695,7 +695,7 @@ export class Parser {
     if (this.check(type)) return this.advance();
 
     const tok = this.peek();
-    this.diagnostics.reportError('SEIRA-E0201', message, tok.span, this.file);
+    this.diagnostics.reportError('E1011', message, tok.span, this.file);
     throw new Error(message);
   }
 

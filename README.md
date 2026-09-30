@@ -7,11 +7,19 @@
 > **Simple to write. Predictable to run.**  
 > *Write less. Control more.*
 
+**Seira** is an open-source programming language. The long-term goal of the project is:
+> *A fast, modern, predictable, and secure programming language for native and WebAssembly software.*
+
+> [!IMPORTANT]
+> **Current Status: Seed (0.0.1-s)**  
+> Seira is in its earliest seed stage. **Alpha is not released yet.**  
+> Seira is under active development and is **not production-ready**. In this Seed release, the project provides foundational architecture, documentation, project manifest support, a minimal CLI, a Seed lexer/parser, and diagnostic foundations. Direct native compilation and full execution will arrive during the Alpha series.
+
 ---
 
 ## 1. Core Language Identity
 
-Seira is an open-source programming language targeting high-performance native execution and WebAssembly. Seira is built upon three foundational axioms:
+Seira is built upon three foundational axioms:
 
 ```
 «Everything is a Value.
@@ -78,7 +86,7 @@ Stable 1.0.0
 ```
 
 ### What is implemented in `0.0.1-s`:
-- [x] Official repository architecture and permanent branch model (`main`, `develop`, `dev-infra`).
+- [x] Official repository architecture and 3 permanent branches (`main`, `develop`, `dev-infra`).
 - [x] Contributor documentation, governance model, and RFC process.
 - [x] Project manifest format (`Seira.toml`) parsing and validation.
 - [x] Official CLI (`seira`) with `--version`, `--help`, `info`, and `check` commands.
@@ -86,13 +94,13 @@ Stable 1.0.0
 - [x] Lexer for Seira tokens (keywords, symbols `|>`, `??`, `?`, `!`, `@`, literals, comments).
 - [x] Minimal parser for function definitions, statements, and expressions.
 - [x] Diagnostics engine with source spans and formatted error reporting.
-- [x] Runtime architecture skeleton (value model, memory/resource scopes, effect interfaces).
-- [x] Automated test suite across lexer, parser, diagnostics, manifest, and CLI.
+- [x] Runtime architecture skeleton (value model, memory/resource scopes, effect interfaces, context, panic, services, host adapter).
+- [x] Automated test suite across lexer, parser, diagnostics, manifest, runtime, and CLI.
 
 ### What is reserved / planned for future releases:
 - Full LLVM native code generator and WebAssembly emission backend.
 - Type checker, trait solver, and effect verification engine.
-- Complete standard library (`std::core`, `std::io`, `std::sys`).
+- Complete standard library (`std/core`, `std/collections`, `std/io`, `std/fs`, `std/net`, `std/time`, etc.).
 - Runtime execution engine and async task scheduler.
 - Package manager network registry and dependency resolution.
 

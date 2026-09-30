@@ -35,11 +35,10 @@ export class TypeChecker {
 
   public check(program: Program, file?: string): TypecheckResult {
     // SKELETON: Reserved for 0.0.3-s / 0.0.4-s Seed releases.
-    this.diagnostics.report(
-      'SEIRA-E0400',
+    this.diagnostics.reportInfo(
+      'E3001',
       "Type checker is an architectural skeleton reserved for Seed milestone 0.0.3-s.",
       program.span,
-      'info',
       file,
       "Static type inference and effect tracking will be activated in 0.0.3-s."
     );

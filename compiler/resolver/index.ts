@@ -41,11 +41,10 @@ export class Resolver {
 
   public resolve(program: Program, file?: string): ResolverResult {
     // SKELETON: Reserved for 0.0.2-s Seed release.
-    this.diagnostics.report(
-      'SEIRA-E0300',
+    this.diagnostics.reportInfo(
+      'E2001',
       "Name resolver is an architectural skeleton reserved for Seed milestone 0.0.2-s.",
       program.span,
-      'info',
       file,
       "Scope resolution and symbol binding will be activated in 0.0.2-s."
     );

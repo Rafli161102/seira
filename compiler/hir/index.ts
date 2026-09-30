@@ -25,11 +25,10 @@ export class HIRLowering {
   }
 
   public lower(program: Program, file?: string): HIRProgram {
-    this.diagnostics.report(
-      'SEIRA-E0500',
+    this.diagnostics.reportInfo(
+      'I1001',
       "HIR lowering is an architectural skeleton reserved for the Development Series.",
       program.span,
-      'info',
       file,
       "HIR transformation will be enabled in 0.0.11-d."
     );

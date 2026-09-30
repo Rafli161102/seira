@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import test from 'node:test';
 import {
+  DefaultHostAdapter,
   EffectContext,
   makeBool,
   makeErr,
@@ -10,7 +11,11 @@ import {
   makeSome,
   makeString,
   NoneValue,
+  panic,
   ResourceScope,
+  RuntimeContext,
+  ServiceRegistry,
+  setPanicHook,
   UnitValue,
   ValueTag,
 } from '../../runtime/index.ts';
@@ -88,4 +93,52 @@ test('Runtime Effects: dispatches effects to registered handlers', async () => {
   const res = await context.perform({ name: 'log', payload: 'Kernel initialized' });
   assert.strictEqual(res.tag, ValueTag.String);
   assert.strictEqual((res as any).value, 'Logged: Kernel initialized');
+});
+
+test('Runtime Context: initializes scope and effect environment', () => {
+  const ctx = new RuntimeContext({ maxStackDepth: 1024 });
+  assert.ok(ctx.getRootScope());
+  assert.ok(ctx.getEffectContext());
+  assert.strictEqual(ctx.getConfig().maxStackDepth, 1024);
+});
+
+test('Runtime Panic: invokes panic hook and throws descriptive error', () => {
+  let capturedMessage = '';
+  setPanicHook((p) => {
+    capturedMessage = p.message;
+  });
+
+  assert.throws(
+    () => {
+      panic({ message: 'Kernel out of memory', file: 'kernel.sra', line: 10, column: 1 });
+    },
+    /Seira Panic at kernel\.sra:10:1: Kernel out of memory/
+  );
+
+  assert.strictEqual(capturedMessage, 'Kernel out of memory');
+});
+
+test('Runtime Services: manages service registry and shutdown', async () => {
+  const registry = new ServiceRegistry();
+  let shutdownCalled = false;
+
+  registry.register({
+    serviceName: 'test-service',
+    initialize: () => {},
+    shutdown: () => {
+      shutdownCalled = true;
+    },
+  });
+
+  assert.ok(registry.get('test-service'));
+  await registry.shutdownAll();
+  assert.strictEqual(shutdownCalled, true);
+  assert.strictEqual(registry.get('test-service'), undefined);
+});
+
+test('Runtime Host Adapter: returns valid monotonic nanoseconds', () => {
+  const adapter = new DefaultHostAdapter();
+  const nanos = adapter.nowNanoseconds();
+  assert.ok(typeof nanos === 'bigint');
+  assert.ok(nanos > 0n);
 });

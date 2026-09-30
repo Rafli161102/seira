@@ -34,11 +34,10 @@ export class CompilerBackend {
   }
 
   public emit(options: BackendOptions): BackendResult {
-    this.diagnostics.report(
-      'SEIRA-E0600',
+    this.diagnostics.reportError(
+      'E9001',
       `Backend code generation for '${options.target}' is reserved for Alpha release 0.1.0-alpha.`,
       { start: 0, end: 0, line: 1, column: 1 },
-      'error',
       undefined,
       "Code generation targets will become operational during the Alpha series."
     );
