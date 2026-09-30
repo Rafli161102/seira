@@ -13,6 +13,41 @@ and this project adheres to the Seira Staged Versioning Model:
 
 ---
 
+## [0.0.4-s] - 2026-09-30
+
+### Added
+- **Language Foundation Semantic Pipeline**:
+  - Connected front-end semantic stages: `AST -> Name Resolution -> Basic Type Analysis -> Semantic Validation -> Diagnostics`.
+- **Name Resolution Subsystem (`compiler/resolver/`)**:
+  - Implemented lexical scope hierarchy (`global`, `module`, `function`, `block`).
+  - Added deterministic symbol tables (`Scope`, `SymbolInfo`, `SymbolKind`).
+  - Implemented top-level declaration hoisting for functions, structs, enums, and type aliases.
+  - Implemented predictable lexical shadowing across nested scopes without accidental outer mutation.
+  - Implemented duplicate declaration detection in the same lexical scope (`E2002`).
+  - Implemented unresolved identifier detection (`E2001`).
+  - Implemented mutability distinction: `x = value` (immutable) vs `mut x = value` (mutable), rejecting reassignment to immutable bindings (`E2003`).
+- **Basic Type System & Analysis (`compiler/typecheck/`)**:
+  - Established semantic type representations: primitives (`Int`, `UInt`, `Float`, `Bool`, `Char`, `String`, `Byte`, `Unit`, `Unknown`), compounds (`Option<T>`, `Result<T, E>`, `List<T>`, `Tuple`, `Function` `(P1, P2, ...) -> R`), and extensible types (`GenericParam`, `TypeAlias`, `Union`, `Custom`).
+  - Implemented structural type equality (`areTypesEqual`, `isTypeAssignable`) independent of JavaScript/TypeScript object reference identity.
+  - Implemented deterministic static type inference for literal values and binding expressions.
+  - Implemented explicit type annotation verification, rejecting incompatible assignments with `E3001`.
+  - Enforced strict Boolean conditions in `if` expressions and logical operators (`and`, `or`, `not`) with zero truthy/falsy coercion (`E3005`, `E3002`).
+  - Implemented operator operand typing: arithmetic operations require matching numeric types (`E3002`); string concatenation (`+`) requires two strings; rejected arbitrary mixed-type coercions (`Int + String`, `Int + Float`).
+  - Implemented comparison and equality operator typing returning `Bool`.
+  - Implemented function semantic validation: parameter validation, function call argument count and type checking (`E3003`), and function return type validation for both expression and block bodies (`E3004`).
+  - Implemented Option & Result foundational semantics (`Some`, `None`, `Ok`, `Err`), fallback operator (`??`), and propagation operator (`?`).
+  - Implemented pipeline expression validation (`|>`) ensuring pipeline targets are callable and compatible.
+- **Diagnostic Extensions**:
+  - Added resolution error family `E2xxx` (`E2001`, `E2002`, `E2003`).
+  - Added type error family `E3xxx` (`E3001`, `E3002`, `E3003`, `E3004`, `E3005`).
+- **Test Suite Expansion**:
+  - Added comprehensive unit tests in `tests/unit/resolver/` and `tests/unit/typecheck/`.
+  - Added semantic driver execution tests in `tests/compiler/driver.test.ts`.
+  - Added semantic fixture verification in `tests/compiler/fixtures.test.ts`.
+  - Expanded test suite to 87 passing automated tests.
+
+---
+
 ## [0.0.3-s] - 2026-09-30
 
 ### Added

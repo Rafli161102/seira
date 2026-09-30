@@ -171,6 +171,10 @@ export class DiagnosticBag {
     return this.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error);
   }
 
+  public getErrors(): ReadonlyArray<Diagnostic> {
+    return this.diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+  }
+
   public getDiagnostics(): ReadonlyArray<Diagnostic> {
     return this.diagnostics;
   }

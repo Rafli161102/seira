@@ -41,6 +41,33 @@ test('Driver: runs through skeleton stages cleanly with milestone notifications'
   assert.ok(res.diagnostics.getDiagnostics().some((d) => d.code === 'I1001'));
 });
 
+test('Driver: executes pipeline through Resolver and Typecheck stages cleanly', () => {
+  const driver = new CompilerDriver();
+  const res = driver.compile(
+    'fn add(a: Int, b: Int) -> Int { a + b } fn main() { res = add(10, 20); }',
+    'math.sra',
+    { stopAfter: CompilerStage.Typecheck }
+  );
+
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.stage, CompilerStage.Typecheck);
+  assert.ok(res.ast);
+  assert.strictEqual(res.diagnostics.hasErrors(), false);
+});
+
+test('Driver: halts and reports errors when semantic validation fails', () => {
+  const driver = new CompilerDriver();
+  const res = driver.compile(
+    'fn main() { age: Int = "hello"; }',
+    'invalid_type.sra',
+    { stopAfter: CompilerStage.Typecheck }
+  );
+
+  assert.strictEqual(res.success, false);
+  assert.strictEqual(res.diagnostics.hasErrors(), true);
+  assert.ok(res.diagnostics.getErrors().some((e) => e.code === 'E3001'));
+});
+
 test('Context: manages session lifecycle strictly', () => {
   const ctx = new CompilerContext({ target: 'native', profile: 'release' });
   assert.strictEqual(ctx.getState(), SessionState.Configured);

@@ -17,7 +17,7 @@ import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
 import { MIRBuilder, type MIRModule } from '../mir/index.ts';
 import { Parser } from '../parser/parser.ts';
-import { Resolver } from '../resolver/index.ts';
+import { Resolver, type ResolverResult } from '../resolver/index.ts';
 import { TypeChecker } from '../typecheck/index.ts';
 import type { CompilerConfig } from './config.ts';
 import { CompilerContext } from './context.ts';
@@ -143,12 +143,13 @@ export class CompilerDriver {
       };
     }
 
-    // Stage 3: Name Resolution (Architectural Skeleton)
+    // Stage 3: Name Resolution
+    let resolverResult: ResolverResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.Resolve)) {
       const resolver = new Resolver(context.diagnostics);
-      resolver.resolve(ast, filePath);
+      resolverResult = resolver.resolve(ast, filePath);
 
-      if (effectiveStop === CompilerStage.Resolve) {
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Resolve) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),
@@ -161,12 +162,12 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 4: Type Checking & Inference (Architectural Skeleton)
+    // Stage 4: Type Checking & Semantic Analysis
     if (isStageAtLeast(effectiveStop, CompilerStage.Typecheck)) {
       const typeChecker = new TypeChecker(context.diagnostics);
-      typeChecker.check(ast, filePath);
+      typeChecker.check(ast, resolverResult, filePath);
 
-      if (effectiveStop === CompilerStage.Typecheck) {
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Typecheck) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),

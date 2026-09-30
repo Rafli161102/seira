@@ -7,7 +7,11 @@
 
 import type { Program } from './ast/ast.ts';
 import type { DiagnosticBag } from './diagnostics/index.ts';
-import { CompilerDriver, type CompilationResult as DriverCompilationResult } from './driver/index.ts';
+import {
+  CompilerDriver,
+  type CompilationResult as DriverCompilationResult,
+  type DriverOptions,
+} from './driver/index.ts';
 import type { Token } from './lexer/token.ts';
 
 export * from './ast/ast.ts';
@@ -34,7 +38,11 @@ export interface CompilationResult {
  * Compiles Seira source code through the parsing phase.
  * Provided for backward-compatible consumption by CLI and test suites.
  */
-export function compileSource(source: string, file?: string): DriverCompilationResult {
+export function compileSource(
+  source: string,
+  file?: string,
+  options?: DriverOptions
+): DriverCompilationResult {
   const driver = new CompilerDriver();
-  return driver.compile(source, file, { stopAfter: 'parse' });
+  return driver.compile(source, file, options ?? { stopAfter: 'parse' });
 }

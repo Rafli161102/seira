@@ -29,27 +29,27 @@ test('Compiler: halts and reports errors on invalid syntax', () => {
   assert.strictEqual(result.diagnostics.hasErrors(), true);
 });
 
-test('Compiler: architectural skeletons emit clear milestone diagnostics', () => {
+test('Compiler: resolver and typechecker succeed on valid source, skeletons emit milestone diagnostics', () => {
   const source = 'fn main() {}';
   const { ast } = compileSource(source);
   assert.ok(ast);
 
-  // Resolver skeleton
+  // Real resolver
   const resolver = new Resolver();
   const res = resolver.resolve(ast!);
   assert.strictEqual(res.success, true);
-  assert.ok(res.diagnostics.getDiagnostics().some((d) => d.code === 'E2001'));
+  assert.strictEqual(res.diagnostics.hasErrors(), false);
 
-  // Typecheck skeleton
+  // Real typechecker
   const typechecker = new TypeChecker();
-  const tcRes = typechecker.check(ast!);
+  const tcRes = typechecker.check(ast!, res);
   assert.strictEqual(tcRes.success, true);
-  assert.ok(tcRes.diagnostics.getDiagnostics().some((d) => d.code === 'E3001'));
+  assert.strictEqual(tcRes.diagnostics.hasErrors(), false);
 
   // HIR skeleton
   const hir = new HIRLowering();
   const hirRes = hir.lower(ast!);
-  assert.strictEqual(hirRes.version, '0.0.3-s');
+  assert.strictEqual(hirRes.version, '0.0.4-s');
 
   // Backend skeleton
   const backend = new CompilerBackend();
