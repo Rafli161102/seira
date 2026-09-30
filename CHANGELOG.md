@@ -13,6 +13,36 @@ and this project adheres to the Seira Staged Versioning Model:
 
 ---
 
+## [0.0.3-s] - 2026-09-30
+
+### Added
+- **Compiler Foundation Pipeline**:
+  - Connected end-to-end pipeline: `Source -> SourceManager -> Lexer -> Tokens -> Parser -> AST -> Compiler Driver -> Diagnostics`.
+- **Lexer & Token Model (`compiler/lexer/`)**:
+  - Expanded lexical scanner with full token model according to locked Syntax & Symbol Bible and Operator Matrix.
+  - Added scanning for literals: `Int` (decimal, hex `0x`, binary `0b`), `UInt` (`100u`), `Float` (`3.14`), `Bool` (`true`, `false`), `Char` (`'a'`, escape sequences), and `String` (`"..."`).
+  - Added range operators (`..`, `..<`), compound assignments (`+=`, `-=`, `*=`, `/=`, `%=`), and expanded keyword recognition (`enum`, `const`, `mut`, `with`, `if`, `else`, `match`, `for`, `while`, `loop`, `break`, `continue`, `pub`, `priv`, `async`, `await`, `pure`, `unsafe`, `self`, `use`).
+  - Guaranteed accurate source span preservation across single-line (`//`) and block (`/* ... */`) comments.
+  - Enforced strict rejection of banned operators (`++`, `--`, `&&`, `||`, `null`, `===`, `!==`, `::`) with targeted diagnostics and suggestions.
+- **Parser Architecture & Precedence Climbing (`compiler/parser/`)**:
+  - Implemented Pratt-style precedence climbing adhering to the locked Operator Matrix (Assignment, Pipeline, Option Fallback, Or, And, Equality, Comparison, Range, Additive, Multiplicative, Unary, Postfix, Primary).
+  - Implemented bare immutable bindings (`name = expr;`), mutable bindings (`mut name = expr;`), `let` statements, and `const` statements.
+  - Implemented function parsing for standard block functions (`fn name(...) -> Type { ... }`) and expression-style functions (`fn name(...) => expr;`).
+  - Implemented `if` expressions as both statements and first-class value expressions.
+  - Implemented block expressions `{ ... }` with deterministic scoping.
+  - Implemented controlled, deterministic error recovery (`synchronize()`) allowing multi-error diagnostic reporting across statements and blocks without cascade crashes.
+- **AST Node Hierarchy (`compiler/ast/`)**:
+  - Added AST representations for `EnumDecl`, `TypeAliasDecl`, `ConstStmt`, `BindingStmt`, `AssignStmt`, `AssignmentExpr`, `RangeExpr`, `IfExpr`, `BlockExpr`.
+  - Guaranteed source span preservation across all AST node kinds.
+- **Diagnostics Engine (`compiler/diagnostics/`)**:
+  - Integrated diagnostics bag with compiler driver, generating formatted ASCII carets, source line snippets, hints, and suggestions.
+- **Test Suite Expansion**:
+  - Structured `tests/unit/` into modular directories: `lexer/`, `parser/`, `ast/`, `source/`, `diagnostics/`, `manifest/`.
+  - Added fixture verification suite in `tests/compiler/fixtures.test.ts` testing `valid/`, `invalid/`, `diagnostics/`, and `programs/`.
+  - Expanded test suite to 61 passing automated tests.
+
+---
+
 ## [0.0.2-s] - 2026-09-30
 
 ### Added

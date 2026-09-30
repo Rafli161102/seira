@@ -22,11 +22,11 @@ export * from './services/index.ts';
 export * from './value/index.ts';
 
 export interface RuntimeVersion {
-  readonly version: '0.0.2-s';
-  readonly status: 'Repository Architecture';
+  readonly version: '0.0.3-s';
+  readonly status: 'Compiler Foundation';
 }
 
 export const RUNTIME_INFO: RuntimeVersion = {
-  version: '0.0.2-s',
-  status: 'Repository Architecture',
+  version: '0.0.3-s',
+  status: 'Compiler Foundation',
 };

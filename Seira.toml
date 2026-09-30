@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.2-s Repository Architecture
+# Specification: 0.0.3-s Compiler Foundation
 
 [package]
 name = "seira"
-version = "0.0.2-s"
+version = "0.0.3-s"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — Repository Architecture"
+description = "The Seira Programming Language — Compiler Foundation"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 

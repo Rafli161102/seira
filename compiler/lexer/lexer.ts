@@ -1,25 +1,33 @@
 /**
  * Seira Lexer
  * Scans UTF-8 Seira source code into a clean token stream.
- * Enforces locked syntax rules and provides informative diagnostics for invalid constructs.
+ * Enforces locked syntax rules and provides informative diagnostics for invalid constructs:
+ * - Rejects banned operators: ++, --, &&, ||, ===, !==, ::, null
+ * - Recognizes locked symbols: =, :, ->, =>, ., |>, ?, ?., ??, !, @, ..., .., ..<
+ * - Recognizes compound assignments: +=, -=, *=, /=, %=
+ * - Scans characters, strings, numbers (dec, hex, bin, float, unsigned), booleans, identifiers, and keywords.
  */
 
-import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
+import { DiagnosticBag } from '../diagnostics/index.ts';
+import type { SourceId } from '../source/source_id.ts';
+import type { Span } from '../source/span.ts';
 import { KEYWORDS, type Token, TokenType } from './token.ts';
 
 export class Lexer {
   private readonly source: string;
   private readonly file?: string;
+  private readonly sourceId?: SourceId;
   private readonly diagnostics: DiagnosticBag;
 
   private cursor: number = 0;
   private line: number = 1;
   private column: number = 1;
 
-  constructor(source: string, file?: string, diagnostics?: DiagnosticBag) {
+  constructor(source: string, file?: string, diagnostics?: DiagnosticBag, sourceId?: SourceId) {
     this.source = source;
     this.file = file;
     this.diagnostics = diagnostics ?? new DiagnosticBag();
+    this.sourceId = sourceId;
   }
 
   public tokenize(): Token[] {
@@ -57,7 +65,6 @@ export class Lexer {
 
     const ch = this.advance();
 
-    // Single-character or prefix checks
     switch (ch) {
       case '(':
         return this.makeToken(TokenType.OpenParen, '(', startCursor, startLine, startCol);
@@ -75,19 +82,56 @@ export class Lexer {
         return this.makeToken(TokenType.Comma, ',', startCursor, startLine, startCol);
       case ';':
         return this.makeToken(TokenType.Semicolon, ';', startCursor, startLine, startCol);
-      case ':':
-        return this.makeToken(TokenType.Colon, ':', startCursor, startLine, startCol);
       case '@':
         return this.makeToken(TokenType.At, '@', startCursor, startLine, startCol);
+
+      case ':':
+        if (this.match(':')) {
+          this.reportBanned(
+            'E1010',
+            "Scope resolution operator '::' is not permitted in Seira.",
+            startCursor,
+            this.cursor,
+            startLine,
+            startCol,
+            "Use '.' for namespace and member access."
+          );
+          return null;
+        }
+        return this.makeToken(TokenType.Colon, ':', startCursor, startLine, startCol);
+
       case '*':
+        if (this.match('=')) {
+          return this.makeToken(TokenType.StarEqual, '*=', startCursor, startLine, startCol);
+        }
         return this.makeToken(TokenType.Star, '*', startCursor, startLine, startCol);
+
       case '%':
+        if (this.match('=')) {
+          return this.makeToken(TokenType.PercentEqual, '%=', startCursor, startLine, startCol);
+        }
         return this.makeToken(TokenType.Percent, '%', startCursor, startLine, startCol);
+
       case '/':
+        if (this.match('=')) {
+          return this.makeToken(TokenType.SlashEqual, '/=', startCursor, startLine, startCol);
+        }
         return this.makeToken(TokenType.Slash, '/', startCursor, startLine, startCol);
 
       case '=':
         if (this.match('=')) {
+          if (this.match('=')) {
+            this.reportBanned(
+              'E1009',
+              "Strict equality operator '===' is not permitted in Seira.",
+              startCursor,
+              this.cursor,
+              startLine,
+              startCol,
+              "Use '==' for value equality."
+            );
+            return null;
+          }
           return this.makeToken(TokenType.EqualEqual, '==', startCursor, startLine, startCol);
         }
         if (this.match('>')) {
@@ -97,6 +141,18 @@ export class Lexer {
 
       case '!':
         if (this.match('=')) {
+          if (this.match('=')) {
+            this.reportBanned(
+              'E1009',
+              "Strict inequality operator '!==' is not permitted in Seira.",
+              startCursor,
+              this.cursor,
+              startLine,
+              startCol,
+              "Use '!=' for value inequality."
+            );
+            return null;
+          }
           return this.makeToken(TokenType.BangEqual, '!=', startCursor, startLine, startCol);
         }
         return this.makeToken(TokenType.Bang, '!', startCursor, startLine, startCol);
@@ -126,6 +182,9 @@ export class Lexer {
           );
           return null;
         }
+        if (this.match('=')) {
+          return this.makeToken(TokenType.PlusEqual, '+=', startCursor, startLine, startCol);
+        }
         return this.makeToken(TokenType.Plus, '+', startCursor, startLine, startCol);
 
       case '-':
@@ -140,6 +199,9 @@ export class Lexer {
             "Use 'x -= 1' or 'x = x - 1' instead."
           );
           return null;
+        }
+        if (this.match('=')) {
+          return this.makeToken(TokenType.MinusEqual, '-=', startCursor, startLine, startCol);
         }
         if (this.match('>')) {
           return this.makeToken(TokenType.Arrow, '->', startCursor, startLine, startCol);
@@ -191,15 +253,23 @@ export class Lexer {
         return this.makeToken(TokenType.Question, '?', startCursor, startLine, startCol);
 
       case '.':
-        if (this.peek() === '.' && this.peekNext() === '.') {
-          this.advance();
-          this.advance();
-          return this.makeToken(TokenType.Spread, '...', startCursor, startLine, startCol);
+        if (this.peek() === '.') {
+          this.advance(); // consume second '.'
+          if (this.match('<')) {
+            return this.makeToken(TokenType.DotDotLess, '..<', startCursor, startLine, startCol);
+          }
+          if (this.match('.')) {
+            return this.makeToken(TokenType.Spread, '...', startCursor, startLine, startCol);
+          }
+          return this.makeToken(TokenType.DotDot, '..', startCursor, startLine, startCol);
         }
         return this.makeToken(TokenType.Dot, '.', startCursor, startLine, startCol);
 
       case '"':
         return this.scanString(startCursor, startLine, startCol);
+
+      case "'":
+        return this.scanChar(startCursor, startLine, startCol);
 
       default:
         if (this.isDigit(ch)) {
@@ -233,6 +303,9 @@ export class Lexer {
           case 'r':
             result += '\r';
             break;
+          case '0':
+            result += '\0';
+            break;
           case '"':
             result += '"';
             break;
@@ -260,28 +333,115 @@ export class Lexer {
       type: TokenType.StringLiteral,
       lexeme,
       value: result,
-      span: {
-        start: startCursor,
-        end: this.cursor,
-        line: startLine,
-        column: startCol,
-      },
+      span: this.span(startCursor, this.cursor, startLine, startCol),
+    };
+  }
+
+  private scanChar(startCursor: number, startLine: number, startCol: number): Token | null {
+    if (this.isAtEnd() || this.peek() === "'") {
+      this.advance(); // consume closing quote if present
+      this.reportError(
+        'E1008',
+        'Empty character literal is not allowed.',
+        startCursor,
+        this.cursor,
+        startLine,
+        startCol,
+        "A character literal must contain exactly one character, e.g. 'a' or '\\n'."
+      );
+      return null;
+    }
+
+    let charVal = '';
+    const ch = this.advance();
+    if (ch === '\\') {
+      if (this.isAtEnd()) {
+        this.reportError('E1008', 'Unterminated character literal', startCursor, this.cursor, startLine, startCol);
+        return null;
+      }
+      const esc = this.advance();
+      switch (esc) {
+        case 'n':
+          charVal = '\n';
+          break;
+        case 't':
+          charVal = '\t';
+          break;
+        case 'r':
+          charVal = '\r';
+          break;
+        case '0':
+          charVal = '\0';
+          break;
+        case "'":
+          charVal = "'";
+          break;
+        case '\\':
+          charVal = '\\';
+          break;
+        default:
+          charVal = esc;
+          break;
+      }
+    } else {
+      charVal = ch;
+    }
+
+    if (this.peek() !== "'") {
+      this.reportError(
+        'E1008',
+        'Character literal must contain exactly one character.',
+        startCursor,
+        this.cursor,
+        startLine,
+        startCol,
+        "Use double quotes for multi-character strings: \"string\"."
+      );
+      while (!this.isAtEnd() && this.peek() !== "'" && this.peek() !== '\n') {
+        this.advance();
+      }
+      if (this.peek() === "'") {
+        this.advance();
+      }
+      return null;
+    }
+
+    // Consume closing quote
+    this.advance();
+    const lexeme = this.source.slice(startCursor, this.cursor);
+    return {
+      type: TokenType.CharLiteral,
+      lexeme,
+      value: charVal,
+      span: this.span(startCursor, this.cursor, startLine, startCol),
     };
   }
 
   private scanNumber(firstDigit: string, startCursor: number, startLine: number, startCol: number): Token {
-    // Check for hex or binary
+    // Check for hex (0x...) or binary (0b...)
     if (firstDigit === '0' && (this.peek() === 'x' || this.peek() === 'X')) {
       this.advance(); // consume 'x'
       while (this.isHexDigit(this.peek())) {
         this.advance();
       }
+      const isUnsigned = this.peek() === 'u' || this.peek() === 'U';
+      if (isUnsigned) {
+        this.advance();
+        if (this.peek() === '3' && this.peekNext() === '2') {
+          this.advance();
+          this.advance();
+        } else if (this.peek() === '6' && this.peekNext() === '4') {
+          this.advance();
+          this.advance();
+        }
+      }
       const lexeme = this.source.slice(startCursor, this.cursor);
+      const cleanLexeme = isUnsigned ? lexeme.replace(/[uU]\d*$/, '') : lexeme;
       return {
-        type: TokenType.IntLiteral,
+        type: isUnsigned ? TokenType.UIntLiteral : TokenType.IntLiteral,
         lexeme,
-        value: parseInt(lexeme, 16),
-        span: { start: startCursor, end: this.cursor, line: startLine, column: startCol },
+        value: parseInt(cleanLexeme, 16),
+        span: this.span(startCursor, this.cursor, startLine, startCol),
       };
     }
 
@@ -290,12 +450,24 @@ export class Lexer {
       while (this.peek() === '0' || this.peek() === '1') {
         this.advance();
       }
+      const isUnsigned = this.peek() === 'u' || this.peek() === 'U';
+      if (isUnsigned) {
+        this.advance();
+        if (this.peek() === '3' && this.peekNext() === '2') {
+          this.advance();
+          this.advance();
+        } else if (this.peek() === '6' && this.peekNext() === '4') {
+          this.advance();
+          this.advance();
+        }
+      }
       const lexeme = this.source.slice(startCursor, this.cursor);
+      const cleanLexeme = isUnsigned ? lexeme.replace(/[uU]\d*$/, '') : lexeme;
       return {
-        type: TokenType.IntLiteral,
+        type: isUnsigned ? TokenType.UIntLiteral : TokenType.IntLiteral,
         lexeme,
-        value: parseInt(lexeme.slice(2), 2),
-        span: { start: startCursor, end: this.cursor, line: startLine, column: startCol },
+        value: parseInt(cleanLexeme.slice(2), 2),
+        span: this.span(startCursor, this.cursor, startLine, startCol),
       };
     }
 
@@ -303,7 +475,7 @@ export class Lexer {
       this.advance();
     }
 
-    // Float check: '.' followed by digit
+    // Float check: '.' followed by digit (NOT followed by '.' which is range '..')
     if (this.peek() === '.' && this.isDigit(this.peekNext())) {
       this.advance(); // consume '.'
       while (this.isDigit(this.peek())) {
@@ -314,7 +486,27 @@ export class Lexer {
         type: TokenType.FloatLiteral,
         lexeme,
         value: parseFloat(lexeme),
-        span: { start: startCursor, end: this.cursor, line: startLine, column: startCol },
+        span: this.span(startCursor, this.cursor, startLine, startCol),
+      };
+    }
+
+    // Check for unsigned suffix 'u', 'u32', 'u64'
+    if (this.peek() === 'u' || this.peek() === 'U') {
+      this.advance();
+      if (this.peek() === '3' && this.peekNext() === '2') {
+        this.advance();
+        this.advance();
+      } else if (this.peek() === '6' && this.peekNext() === '4') {
+        this.advance();
+        this.advance();
+      }
+      const lexeme = this.source.slice(startCursor, this.cursor);
+      const cleanLexeme = lexeme.replace(/[uU]\d*$/, '');
+      return {
+        type: TokenType.UIntLiteral,
+        lexeme,
+        value: parseInt(cleanLexeme, 10),
+        span: this.span(startCursor, this.cursor, startLine, startCol),
       };
     }
 
@@ -323,7 +515,7 @@ export class Lexer {
       type: TokenType.IntLiteral,
       lexeme,
       value: parseInt(lexeme, 10),
-      span: { start: startCursor, end: this.cursor, line: startLine, column: startCol },
+      span: this.span(startCursor, this.cursor, startLine, startCol),
     };
   }
 
@@ -354,14 +546,14 @@ export class Lexer {
         type: keywordType,
         lexeme,
         value: boolVal,
-        span: { start: startCursor, end: this.cursor, line: startLine, column: startCol },
+        span: this.span(startCursor, this.cursor, startLine, startCol),
       };
     }
 
     return {
       type: TokenType.Identifier,
       lexeme,
-      span: { start: startCursor, end: this.cursor, line: startLine, column: startCol },
+      span: this.span(startCursor, this.cursor, startLine, startCol),
     };
   }
 
@@ -447,8 +639,19 @@ export class Lexer {
     return {
       start,
       end,
+      sourceId: this.sourceId,
       line: this.line,
       column: this.column,
+    };
+  }
+
+  private span(start: number, end: number, line: number, column: number): Span {
+    return {
+      start,
+      end,
+      sourceId: this.sourceId,
+      line,
+      column,
     };
   }
 
@@ -456,12 +659,7 @@ export class Lexer {
     return {
       type,
       lexeme,
-      span: {
-        start: startCursor,
-        end: this.cursor,
-        line: startLine,
-        column: startCol,
-      },
+      span: this.span(startCursor, this.cursor, startLine, startCol),
     };
   }
 
@@ -474,7 +672,13 @@ export class Lexer {
     col: number,
     hint?: string
   ): void {
-    this.diagnostics.reportError(code, message, { start: startCursor, end: endCursor, line, column: col }, this.file, hint);
+    this.diagnostics.reportError(
+      code,
+      message,
+      { start: startCursor, end: endCursor, sourceId: this.sourceId, line, column: col },
+      this.file,
+      hint
+    );
   }
 
   private reportBanned(
@@ -486,6 +690,12 @@ export class Lexer {
     col: number,
     hint: string
   ): void {
-    this.diagnostics.reportError(code, message, { start: startCursor, end: endCursor, line, column: col }, this.file, hint);
+    this.diagnostics.reportError(
+      code,
+      message,
+      { start: startCursor, end: endCursor, sourceId: this.sourceId, line, column: col },
+      this.file,
+      hint
+    );
   }
 }
