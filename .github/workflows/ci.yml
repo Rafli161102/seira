@@ -33,7 +33,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Validate Repository Invariants
         shell: bash
@@ -47,6 +47,7 @@ jobs:
           test -f SECURITY.md || exit 1
           test -f CHANGELOG.md || exit 1
           test -f Seira.toml || exit 1
+          test -f package-lock.json || exit 1
           test -f bin/seira || exit 1
           echo "Repository structure verified."
 
