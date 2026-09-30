@@ -30,13 +30,16 @@ The Seira runtime is responsible for program execution, memory layout, resource 
 
 ---
 
-## 3. Status in 0.0.1-s (Seed Foundation)
+## 3. Status in 0.0.6-s (Data & Control Foundation)
 
-| Runtime Component | Status in 0.0.1-s | Target Milestone | Description |
+| Runtime Component | Status in 0.0.6-s | Target Milestone | Description |
 | :--- | :--- | :--- | :--- |
-| **Value Model Architecture** | **Implemented (Skeleton)** | 0.0.1-s | Type tagging interfaces and value definitions |
-| **Scope Cleanup Foundation** | **Implemented (Skeleton)** | 0.0.1-s | Scope exit cleanup and registration contract |
-| **Effect Handler Interface** | **Implemented (Skeleton)** | 0.0.1-s | Effect handler dispatch contract |
-| **Async Scheduler** | **Skeleton / Reserved** | Development Series | Task queues and event loop integration |
+| **Seira Value Model v0.2** | **Implemented** | 0.0.6-s | Primitives, Option, Result, List, Tuple, Map, Set, Function closures |
+| **Tree-Walking Evaluator** | **Implemented** | 0.0.5-s / 0.0.6-s | Deterministic AST evaluation engine (`seira run`) |
+| **Control Flow & Pattern Matching** | **Implemented** | 0.0.6-s | Executable `if`, `while`, `for`, `loop`, `break`, `continue`, `match` |
+| **Runtime Diagnostics (`R0xxx`)** | **Implemented** | 0.0.5-s | Structured panics for division by zero, underflow, stack overflow |
+| **Scope Cleanup Foundation** | **Mock Compatibility Stub** | Phase 2 | Mock `with` and `open_resource` stubs (production RAII in Phase 2) |
+| **Effect Handler Interface** | **Skeleton / Reserved** | Phase 2 | Basic host output `println`/`print` functional; full effects in Phase 2 |
+| **Async Scheduler** | **Skeleton / Reserved** | Alpha Series | Task queues and event loop integration |
 | **Native Allocator** | **Skeleton / Reserved** | Alpha Series | LLVM runtime memory management |
 | **WebAssembly Memory Manager** | **Skeleton / Reserved** | Alpha Series | Wasm page linear memory allocation |

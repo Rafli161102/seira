@@ -26,31 +26,51 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BreakStmt,
   CallExpr,
   ConstStmt,
+  ConstructorPattern,
+  ContinueStmt,
   EnumDecl,
   EnumVariant,
   Expr,
+  ForStmt,
   FunctionDecl,
   Identifier,
+  IdentifierPattern,
   IfExpr,
   ImportDecl,
+  IndexExpr,
+  LambdaExpr,
   LetStmt,
+  ListLiteral,
   Literal,
+  LiteralPattern,
+  LoopStmt,
+  MapEntry,
+  MapLiteral,
+  MatchArm,
+  MatchExpr,
+  MemberExpr,
   ModuleDecl,
   OptionFallbackExpr,
   OptionPropagateExpr,
   Param,
+  Pattern,
   PipelineExpr,
   Program,
   RangeExpr,
   ReturnStmt,
+  SetLiteral,
   Stmt,
   StructDecl,
   TopLevelItem,
   TraitDecl,
+  TupleLiteral,
   TypeAliasDecl,
   TypeAnnotation,
+  WhileStmt,
+  WildcardPattern,
   WithStmt,
 } from '../ast/ast.ts';
 import { DiagnosticBag } from '../diagnostics/index.ts';
@@ -455,6 +475,21 @@ export class Parser {
     if (this.check(TokenType.Return)) {
       return this.parseReturnStatement();
     }
+    if (this.check(TokenType.While)) {
+      return this.parseWhileStatement();
+    }
+    if (this.check(TokenType.For)) {
+      return this.parseForStatement();
+    }
+    if (this.check(TokenType.Loop)) {
+      return this.parseLoopStatement();
+    }
+    if (this.check(TokenType.Break)) {
+      return this.parseBreakStatement();
+    }
+    if (this.check(TokenType.Continue)) {
+      return this.parseContinueStatement();
+    }
 
     // Check if statement is bare immutable binding: name = expr
     if (this.isBareBinding()) {
@@ -637,6 +672,79 @@ export class Parser {
     };
   }
 
+  private parseWhileStatement(): WhileStmt {
+    const whileToken = this.consume(TokenType.While, "Expected 'while'.");
+    const condition = this.parseExpression();
+    const body = this.parseBlock();
+    return {
+      kind: 'WhileStmt',
+      condition,
+      body,
+      span: {
+        start: whileToken.span.start,
+        end: body.span.end,
+        sourceId: whileToken.span.sourceId,
+        line: whileToken.span.line,
+        column: whileToken.span.column,
+      },
+    };
+  }
+
+  private parseForStatement(): ForStmt {
+    const forToken = this.consume(TokenType.For, "Expected 'for'.");
+    const varToken = this.consume(TokenType.Identifier, "Expected loop variable name after 'for'.");
+    this.consume(TokenType.In, "Expected 'in' after loop variable.");
+    const iterable = this.parseExpression();
+    const body = this.parseBlock();
+    return {
+      kind: 'ForStmt',
+      variable: varToken.lexeme,
+      iterable,
+      body,
+      span: {
+        start: forToken.span.start,
+        end: body.span.end,
+        sourceId: forToken.span.sourceId,
+        line: forToken.span.line,
+        column: forToken.span.column,
+      },
+    };
+  }
+
+  private parseLoopStatement(): LoopStmt {
+    const loopToken = this.consume(TokenType.Loop, "Expected 'loop'.");
+    const body = this.parseBlock();
+    return {
+      kind: 'LoopStmt',
+      body,
+      span: {
+        start: loopToken.span.start,
+        end: body.span.end,
+        sourceId: loopToken.span.sourceId,
+        line: loopToken.span.line,
+        column: loopToken.span.column,
+      },
+    };
+  }
+
+  private parseBreakStatement(): BreakStmt {
+    const breakToken = this.consume(TokenType.Break, "Expected 'break'.");
+    this.match(TokenType.Semicolon);
+    return {
+      kind: 'BreakStmt',
+      span: breakToken.span,
+    };
+  }
+
+  private parseContinueStatement(): ContinueStmt {
+    const continueToken = this.consume(TokenType.Continue, "Expected 'continue'.");
+    this.match(TokenType.Semicolon);
+    return {
+      kind: 'ContinueStmt',
+      span: continueToken.span,
+    };
+  }
+
   private parseExpressionStatement(): Stmt {
     const expr = this.parseExpression();
 
@@ -717,6 +825,9 @@ export class Parser {
   // ---------------------------------------------------------------------------
 
   public parseExpression(): Expr {
+    if (this.isLambda()) {
+      return this.parseLambda();
+    }
     return this.parseAssignment();
   }
 
@@ -735,7 +846,7 @@ export class Parser {
       )
     ) {
       const op = this.previous().lexeme;
-      const value = this.parseAssignment();
+      const value = this.parseExpression();
       return {
         kind: 'AssignmentExpr',
         operator: op,
@@ -1043,17 +1154,43 @@ export class Parser {
             column: expr.span.column,
           },
         } as CallExpr;
+      } else if (this.match(TokenType.OpenBracket)) {
+        // Index access: expr[idx]
+        const index = this.parseExpression();
+        const closeBracket = this.consume(TokenType.CloseBracket, "Expected ']' after index expression.");
+        expr = {
+          kind: 'IndexExpr',
+          object: expr,
+          index,
+          span: {
+            start: expr.span.start,
+            end: closeBracket.span.end,
+            sourceId: expr.span.sourceId,
+            line: expr.span.line,
+            column: expr.span.column,
+          },
+        } as IndexExpr;
       } else if (this.match(TokenType.Dot)) {
-        // Member access: expr.prop
-        const prop = this.consume(TokenType.Identifier, 'Expected property identifier after dot.');
+        // Member access: expr.prop or tuple positional access expr.0
+        let propName: string;
+        let endSpan: Span;
+        if (this.match(TokenType.IntLiteral)) {
+          const prop = this.previous();
+          propName = prop.lexeme;
+          endSpan = prop.span;
+        } else {
+          const prop = this.consume(TokenType.Identifier, 'Expected property identifier after dot.');
+          propName = prop.lexeme;
+          endSpan = prop.span;
+        }
         expr = {
           kind: 'MemberExpr',
           object: expr,
-          property: prop.lexeme,
+          property: propName,
           isOptional: false,
           span: {
             start: expr.span.start,
-            end: prop.span.end,
+            end: endSpan.end,
             sourceId: expr.span.sourceId,
             line: expr.span.line,
             column: expr.span.column,
@@ -1083,11 +1220,35 @@ export class Parser {
     return expr;
   }
 
-  // Precedence 13: Primary: Literals, Identifiers, Grouping, IfExpr, BlockExpr
+  // Precedence 13: Primary: Literals, Identifiers, Grouping, IfExpr, BlockExpr, Match, Collections
   private parsePrimary(): Expr {
     // If expression: if cond { ... } else { ... }
     if (this.check(TokenType.If)) {
       return this.parseIfExpr();
+    }
+
+    // Match expression: match val { ... }
+    if (this.check(TokenType.Match)) {
+      return this.parseMatchExpr();
+    }
+
+    // Set literal: set[...]
+    if (
+      this.check(TokenType.Identifier) &&
+      this.peek().lexeme === 'set' &&
+      this.peekAhead(1)?.type === TokenType.OpenBracket
+    ) {
+      return this.parseSetLiteral();
+    }
+
+    // List literal: [...]
+    if (this.check(TokenType.OpenBracket)) {
+      return this.parseListLiteral();
+    }
+
+    // Map literal: { key: value, ... } vs Block expression: { stmt; stmt }
+    if (this.isMapLiteral()) {
+      return this.parseMapLiteral();
     }
 
     // Block expression: { ... }
@@ -1144,11 +1305,46 @@ export class Parser {
       } as Identifier;
     }
 
-    // Parenthesized grouping
+    // Parenthesized grouping or Tuple literal
     if (this.match(TokenType.OpenParen)) {
-      const expr = this.parseExpression();
+      const openParen = this.previous();
+      if (this.match(TokenType.CloseParen)) {
+        // Empty tuple: ()
+        return {
+          kind: 'TupleLiteral',
+          elements: [],
+          span: {
+            start: openParen.span.start,
+            end: this.previous().span.end,
+            sourceId: openParen.span.sourceId,
+            line: openParen.span.line,
+            column: openParen.span.column,
+          },
+        } as TupleLiteral;
+      }
+      const first = this.parseExpression();
+      if (this.match(TokenType.Comma)) {
+        // Tuple with 1+ elements: (a, b, ...) or (a,)
+        const elements: Expr[] = [first];
+        while (!this.check(TokenType.CloseParen) && !this.isAtEnd()) {
+          elements.push(this.parseExpression());
+          if (!this.match(TokenType.Comma)) break;
+        }
+        const closeParen = this.consume(TokenType.CloseParen, "Expected ')' after tuple elements.");
+        return {
+          kind: 'TupleLiteral',
+          elements,
+          span: {
+            start: openParen.span.start,
+            end: closeParen.span.end,
+            sourceId: openParen.span.sourceId,
+            line: openParen.span.line,
+            column: openParen.span.column,
+          },
+        } as TupleLiteral;
+      }
       this.consume(TokenType.CloseParen, "Expected ')' after grouped expression.");
-      return expr;
+      return first;
     }
 
     const currentToken = this.peek();
@@ -1190,6 +1386,417 @@ export class Parser {
         column: ifToken.span.column,
       },
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lambdas, Match, and Collections Parsing
+  // ---------------------------------------------------------------------------
+
+  private isLambda(): boolean {
+    if (this.isAtEnd()) return false;
+
+    // Form 1: identifier => ...
+    if (this.peek().type === TokenType.Identifier && this.peekAhead(1)?.type === TokenType.FatArrow) {
+      return true;
+    }
+
+    // Form 2: () => ... or (x, y) => ...
+    if (this.peek().type === TokenType.OpenParen) {
+      let idx = this.current + 1;
+      let depth = 1;
+      while (idx < this.tokens.length && depth > 0) {
+        if (this.tokens[idx].type === TokenType.OpenParen) depth++;
+        else if (this.tokens[idx].type === TokenType.CloseParen) depth--;
+        idx++;
+      }
+      // idx is now immediately after the matching CloseParen
+      if (depth === 0 && idx < this.tokens.length && this.tokens[idx].type === TokenType.FatArrow) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private parseLambda(): LambdaExpr {
+    const startSpan = this.peek().span;
+    const params: Param[] = [];
+
+    if (this.peek().type === TokenType.Identifier && this.peekAhead(1)?.type === TokenType.FatArrow) {
+      const idTok = this.advance();
+      this.advance(); // consume '=>'
+      params.push({
+        kind: 'Param',
+        name: idTok.lexeme,
+        isMut: false,
+        span: idTok.span,
+      });
+    } else {
+      this.consume(TokenType.OpenParen, "Expected '(' at start of lambda parameter list.");
+      if (!this.check(TokenType.CloseParen)) {
+        do {
+          let isMut = false;
+          if (this.match(TokenType.Mut)) {
+            isMut = true;
+          }
+          const paramName = this.consume(TokenType.Identifier, 'Expected parameter name in lambda.');
+          let typeAnnotation: TypeAnnotation | undefined;
+          if (this.match(TokenType.Colon)) {
+            typeAnnotation = this.parseTypeAnnotation();
+          }
+          params.push({
+            kind: 'Param',
+            name: paramName.lexeme,
+            isMut,
+            typeAnnotation,
+            span: {
+              start: paramName.span.start,
+              end: typeAnnotation?.span.end ?? paramName.span.end,
+              sourceId: paramName.span.sourceId,
+              line: paramName.span.line,
+              column: paramName.span.column,
+            },
+          });
+        } while (this.match(TokenType.Comma));
+      }
+      this.consume(TokenType.CloseParen, "Expected ')' after lambda parameters.");
+      this.consume(TokenType.FatArrow, "Expected '=>' after lambda parameter list.");
+    }
+
+    let body: Expr | Block;
+    if (this.check(TokenType.OpenBrace)) {
+      body = this.parseBlock();
+    } else {
+      body = this.parseExpression();
+    }
+
+    return {
+      kind: 'LambdaExpr',
+      params,
+      body,
+      span: {
+        start: startSpan.start,
+        end: body.span.end,
+        sourceId: startSpan.sourceId,
+        line: startSpan.line,
+        column: startSpan.column,
+      },
+    };
+  }
+
+  private parseMatchExpr(): MatchExpr {
+    const matchToken = this.consume(TokenType.Match, "Expected 'match'.");
+    const value = this.parseExpression();
+    this.consume(TokenType.OpenBrace, "Expected '{' after match target.");
+
+    const arms: MatchArm[] = [];
+    while (!this.check(TokenType.CloseBrace) && !this.isAtEnd()) {
+      const pattern = this.parsePattern();
+      this.consume(TokenType.FatArrow, "Expected '=>' after pattern.");
+      let body: Expr | Block;
+      if (this.check(TokenType.OpenBrace)) {
+        body = this.parseBlock();
+      } else {
+        body = this.parseExpression();
+      }
+      this.match(TokenType.Comma);
+      arms.push({
+        kind: 'MatchArm',
+        pattern,
+        body,
+        span: {
+          start: pattern.span.start,
+          end: body.span.end,
+          sourceId: pattern.span.sourceId,
+          line: pattern.span.line,
+          column: pattern.span.column,
+        },
+      });
+    }
+
+    const closeBrace = this.consume(TokenType.CloseBrace, "Expected '}' after match arms.");
+    return {
+      kind: 'MatchExpr',
+      value,
+      arms,
+      span: {
+        start: matchToken.span.start,
+        end: closeBrace.span.end,
+        sourceId: matchToken.span.sourceId,
+        line: matchToken.span.line,
+        column: matchToken.span.column,
+      },
+    };
+  }
+
+  private parsePattern(): Pattern {
+    const current = this.peek();
+
+    // Wildcard: _
+    if (current.type === TokenType.Identifier && current.lexeme === '_') {
+      this.advance();
+      return {
+        kind: 'WildcardPattern',
+        span: current.span,
+      };
+    }
+
+    // Negative numeric literal pattern: -1
+    if (this.match(TokenType.Minus)) {
+      const minusTok = this.previous();
+      if (this.match(TokenType.IntLiteral, TokenType.FloatLiteral)) {
+        const numTok = this.previous();
+        const val = typeof numTok.value === 'number' ? -numTok.value : -Number(numTok.value);
+        return {
+          kind: 'LiteralPattern',
+          literal: {
+            kind: 'Literal',
+            value: val,
+            raw: `-${numTok.lexeme}`,
+            literalKind: numTok.type === TokenType.IntLiteral ? 'int' : 'float',
+            span: {
+              start: minusTok.span.start,
+              end: numTok.span.end,
+              sourceId: minusTok.span.sourceId,
+              line: minusTok.span.line,
+              column: minusTok.span.column,
+            },
+          },
+          span: {
+            start: minusTok.span.start,
+            end: numTok.span.end,
+            sourceId: minusTok.span.sourceId,
+            line: minusTok.span.line,
+            column: minusTok.span.column,
+          },
+        };
+      }
+    }
+
+    // Literals: int, uint, float, string, char, bool
+    if (
+      this.match(
+        TokenType.IntLiteral,
+        TokenType.UIntLiteral,
+        TokenType.FloatLiteral,
+        TokenType.StringLiteral,
+        TokenType.CharLiteral,
+        TokenType.BoolLiteral
+      )
+    ) {
+      const tok = this.previous();
+      const literalKind =
+        tok.type === TokenType.IntLiteral
+          ? 'int'
+          : tok.type === TokenType.UIntLiteral
+          ? 'uint'
+          : tok.type === TokenType.FloatLiteral
+          ? 'float'
+          : tok.type === TokenType.StringLiteral
+          ? 'string'
+          : tok.type === TokenType.CharLiteral
+          ? 'char'
+          : 'bool';
+      return {
+        kind: 'LiteralPattern',
+        literal: {
+          kind: 'Literal',
+          value: tok.value as string | number | boolean,
+          raw: tok.lexeme,
+          literalKind,
+          span: tok.span,
+        },
+        span: tok.span,
+      };
+    }
+
+    // Identifiers and Constructors: Some(x), None, Ok(v), Err(e), or variable binding x
+    if (this.match(TokenType.Identifier)) {
+      const idTok = this.previous();
+
+      // Some(pattern), Ok(pattern), Err(pattern)
+      if (
+        (idTok.lexeme === 'Some' || idTok.lexeme === 'Ok' || idTok.lexeme === 'Err') &&
+        this.check(TokenType.OpenParen)
+      ) {
+        this.consume(TokenType.OpenParen, "Expected '(' after constructor pattern.");
+        const inner = this.parsePattern();
+        const closeParen = this.consume(TokenType.CloseParen, "Expected ')' after constructor pattern argument.");
+        return {
+          kind: 'ConstructorPattern',
+          name: idTok.lexeme,
+          args: [inner],
+          span: {
+            start: idTok.span.start,
+            end: closeParen.span.end,
+            sourceId: idTok.span.sourceId,
+            line: idTok.span.line,
+            column: idTok.span.column,
+          },
+        };
+      }
+
+      // None or None()
+      if (idTok.lexeme === 'None') {
+        let endSpan = idTok.span;
+        if (this.match(TokenType.OpenParen)) {
+          const closeParen = this.consume(TokenType.CloseParen, "Expected ')' after None.");
+          endSpan = closeParen.span;
+        }
+        return {
+          kind: 'ConstructorPattern',
+          name: 'None',
+          args: [],
+          span: {
+            start: idTok.span.start,
+            end: endSpan.end,
+            sourceId: idTok.span.sourceId,
+            line: idTok.span.line,
+            column: idTok.span.column,
+          },
+        };
+      }
+
+      // Variable binding pattern
+      return {
+        kind: 'IdentifierPattern',
+        name: idTok.lexeme,
+        isMut: false,
+        span: idTok.span,
+      };
+    }
+
+    this.diagnostics.reportError(
+      'E1010',
+      `Unexpected token '${current.lexeme || current.type}' in match pattern.`,
+      current.span,
+      this.file,
+      "Expected a pattern (literal, identifier, wildcard '_', or constructor like 'Some(...)', 'None', 'Ok(...)', 'Err(...)')."
+    );
+    throw new ParseError(`Parse error in pattern at line ${current.span.line}`);
+  }
+
+  private isMapLiteral(): boolean {
+    if (!this.check(TokenType.OpenBrace)) return false;
+    let idx = this.current + 1;
+    if (idx >= this.tokens.length) return false;
+    if (this.tokens[idx].type === TokenType.CloseBrace) return false;
+
+    let depth = 0;
+    while (idx < this.tokens.length) {
+      const tok = this.tokens[idx];
+      if (tok.type === TokenType.OpenParen || tok.type === TokenType.OpenBracket) {
+        depth++;
+      } else if (tok.type === TokenType.CloseParen || tok.type === TokenType.CloseBracket) {
+        depth--;
+      } else if (depth === 0) {
+        if (tok.type === TokenType.Colon) {
+          let checkAssign = idx + 1;
+          while (
+            checkAssign < this.tokens.length &&
+            this.tokens[checkAssign].type !== TokenType.Comma &&
+            this.tokens[checkAssign].type !== TokenType.CloseBrace &&
+            this.tokens[checkAssign].type !== TokenType.Semicolon
+          ) {
+            if (this.tokens[checkAssign].type === TokenType.Equal) {
+              return false;
+            }
+            checkAssign++;
+          }
+          return true;
+        }
+        if (tok.type === TokenType.Semicolon || tok.type === TokenType.CloseBrace || tok.type === TokenType.Equal) {
+          return false;
+        }
+      }
+      idx++;
+    }
+    return false;
+  }
+
+  private parseMapLiteral(): MapLiteral {
+    const openBrace = this.consume(TokenType.OpenBrace, "Expected '{' at start of map.");
+    const entries: MapEntry[] = [];
+    while (!this.check(TokenType.CloseBrace) && !this.isAtEnd()) {
+      const key = this.parseExpression();
+      this.consume(TokenType.Colon, "Expected ':' after map key.");
+      const value = this.parseExpression();
+      entries.push({
+        kind: 'MapEntry',
+        key,
+        value,
+        span: {
+          start: key.span.start,
+          end: value.span.end,
+          sourceId: key.span.sourceId,
+          line: key.span.line,
+          column: key.span.column,
+        },
+      });
+      if (!this.match(TokenType.Comma)) break;
+    }
+    const closeBrace = this.consume(TokenType.CloseBrace, "Expected '}' at end of map.");
+    return {
+      kind: 'MapLiteral',
+      entries,
+      span: {
+        start: openBrace.span.start,
+        end: closeBrace.span.end,
+        sourceId: openBrace.span.sourceId,
+        line: openBrace.span.line,
+        column: openBrace.span.column,
+      },
+    };
+  }
+
+  private parseListLiteral(): ListLiteral {
+    const openBracket = this.consume(TokenType.OpenBracket, "Expected '[' at start of list.");
+    const elements: Expr[] = [];
+    if (!this.check(TokenType.CloseBracket)) {
+      do {
+        elements.push(this.parseExpression());
+      } while (this.match(TokenType.Comma) && !this.check(TokenType.CloseBracket));
+    }
+    const closeBracket = this.consume(TokenType.CloseBracket, "Expected ']' at end of list.");
+    return {
+      kind: 'ListLiteral',
+      elements,
+      span: {
+        start: openBracket.span.start,
+        end: closeBracket.span.end,
+        sourceId: openBracket.span.sourceId,
+        line: openBracket.span.line,
+        column: openBracket.span.column,
+      },
+    };
+  }
+
+  private parseSetLiteral(): SetLiteral {
+    const setTok = this.consume(TokenType.Identifier, "Expected 'set'.");
+    this.consume(TokenType.OpenBracket, "Expected '[' after 'set'.");
+    const elements: Expr[] = [];
+    if (!this.check(TokenType.CloseBracket)) {
+      do {
+        elements.push(this.parseExpression());
+      } while (this.match(TokenType.Comma) && !this.check(TokenType.CloseBracket));
+    }
+    const closeBracket = this.consume(TokenType.CloseBracket, "Expected ']' at end of set.");
+    return {
+      kind: 'SetLiteral',
+      elements,
+      span: {
+        start: setTok.span.start,
+        end: closeBracket.span.end,
+        sourceId: setTok.span.sourceId,
+        line: setTok.span.line,
+        column: setTok.span.column,
+      },
+    };
+  }
+
+  private peekAhead(offset: number): Token | undefined {
+    const idx = this.current + offset;
+    return idx < this.tokens.length ? this.tokens[idx] : undefined;
   }
 
   // ---------------------------------------------------------------------------
@@ -1254,6 +1861,7 @@ export class Parser {
         case TokenType.Type:
         case TokenType.Trait:
         case TokenType.If:
+        case TokenType.Match:
         case TokenType.While:
         case TokenType.For:
         case TokenType.Loop:

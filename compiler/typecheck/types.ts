@@ -75,12 +75,25 @@ export interface CustomType {
   readonly typeArguments?: ReadonlyArray<Type>;
 }
 
+export interface MapType {
+  readonly kind: 'Map';
+  readonly key: Type;
+  readonly value: Type;
+}
+
+export interface SetType {
+  readonly kind: 'Set';
+  readonly element: Type;
+}
+
 export type Type =
   | PrimitiveType
   | OptionType
   | ResultType
   | ListType
   | TupleType
+  | MapType
+  | SetType
   | FunctionType
   | GenericParamType
   | TypeAliasType
@@ -110,6 +123,34 @@ export function createOptionType(inner: Type): OptionType {
  */
 export function createResultType(ok: Type, err: Type): ResultType {
   return { kind: 'Result', ok, err };
+}
+
+/**
+ * Creates a List<T> type.
+ */
+export function createListType(element: Type): ListType {
+  return { kind: 'List', element };
+}
+
+/**
+ * Creates a Tuple type.
+ */
+export function createTupleType(elements: ReadonlyArray<Type>): TupleType {
+  return { kind: 'Tuple', elements };
+}
+
+/**
+ * Creates a Map<K, V> type.
+ */
+export function createMapType(key: Type, value: Type): MapType {
+  return { kind: 'Map', key, value };
+}
+
+/**
+ * Creates a Set<T> type.
+ */
+export function createSetType(element: Type): SetType {
+  return { kind: 'Set', element };
 }
 
 /**
@@ -143,6 +184,10 @@ export function formatType(type: Type): string {
       return `List<${formatType(type.element)}>`;
     case 'Tuple':
       return `(${type.elements.map(formatType).join(', ')})`;
+    case 'Map':
+      return `Map<${formatType(type.key)}, ${formatType(type.value)}>`;
+    case 'Set':
+      return `Set<${formatType(type.element)}>`;
     case 'Function': {
       const effectMarker = type.isEffectful ? '!' : '';
       return `(${type.params.map(formatType).join(', ')})${effectMarker} -> ${formatType(type.returnType)}`;
@@ -191,6 +236,12 @@ export function areTypesEqual(a: Type, b: Type): boolean {
       if (a.elements.length !== bTup.elements.length) return false;
       return a.elements.every((elem, idx) => areTypesEqual(elem, bTup.elements[idx]));
     }
+    case 'Map': {
+      const bMap = b as MapType;
+      return areTypesEqual(a.key, bMap.key) && areTypesEqual(a.value, bMap.value);
+    }
+    case 'Set':
+      return areTypesEqual(a.element, (b as SetType).element);
     case 'Function': {
       const bFn = b as FunctionType;
       if (a.params.length !== bFn.params.length) return false;

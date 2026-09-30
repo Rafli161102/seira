@@ -11,6 +11,7 @@ import { runHelp } from './commands/help.ts';
 import { runInfo } from './commands/info.ts';
 import { runInit, runNew } from './commands/init.ts';
 import { runReserved } from './commands/reserved.ts';
+import { runRun } from './commands/run.ts';
 import { runVersion } from './commands/version.ts';
 
 export function main(argv: string[] = process.argv.slice(2)): number {
@@ -41,6 +42,9 @@ export function main(argv: string[] = process.argv.slice(2)): number {
     case 'check':
       return runCheck(argv[1]);
 
+    case 'run':
+      return runRun(argv[1]);
+
     case 'init':
       return runInit();
 
@@ -49,7 +53,6 @@ export function main(argv: string[] = process.argv.slice(2)): number {
 
     // Reserved long-term toolchain commands
     case 'build':
-    case 'run':
     case 'test':
     case 'fmt':
     case 'doc':

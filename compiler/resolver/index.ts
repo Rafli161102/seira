@@ -18,27 +18,42 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BreakStmt,
   CallExpr,
   ConstStmt,
+  ConstructorPattern,
+  ContinueStmt,
   EnumDecl,
   Expr,
   ExprStmt,
+  ForStmt,
   FunctionDecl,
   Identifier,
+  IdentifierPattern,
   IfExpr,
+  IndexExpr,
+  LambdaExpr,
   LetStmt,
+  ListLiteral,
+  LoopStmt,
+  MapLiteral,
+  MatchExpr,
   MemberExpr,
   OptionFallbackExpr,
   OptionPropagateExpr,
+  Pattern,
   PipelineExpr,
   Program,
   RangeExpr,
   ReturnStmt,
+  SetLiteral,
   Stmt,
   StructDecl,
+  TupleLiteral,
   TypeAliasDecl,
   TypeAnnotation,
   UnaryExpr,
+  WhileStmt,
   WithStmt,
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
@@ -61,6 +76,7 @@ export class Resolver {
   private readonly resolvedSymbols = new Map<ASTNode, SymbolInfo>();
   private readonly declaredSymbols = new Map<ASTNode, SymbolInfo>();
   private currentFile?: string;
+  private loopDepth: number = 0;
 
   constructor(diagnostics?: DiagnosticBag) {
     this.diagnostics = diagnostics ?? new DiagnosticBag();
@@ -85,6 +101,9 @@ export class Resolver {
       'Option',
       'Result',
       'List',
+      'Tuple',
+      'Map',
+      'Set',
     ];
     for (const typeName of builtinTypes) {
       this.globalScope.define({
@@ -268,26 +287,8 @@ export class Resolver {
       case 'TypeAliasDecl':
         this.resolveTypeAliasDecl(item as TypeAliasDecl);
         break;
-      case 'BindingStmt':
-        this.resolveBindingStmt(item as BindingStmt);
-        break;
-      case 'LetStmt':
-        this.resolveLetStmt(item as LetStmt);
-        break;
-      case 'ConstStmt':
-        this.resolveConstStmt(item as ConstStmt);
-        break;
-      case 'AssignStmt':
-        this.resolveAssignStmt(item as AssignStmt);
-        break;
-      case 'ExprStmt':
-        this.resolveExpression((item as ExprStmt).expression);
-        break;
-      case 'ReturnStmt':
-        this.resolveReturnStmt(item as ReturnStmt);
-        break;
-      case 'WithStmt':
-        this.resolveWithStmt(item as WithStmt);
+      default:
+        this.resolveStatement(item as Stmt);
         break;
     }
   }
@@ -585,6 +586,65 @@ export class Resolver {
       case 'WithStmt':
         this.resolveWithStmt(stmt as WithStmt);
         break;
+      case 'WhileStmt': {
+        const whileStmt = stmt as WhileStmt;
+        this.resolveExpression(whileStmt.condition);
+        this.loopDepth++;
+        this.resolveBlock(whileStmt.body);
+        this.loopDepth--;
+        break;
+      }
+      case 'ForStmt': {
+        const forStmt = stmt as ForStmt;
+        this.resolveExpression(forStmt.iterable);
+        this.loopDepth++;
+        const parentScope = this.currentScope;
+        this.currentScope = new Scope('block', parentScope);
+        this.currentScope.define({
+          name: forStmt.variable,
+          kind: 'variable',
+          span: forStmt.span,
+          isMut: false,
+          declNode: forStmt,
+        });
+        const sym = this.currentScope.lookupLocal(forStmt.variable);
+        if (sym) this.declaredSymbols.set(forStmt, sym);
+        this.resolveBlock(forStmt.body, false);
+        this.currentScope = parentScope;
+        this.loopDepth--;
+        break;
+      }
+      case 'LoopStmt': {
+        const loopStmt = stmt as LoopStmt;
+        this.loopDepth++;
+        this.resolveBlock(loopStmt.body);
+        this.loopDepth--;
+        break;
+      }
+      case 'BreakStmt': {
+        if (this.loopDepth <= 0) {
+          this.diagnostics.reportError(
+            'E2004',
+            "Cannot use 'break' outside of a loop.",
+            stmt.span,
+            this.currentFile,
+            "'break' is only permitted within 'while', 'for', or 'loop' statements."
+          );
+        }
+        break;
+      }
+      case 'ContinueStmt': {
+        if (this.loopDepth <= 0) {
+          this.diagnostics.reportError(
+            'E2004',
+            "Cannot use 'continue' outside of a loop.",
+            stmt.span,
+            this.currentFile,
+            "'continue' is only permitted within 'while', 'for', or 'loop' statements."
+          );
+        }
+        break;
+      }
     }
   }
 
@@ -706,6 +766,116 @@ export class Resolver {
       case 'Literal':
         // Literals require no name resolution
         break;
+      case 'MatchExpr': {
+        const matchExpr = expr as MatchExpr;
+        this.resolveExpression(matchExpr.value);
+        for (const arm of matchExpr.arms) {
+          const parentScope = this.currentScope;
+          this.currentScope = new Scope('block', parentScope);
+          this.resolvePattern(arm.pattern);
+          if (arm.body.kind === 'Block') {
+            this.resolveBlock(arm.body as Block, false);
+          } else {
+            this.resolveExpression(arm.body as Expr);
+          }
+          this.currentScope = parentScope;
+        }
+        break;
+      }
+      case 'ListLiteral': {
+        const list = expr as ListLiteral;
+        for (const elem of list.elements) {
+          this.resolveExpression(elem);
+        }
+        break;
+      }
+      case 'TupleLiteral': {
+        const tup = expr as TupleLiteral;
+        for (const elem of tup.elements) {
+          this.resolveExpression(elem);
+        }
+        break;
+      }
+      case 'MapLiteral': {
+        const map = expr as MapLiteral;
+        for (const entry of map.entries) {
+          this.resolveExpression(entry.key);
+          this.resolveExpression(entry.value);
+        }
+        break;
+      }
+      case 'SetLiteral': {
+        const setLit = expr as SetLiteral;
+        for (const elem of setLit.elements) {
+          this.resolveExpression(elem);
+        }
+        break;
+      }
+      case 'IndexExpr': {
+        const idx = expr as IndexExpr;
+        this.resolveExpression(idx.object);
+        this.resolveExpression(idx.index);
+        break;
+      }
+      case 'LambdaExpr': {
+        const lambda = expr as LambdaExpr;
+        const parentScope = this.currentScope;
+        this.currentScope = new Scope('function', parentScope);
+        for (const param of lambda.params) {
+          if (param.typeAnnotation) {
+            this.resolveTypeAnnotation(param.typeAnnotation);
+          }
+          const ok = this.currentScope.define({
+            name: param.name,
+            kind: 'param',
+            span: param.span,
+            isMut: param.isMut,
+            declNode: param,
+          });
+          if (!ok) {
+            this.diagnostics.reportError(
+              'E2002',
+              `Duplicate parameter '${param.name}' in lambda.`,
+              param.span,
+              this.currentFile
+            );
+          } else {
+            const sym = this.currentScope.lookupLocal(param.name);
+            if (sym) this.declaredSymbols.set(param, sym);
+          }
+        }
+        if (lambda.body.kind === 'Block') {
+          this.resolveBlock(lambda.body as Block, false);
+        } else {
+          this.resolveExpression(lambda.body as Expr);
+        }
+        this.currentScope = parentScope;
+        break;
+      }
     }
   }
+
+  private resolvePattern(pattern: Pattern): void {
+    if (pattern.kind === 'IdentifierPattern') {
+      const idPattern = pattern as IdentifierPattern;
+      const ok = this.currentScope.define({
+        name: idPattern.name,
+        kind: 'variable',
+        span: idPattern.span,
+        isMut: idPattern.isMut,
+        declNode: idPattern,
+      });
+      if (ok) {
+        const sym = this.currentScope.lookupLocal(idPattern.name);
+        if (sym) this.declaredSymbols.set(idPattern, sym);
+      }
+    } else if (pattern.kind === 'ConstructorPattern') {
+      const ctorPattern = pattern as ConstructorPattern;
+      for (const arg of ctorPattern.args) {
+        this.resolvePattern(arg);
+      }
+    }
+    // LiteralPattern and WildcardPattern introduce no bindings
+  }
 }
+
