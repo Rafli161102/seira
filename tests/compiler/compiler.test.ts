@@ -49,7 +49,7 @@ test('Compiler: architectural skeletons emit clear milestone diagnostics', () =>
   // HIR skeleton
   const hir = new HIRLowering();
   const hirRes = hir.lower(ast!);
-  assert.strictEqual(hirRes.version, '0.0.1-s');
+  assert.strictEqual(hirRes.version, '0.0.2-s');
 
   // Backend skeleton
   const backend = new CompilerBackend();

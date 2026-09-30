@@ -1,6 +1,8 @@
 /**
  * Seira Compiler Name Resolver (Architectural Skeleton)
  *
+ * ARCHITECTURAL SKELETON — NOT IMPLEMENTED
+ *
  * Responsibilities:
  * - Scoped symbol table construction
  * - Lexical scope hierarchy (block, function, module, global)
@@ -8,22 +10,25 @@
  * - Function and type name resolution
  * - Import / export module graph analysis
  *
- * Milestone: Planned for Seed Series (0.0.2-s / 0.0.3-s).
+ * Milestone: Reserved for Seed Series (0.0.3-s+).
  */
 
 import type { Program } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
 
+export type ScopeKind = 'global' | 'module' | 'function' | 'block';
+
 export interface SymbolTable {
-  parent?: SymbolTable;
-  symbols: Map<string, SymbolInfo>;
+  readonly kind: ScopeKind;
+  readonly parent?: SymbolTable;
+  readonly symbols: Map<string, SymbolInfo>;
 }
 
 export interface SymbolInfo {
-  name: string;
-  kind: 'variable' | 'function' | 'type' | 'trait' | 'effect';
-  span: Span;
-  isMut?: boolean;
+  readonly name: string;
+  readonly kind: 'variable' | 'function' | 'type' | 'trait' | 'effect' | 'module';
+  readonly span: Span;
+  readonly isMut?: boolean;
 }
 
 export interface ResolverResult {
@@ -40,13 +45,12 @@ export class Resolver {
   }
 
   public resolve(program: Program, file?: string): ResolverResult {
-    // SKELETON: Reserved for 0.0.2-s Seed release.
     this.diagnostics.reportInfo(
       'E2001',
-      "Name resolver is an architectural skeleton reserved for Seed milestone 0.0.2-s.",
+      'Name resolver is an architectural skeleton reserved for Seed milestone 0.0.3-s.',
       program.span,
       file,
-      "Scope resolution and symbol binding will be activated in 0.0.2-s."
+      'Scope resolution and symbol binding will be activated in 0.0.3-s.'
     );
 
     return {

@@ -1,5 +1,13 @@
 # Seira Architecture Overview
 
+| Field | Value |
+|---|---|
+| Specification | Seira 0.0.2-s Repository Architecture |
+| Target Milestone | 0.0.2-s (Seed Series) |
+| Architecture Status | **Implemented & Locked** |
+
+---
+
 ## 1. System Philosophy
 
 Seira is architected from first principles to realize two foundational tenets:
@@ -19,7 +27,7 @@ To support this, the repository is split into distinct, decoupled subsystems wit
 
 ## 2. High-Level Subsystems
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                       Tooling & CLI                         │
 │   (bin/seira, tools/cli, manifest parser, package manager)  │
@@ -46,27 +54,43 @@ To support this, the repository is split into distinct, decoupled subsystems wit
 
 ---
 
-## 3. Status Classification Matrix
+## 3. Subsystem Architecture Specifications
 
-| Feature / Subsystem | Status in 0.0.1-s | Target Milestone | Description |
-| :--- | :--- | :--- | :--- |
-| **Lexer Foundation** | **Current Implementation** | 0.0.1-s | Tokenization of keywords, symbols, literals, spans |
-| **Parser Foundation** | **Current Implementation** | 0.0.1-s | Recursive descent parsing of functions & expressions |
-| **AST Definitions** | **Current Implementation** | 0.0.1-s | Structured AST node representations |
-| **Diagnostics Engine** | **Current Implementation** | 0.0.1-s | Source span error reporting with line/column coordinates |
-| **Manifest System** | **Current Implementation** | 0.0.1-s | `Seira.toml` specification, parser, and validator |
-| **CLI Core** | **Current Implementation** | 0.0.1-s | `seira --version`, `info`, `check`, `init`, `new` |
-| **Name Resolver** | **Skeleton / Reserved** | 0.0.2-s | Symbol tables, scope resolution, import graphs |
-| **Type Checker & Inference** | **Skeleton / Reserved** | 0.0.3-s / 0.0.4-s | Strong typing, HM inference, trait resolution |
-| **Effect Checker** | **Skeleton / Reserved** | 0.0.5-s | Effect tracking (`!`) and purity verification |
-| **HIR / MIR Lowering** | **Skeleton / Reserved** | Development Series | High/Mid-level intermediate representations |
-| **LLVM Native Backend** | **Skeleton / Reserved** | Alpha Series | Machine code emission for x86_64 and AArch64 |
-| **WebAssembly Backend** | **Skeleton / Reserved** | Alpha Series | Wasm binary emission and component model |
-| **Runtime Execution Engine** | **Skeleton / Reserved** | Development / Alpha | Value execution, memory allocators, async scheduler |
+Detailed architecture documents provide deep-dive specifications for each boundary:
+
+- [Repository Architecture](repository.md): Repository layout, modular directories, and dependency flow
+- [Compiler Architecture](compiler.md): Subsystems, pipeline stages, driver, and compilation lifecycle
+- [Source Management Architecture](source-management.md): `SourceId`, `SourceFile`, `Span`, `Position`, `LineMap`, and `SourceManager`
+- [Diagnostics Architecture](diagnostics.md): Code families (`E1xxx`–`E9xxx`), source pointers, and ICE crash reporting
+- [Testing Architecture](testing.md): Categorized suites (`unit`, `integration`, `compiler`, `diagnostics`, `runtime`, `conformance`, `fixtures`)
+- [Runtime Boundary Architecture](runtime-boundary.md): Decoupled runtime services (`RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, `HostAdapter`)
+- [Backend Boundary Architecture](backend-boundary.md): MIR-to-Backend boundary (`BackendEmitter`, Native LLVM, WebAssembly)
 
 ---
 
-## 4. Locked Technical Foundations
+## 4. Status Classification Matrix
+
+| Feature / Subsystem | Status in 0.0.2-s | Target Milestone | Description |
+| :--- | :--- | :--- | :--- |
+| **Source Management** | **Implemented** | 0.0.2-s | `SourceManager`, `LineMap`, `Span`, `Position` |
+| **Compiler Driver & Lifecycle** | **Implemented** | 0.0.2-s | `CompilerDriver`, `CompilerContext`, `CompilerConfig` |
+| **Diagnostics & ICE** | **Implemented** | 0.0.2-s | Structured code families and `InternalCompilerError` boundary |
+| **Lexer Foundation** | **Implemented** | 0.0.1-s | Tokenization of keywords, symbols, literals, spans |
+| **Parser Foundation** | **Implemented** | 0.0.1-s | Recursive descent parsing of functions & expressions |
+| **AST Definitions** | **Implemented** | 0.0.2-s | Structured AST node representations and prepared nodes |
+| **Manifest System** | **Implemented** | 0.0.1-s | `Seira.toml` specification, parser, and validator |
+| **CLI Core** | **Implemented** | 0.0.2-s | `seira --version`, `info`, `check`, `init`, `new` |
+| **Name Resolver** | **Architectural Skeleton** | Reserved (0.0.3-s) | Symbol tables, scope resolution, import graphs |
+| **Type Checker & Inference** | **Architectural Skeleton** | Reserved (0.0.3-s) | Strong typing, HM inference, trait resolution |
+| **Effect Checker** | **Architectural Skeleton** | Reserved (0.0.5-s) | Effect tracking (`!`) and purity verification |
+| **HIR / MIR Lowering** | **Architectural Skeleton** | Reserved (0.0.11-d) | High/Mid-level intermediate representations |
+| **LLVM Native Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Machine code emission for x86_64 and AArch64 |
+| **WebAssembly Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Wasm binary emission and component model |
+| **Runtime Execution Engine** | **Architectural Foundation** | Reserved (0.1.0-alpha) | Value execution, memory allocators, async scheduler |
+
+---
+
+## 5. Locked Technical Foundations
 
 These design decisions are strictly locked:
 - Static typing with strong type system and aggressive type inference.

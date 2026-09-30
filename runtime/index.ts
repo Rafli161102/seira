@@ -6,7 +6,7 @@
  * - Memory Service & Deterministic Scopes
  * - Resource Manager & Services
  * - Panic Subsystem
- * - Task Abstraction & Async Model
+ * - Task Service & Async Model
  * - Effect Runtime
  * - Value Representation
  * - Host Adapter
@@ -22,11 +22,11 @@ export * from './services/index.ts';
 export * from './value/index.ts';
 
 export interface RuntimeVersion {
-  readonly version: '0.0.1-s';
-  readonly status: 'Seed Foundation';
+  readonly version: '0.0.2-s';
+  readonly status: 'Repository Architecture';
 }
 
 export const RUNTIME_INFO: RuntimeVersion = {
-  version: '0.0.1-s',
-  status: 'Seed Foundation',
+  version: '0.0.2-s',
+  status: 'Repository Architecture',
 };

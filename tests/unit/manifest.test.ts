@@ -36,7 +36,7 @@ test('Manifest: validates root Seira.toml', () => {
   assert.strictEqual(result.valid, true);
   assert.strictEqual(result.errors.length, 0);
   assert.strictEqual(manifest.package.name, 'seira');
-  assert.strictEqual(manifest.package.version, '0.0.1-s');
+  assert.strictEqual(manifest.package.version, '0.0.2-s');
 });
 
 test('Manifest: rejects invalid manifests with missing or invalid fields', () => {

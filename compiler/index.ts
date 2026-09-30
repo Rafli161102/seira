@@ -1,64 +1,40 @@
 /**
- * Seira Compiler Entry Point
- * Orchestrates the compilation phases:
- * Source -> Lexer -> Parser -> AST -> Diagnostics
+ * Seira Compiler Core Entry Point
+ *
+ * Exposes the public architectural contracts and compiler pipeline interface:
+ * CLI / Tooling -> Compiler Driver -> Compiler Subsystems -> Backend Interface
  */
 
 import type { Program } from './ast/ast.ts';
-import { DiagnosticBag } from './diagnostics/index.ts';
-import { Lexer } from './lexer/lexer.ts';
+import type { DiagnosticBag } from './diagnostics/index.ts';
+import { CompilerDriver, type CompilationResult as DriverCompilationResult } from './driver/index.ts';
 import type { Token } from './lexer/token.ts';
-import { Parser } from './parser/parser.ts';
 
 export * from './ast/ast.ts';
 export * from './backend/index.ts';
 export * from './diagnostics/index.ts';
+export * from './driver/index.ts';
 export * from './hir/index.ts';
 export * from './lexer/lexer.ts';
 export * from './lexer/token.ts';
 export * from './mir/index.ts';
 export * from './parser/parser.ts';
 export * from './resolver/index.ts';
+export * from './source/index.ts';
 export * from './typecheck/index.ts';
 
 export interface CompilationResult {
   readonly success: boolean;
-  readonly tokens: Token[];
+  readonly tokens: ReadonlyArray<Token>;
   readonly ast?: Program;
   readonly diagnostics: DiagnosticBag;
 }
 
-export function compileSource(source: string, file?: string): CompilationResult {
-  const diagnostics = new DiagnosticBag();
-
-  // Phase 1: Lexical Analysis
-  const lexer = new Lexer(source, file, diagnostics);
-  const tokens = lexer.tokenize();
-
-  if (diagnostics.hasErrors()) {
-    return {
-      success: false,
-      tokens,
-      diagnostics,
-    };
-  }
-
-  // Phase 2: Parsing & AST Construction
-  const parser = new Parser(tokens, file, diagnostics);
-  let ast: Program | undefined;
-
-  try {
-    ast = parser.parse();
-  } catch {
-    // Parsing error recorded in diagnostics
-  }
-
-  const success = !diagnostics.hasErrors() && ast !== undefined;
-
-  return {
-    success,
-    tokens,
-    ast,
-    diagnostics,
-  };
+/**
+ * Compiles Seira source code through the parsing phase.
+ * Provided for backward-compatible consumption by CLI and test suites.
+ */
+export function compileSource(source: string, file?: string): DriverCompilationResult {
+  const driver = new CompilerDriver();
+  return driver.compile(source, file, { stopAfter: 'parse' });
 }

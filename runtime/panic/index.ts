@@ -6,7 +6,7 @@
  * - Panic hook registration for logging or telemetry
  * - Guaranteed resource cleanup during unwinding
  *
- * Status: Architectural skeleton for Seed Foundation (0.0.1-s).
+ * Status: Architectural skeleton for Seed Foundation (0.0.1-s / 0.0.2-s).
  */
 
 export interface PanicPayload {
@@ -17,6 +17,11 @@ export interface PanicPayload {
 }
 
 export type PanicHook = (payload: PanicPayload) => void;
+
+export interface PanicService {
+  setHook(hook: PanicHook): void;
+  triggerPanic(payload: PanicPayload): never;
+}
 
 let globalPanicHook: PanicHook | null = null;
 

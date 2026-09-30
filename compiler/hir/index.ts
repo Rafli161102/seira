@@ -1,20 +1,59 @@
 /**
- * Seira High-Level Intermediate Representation (HIR) (Architectural Skeleton)
+ * Seira High-Level Intermediate Representation (HIR)
+ *
+ * ARCHITECTURAL SKELETON — NOT IMPLEMENTED
  *
  * Responsibilities:
- * - Lowering AST into canonical high-level IR
+ * - Lowering AST into canonical high-level semantic representation
  * - Desugaring syntactic sugar (pipelines `|>`, default operators `??`, `with` blocks)
  * - Module linking and monomorphization preparation
+ * - Semantic annotations (resolved symbols, validated types, effect signatures)
  *
  * Milestone: Planned for Development Series (0.0.11-d+).
  */
 
 import type { Program } from '../ast/ast.ts';
 import { DiagnosticBag } from '../diagnostics/index.ts';
+import type { Span } from '../source/span.ts';
+
+export type HIRId = number;
 
 export interface HIRProgram {
   readonly version: string;
-  readonly nodes: unknown[];
+  readonly modules: ReadonlyArray<HIRModule>;
+  readonly functions: ReadonlyArray<HIRFunction>;
+}
+
+export interface HIRModule {
+  readonly id: HIRId;
+  readonly name: string;
+  readonly span: Span;
+}
+
+export interface HIRFunction {
+  readonly id: HIRId;
+  readonly name: string;
+  readonly isEffectful: boolean;
+  readonly body: HIRBlock;
+  readonly span: Span;
+}
+
+export interface HIRBlock {
+  readonly id: HIRId;
+  readonly statements: ReadonlyArray<HIRStmt>;
+  readonly span: Span;
+}
+
+export interface HIRStmt {
+  readonly id: HIRId;
+  readonly kind: string;
+  readonly span: Span;
+}
+
+export interface HIRExpr {
+  readonly id: HIRId;
+  readonly kind: string;
+  readonly span: Span;
 }
 
 export class HIRLowering {
@@ -27,15 +66,16 @@ export class HIRLowering {
   public lower(program: Program, file?: string): HIRProgram {
     this.diagnostics.reportInfo(
       'I1001',
-      "HIR lowering is an architectural skeleton reserved for the Development Series.",
+      'HIR lowering is an architectural skeleton reserved for the Development Series.',
       program.span,
       file,
-      "HIR transformation will be enabled in 0.0.11-d."
+      'HIR transformation will be enabled in 0.0.11-d.'
     );
 
     return {
-      version: '0.0.1-s',
-      nodes: [],
+      version: '0.0.2-s',
+      modules: [],
+      functions: [],
     };
   }
 }

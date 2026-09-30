@@ -13,6 +13,39 @@ and this project adheres to the Seira Staged Versioning Model:
 
 ---
 
+## [0.0.2-s] - 2026-09-30
+
+### Added
+- **Repository Architecture Foundation**:
+  - Established formal subsystem boundaries and decoupled dependency flow (`CLI` -> `Driver` -> `Core` -> `Subsystems` -> `Backend`).
+  - Documented strict architectural separation between Compiler, Runtime, Standard Library, and Developer Tooling.
+- **Source Management Subsystem (`compiler/source/`)**:
+  - Implemented `SourceId`, `SourceFile`, `Span`, `Position`, `LineMap`, and `SourceManager`.
+  - Added deterministic $O(\log N)$ binary-search offset-to-line/column coordinate mapping.
+  - Enforced zero global mutable source state; instances owned by compilation sessions.
+- **Compiler Driver & Session Lifecycle (`compiler/driver/`)**:
+  - Implemented `CompilerDriver` orchestrating pipeline stages: `Lex` -> `Parse` -> `Resolve` -> `Typecheck` -> `EffectCheck` -> `ResourceCheck` -> `HIR` -> `MIR` -> `Backend`.
+  - Implemented `CompilerContext` managing session lifecycle: `create` -> `configure` -> `load source` -> `compile` -> `collect diagnostics` -> `finish`.
+  - Implemented `CompilerConfig` supporting edition, target, profile, optimization levels, and debug flags without hidden environment state.
+- **Internal Compiler Error (ICE) Boundary**:
+  - Implemented `InternalCompilerError` cleanly distinguishing user code errors from compiler implementation defects.
+- **AST Architecture Preparation (`compiler/ast/`)**:
+  - Added prepared architectural node types for `ModuleDecl`, `ImportDecl`, `Attribute`, and `Pattern` hierarchies.
+- **Intermediate Representation & Backend Contracts**:
+  - Formalized `HIRProgram` and `HIRLowering` contracts in `compiler/hir/`.
+  - Formalized `MIRModule`, `BasicBlock`, `MIROperation`, and `MIRResourceOp` contracts in `compiler/mir/`.
+  - Formalized `BackendEmitter`, `BackendOptions`, and `BackendResult` contracts in `compiler/backend/` consuming MIR rather than raw source.
+- **Runtime Boundary Formalization (`runtime/`)**:
+  - Defined explicit interface boundaries for `RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, and `HostAdapter`.
+- **Test Architecture Reorganization (`tests/`)**:
+  - Structured test suite into `unit/`, `integration/`, `compiler/`, `diagnostics/`, `runtime/`, and `conformance/`.
+  - Established `tests/fixtures/` with `valid/`, `invalid/`, `diagnostics/`, and `programs/` fixture suites.
+  - Added dedicated unit tests for source management and compiler driver, expanding suite to 43 passing tests.
+- **Architecture Documentation**:
+  - Added dedicated specifications in `docs/architecture/` (`repository.md`, `compiler.md`, `source-management.md`, `diagnostics.md`, `testing.md`, `runtime-boundary.md`, `backend-boundary.md`).
+
+---
+
 ## [0.0.1-s] - 2026-09-30
 
 ### Added

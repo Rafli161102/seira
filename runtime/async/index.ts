@@ -24,3 +24,9 @@ export interface AsyncScheduler {
   spawn<T>(task: () => Promise<T>): Task<T>;
   run(): Promise<void>;
 }
+
+export interface TaskService {
+  readonly scheduler: AsyncScheduler;
+  spawnTask<T>(task: () => Promise<T>): Task<T>;
+  cancelAll(): void;
+}

@@ -15,68 +15,91 @@
  * - I1xxx: Information
  *
  * Architecture supports:
- * - Severity
+ * - Severity (Error, Warning, Info)
  * - Code
+ * - Message
  * - Primary Span
  * - Secondary Spans
- * - Message
- * - Note
+ * - Notes
  * - Help
- * - Suggestion
+ * - Suggestions
  */
 
-export type DiagnosticSeverity = 'error' | 'warning' | 'info';
+import { type SourceManager } from '../source/source_manager.ts';
+import { type Span } from '../source/span.ts';
 
-export interface Span {
-  start: number;
-  end: number;
-  line: number;
-  column: number;
-}
+export * from './ice.ts';
+export type { Span } from '../source/span.ts';
+
+export const DiagnosticSeverity = {
+  Error: 'error',
+  Warning: 'warning',
+  Info: 'info',
+} as const;
+
+export type DiagnosticSeverity = (typeof DiagnosticSeverity)[keyof typeof DiagnosticSeverity];
 
 export interface SecondarySpan {
-  span: Span;
-  label?: string;
-  file?: string;
+  readonly span: Span;
+  readonly label?: string;
+  readonly file?: string;
+}
+
+export interface Suggestion {
+  readonly message?: string;
+  readonly replacement: string;
+  readonly span?: Span;
 }
 
 export interface Diagnostic {
-  severity: DiagnosticSeverity;
-  code: string;
-  primarySpan: Span;
-  secondarySpans?: SecondarySpan[];
-  message: string;
-  note?: string;
-  help?: string;
-  suggestion?: string;
-  file?: string;
+  readonly severity: DiagnosticSeverity;
+  readonly code: string;
+  readonly message: string;
+  readonly primarySpan: Span;
+  readonly secondarySpans?: ReadonlyArray<SecondarySpan>;
+  readonly notes?: ReadonlyArray<string>;
+  readonly note?: string;
+  readonly help?: string;
+  readonly suggestions?: ReadonlyArray<Suggestion>;
+  readonly suggestion?: string;
+  readonly file?: string;
 }
 
 export interface DiagnosticOptions {
-  severity?: DiagnosticSeverity;
-  code: string;
-  primarySpan: Span;
-  secondarySpans?: SecondarySpan[];
-  message: string;
-  note?: string;
-  help?: string;
-  suggestion?: string;
-  file?: string;
+  readonly severity?: DiagnosticSeverity;
+  readonly code: string;
+  readonly message: string;
+  readonly primarySpan: Span;
+  readonly secondarySpans?: ReadonlyArray<SecondarySpan>;
+  readonly notes?: ReadonlyArray<string>;
+  readonly note?: string;
+  readonly help?: string;
+  readonly suggestions?: ReadonlyArray<Suggestion>;
+  readonly suggestion?: string;
+  readonly file?: string;
 }
 
 export class DiagnosticBag {
   private diagnostics: Diagnostic[] = [];
 
   public report(options: DiagnosticOptions): void {
+    const notes = options.notes ?? (options.note ? [options.note] : undefined);
+    const suggestions =
+      options.suggestions ??
+      (options.suggestion ? [{ replacement: options.suggestion }] : undefined);
+
     this.diagnostics.push({
-      severity: options.severity ?? 'error',
+      severity: options.severity ?? DiagnosticSeverity.Error,
       code: options.code,
       primarySpan: options.primarySpan,
       secondarySpans: options.secondarySpans,
       message: options.message,
-      note: options.note,
+      notes,
+      note: options.note ?? (notes && notes.length > 0 ? notes[0] : undefined),
       help: options.help,
-      suggestion: options.suggestion,
+      suggestions,
+      suggestion:
+        options.suggestion ?? (suggestions && suggestions.length > 0 ? suggestions[0].replacement : undefined),
       file: options.file,
     });
   }
@@ -91,7 +114,7 @@ export class DiagnosticBag {
     note?: string
   ): void {
     this.report({
-      severity: 'error',
+      severity: DiagnosticSeverity.Error,
       code,
       primarySpan: span,
       message,
@@ -112,7 +135,7 @@ export class DiagnosticBag {
     note?: string
   ): void {
     this.report({
-      severity: 'warning',
+      severity: DiagnosticSeverity.Warning,
       code,
       primarySpan: span,
       message,
@@ -133,7 +156,7 @@ export class DiagnosticBag {
     note?: string
   ): void {
     this.report({
-      severity: 'info',
+      severity: DiagnosticSeverity.Info,
       code,
       primarySpan: span,
       message,
@@ -145,10 +168,10 @@ export class DiagnosticBag {
   }
 
   public hasErrors(): boolean {
-    return this.diagnostics.some((d) => d.severity === 'error');
+    return this.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error);
   }
 
-  public getDiagnostics(): readonly Diagnostic[] {
+  public getDiagnostics(): ReadonlyArray<Diagnostic> {
     return this.diagnostics;
   }
 
@@ -156,31 +179,58 @@ export class DiagnosticBag {
     this.diagnostics = [];
   }
 
-  public format(source?: string): string {
-    return this.diagnostics.map((d) => formatDiagnostic(d, source)).join('\n\n');
+  public format(sourceOrManager?: SourceManager | string): string {
+    return this.diagnostics.map((d) => formatDiagnostic(d, sourceOrManager)).join('\n\n');
   }
 }
 
-export function formatDiagnostic(diag: Diagnostic, source?: string): string {
-  const fileName = diag.file ?? '<source>';
-  const header = `${diag.severity}[${diag.code}]: ${diag.message}`;
-  const location = `  --> ${fileName}:${diag.primarySpan.line}:${diag.primarySpan.column}`;
+export function formatDiagnostic(diag: Diagnostic, sourceOrManager?: SourceManager | string): string {
+  let sourceText: string | undefined;
+  let fileName = diag.file ?? '<source>';
+  let line = diag.primarySpan.line ?? 1;
+  let column = diag.primarySpan.column ?? 1;
 
-  if (!source) {
+  if (typeof sourceOrManager === 'string') {
+    sourceText = sourceOrManager;
+  } else if (sourceOrManager && typeof sourceOrManager.resolveSpan === 'function') {
+    const resolved = sourceOrManager.resolveSpan(diag.primarySpan);
+    if (resolved) {
+      sourceText = resolved.file.text;
+      fileName = resolved.file.path;
+      line = resolved.start.line;
+      column = resolved.start.column;
+    } else if (diag.file) {
+      const file = sourceOrManager.getFileByPath(diag.file);
+      if (file) {
+        sourceText = file.text;
+      }
+    }
+  }
+
+  const header = `${diag.severity}[${diag.code}]: ${diag.message}`;
+  const location = `  --> ${fileName}:${line}:${column}`;
+
+  if (!sourceText) {
     let plain = `${header}\n${location}`;
     if (diag.help) plain += `\n  = help: ${diag.help}`;
     if (diag.suggestion) plain += `\n  = suggestion: ${diag.suggestion}`;
-    if (diag.note) plain += `\n  = note: ${diag.note}`;
+    if (diag.notes && diag.notes.length > 0) {
+      for (const n of diag.notes) {
+        plain += `\n  = note: ${n}`;
+      }
+    } else if (diag.note) {
+      plain += `\n  = note: ${diag.note}`;
+    }
     return plain;
   }
 
-  const lines = source.split(/\r?\n/);
-  const lineIdx = diag.primarySpan.line - 1;
+  const lines = sourceText.split(/\r?\n/);
+  const lineIdx = line - 1;
   const lineContent = lines[lineIdx] ?? '';
-  const lineNumStr = String(diag.primarySpan.line);
+  const lineNumStr = String(line);
   const padding = ' '.repeat(lineNumStr.length);
 
-  const col = Math.max(1, diag.primarySpan.column);
+  const col = Math.max(1, column);
   const length = Math.max(1, Math.min(diag.primarySpan.end - diag.primarySpan.start, lineContent.length - col + 1));
   const pointer = ' '.repeat(col - 1) + '^'.repeat(length);
 
@@ -189,11 +239,12 @@ export function formatDiagnostic(diag: Diagnostic, source?: string): string {
   // Secondary spans if present
   if (diag.secondarySpans && diag.secondarySpans.length > 0) {
     for (const sec of diag.secondarySpans) {
-      const secIdx = sec.span.line - 1;
+      const secLine = sec.span.line ?? 1;
+      const secCol = Math.max(1, sec.span.column ?? 1);
+      const secIdx = secLine - 1;
       const secContent = lines[secIdx] ?? '';
-      const secNumStr = String(sec.span.line);
+      const secNumStr = String(secLine);
       const secPadding = ' '.repeat(secNumStr.length);
-      const secCol = Math.max(1, sec.span.column);
       const secLen = Math.max(1, Math.min(sec.span.end - sec.span.start, secContent.length - secCol + 1));
       const secPtr = ' '.repeat(secCol - 1) + '-'.repeat(secLen) + (sec.label ? ` ${sec.label}` : '');
       output += `\n${secPadding} |\n${secNumStr} | ${secContent}\n${secPadding} | ${secPtr}`;
@@ -202,11 +253,21 @@ export function formatDiagnostic(diag: Diagnostic, source?: string): string {
 
   if (diag.suggestion) {
     output += `\n${padding} = suggestion: ${diag.suggestion}`;
+  } else if (diag.suggestions && diag.suggestions.length > 0) {
+    for (const s of diag.suggestions) {
+      output += `\n${padding} = suggestion: ${s.message ? `${s.message}: ` : ''}${s.replacement}`;
+    }
   }
+
   if (diag.help) {
     output += `\n${padding} = help: ${diag.help}`;
   }
-  if (diag.note) {
+
+  if (diag.notes && diag.notes.length > 0) {
+    for (const n of diag.notes) {
+      output += `\n${padding} = note: ${n}`;
+    }
+  } else if (diag.note) {
     output += `\n${padding} = note: ${diag.note}`;
   }
 

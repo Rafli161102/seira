@@ -1,8 +1,8 @@
 # Seira Programming Language
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.1-s](https://img.shields.io/badge/Release-0.0.1--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Seed Foundation](https://img.shields.io/badge/Status-Seed%20Foundation-orange.svg)](#status)
+[![Release: 0.0.2-s](https://img.shields.io/badge/Release-0.0.2--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: Repository Architecture](https://img.shields.io/badge/Status-Repository%20Architecture-orange.svg)](#status)
 
 > **Simple to write. Predictable to run.**  
 > *Write less. Control more.*
@@ -11,9 +11,9 @@
 > *A fast, modern, predictable, and secure programming language for native and WebAssembly software.*
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.1-s)**  
+> **Current Status: Seed (0.0.2-s) — Repository Architecture**  
 > Seira is in its earliest seed stage. **Alpha is not released yet.**  
-> Seira is under active development and is **not production-ready**. In this Seed release, the project provides foundational architecture, documentation, project manifest support, a minimal CLI, a Seed lexer/parser, and diagnostic foundations. Direct native compilation and full execution will arrive during the Alpha series.
+> Seira is under active development and is **not production-ready**. In this 0.0.2-s release, the project establishes decoupled repository architecture, source management, compiler driver orchestration, diagnostics architecture with ICE boundary, prepared AST node hierarchies, and formalized runtime/backend contracts. Direct native compilation and full execution will arrive during the Alpha series.
 
 ---
 
@@ -61,13 +61,13 @@ The following design decisions are architectural constraints locked in the Seira
 | **Language Name** | Seira |
 | **Source Extension** | `.sra` |
 | **Official CLI** | `seira` |
-| **Current Version** | `0.0.1-s` (*Seed Foundation*) |
+| **Current Version** | `0.0.2-s` (*Repository Architecture*) |
 | **License** | [MIT License](LICENSE) |
 | **Target Backends** | Native (LLVM) & WebAssembly (Wasm) |
 
 ---
 
-## 4. Current Status: Release 0.0.1-s (Seed Foundation)
+## 4. Current Status: Release 0.0.2-s (Repository Architecture)
 
 Seira follows a staged release model:
 
@@ -85,17 +85,21 @@ Release Candidates (0.1.0-rc.1 ...)
 Stable 1.0.0
 ```
 
-### What is implemented in `0.0.1-s`:
+### What is implemented in `0.0.2-s`:
 - [x] Official repository architecture and 3 permanent branches (`main`, `develop`, `dev-infra`).
+- [x] Source management subsystem (`compiler/source/`) with `SourceId`, `SourceFile`, `Span`, `Position`, `LineMap`, and `SourceManager`.
+- [x] Compiler driver subsystem (`compiler/driver/`) with `CompilerDriver`, `CompilerContext` session lifecycle, and `CompilerConfig`.
+- [x] Diagnostics engine with structured code families (`E1xxx`–`E9xxx`), source pointers, suggestions, and `InternalCompilerError` (ICE) boundary.
 - [x] Contributor documentation, governance model, and RFC process.
 - [x] Project manifest format (`Seira.toml`) parsing and validation.
 - [x] Official CLI (`seira`) with `--version`, `--help`, `info`, and `check` commands.
-- [x] Compiler pipeline skeleton (`lexer`, `parser`, `ast`, `diagnostics`).
+- [x] Compiler pipeline (`lexer`, `parser`, `ast`, `source`, `diagnostics`, `driver`).
 - [x] Lexer for Seira tokens (keywords, symbols `|>`, `??`, `?`, `!`, `@`, literals, comments).
-- [x] Minimal parser for function definitions, statements, and expressions.
-- [x] Diagnostics engine with source spans and formatted error reporting.
-- [x] Runtime architecture skeleton (value model, memory/resource scopes, effect interfaces, context, panic, services, host adapter).
-- [x] Automated test suite across lexer, parser, diagnostics, manifest, runtime, and CLI.
+- [x] Recursive descent parser for function definitions, statements, and expressions.
+- [x] Prepared AST node hierarchies (`ModuleDecl`, `ImportDecl`, `Attribute`, `Pattern`).
+- [x] Intermediate representation contracts (`HIR`, `MIR`) and backend emission interface.
+- [x] Runtime architecture boundaries (`RuntimeContext`, `MemoryService`, `ResourceManager`, `PanicService`, `TaskService`, `HostAdapter`).
+- [x] Categorized automated test suites across unit, integration, compiler, diagnostics, runtime, and conformance (43 tests).
 
 ### What is reserved / planned for future releases:
 - Full LLVM native code generator and WebAssembly emission backend.
@@ -122,7 +126,7 @@ npm install  # installs dev tools for typechecking and linting
 ```bash
 # Check version
 ./bin/seira --version
-# Output: Seira 0.0.1-s
+# Output: Seira 0.0.2-s
 
 # Inspect environment and project
 ./bin/seira info
@@ -159,17 +163,21 @@ fn compute_score(input: Option<Int>) -> Int {
 }
 ```
 
-*(Note: In 0.0.1-s, syntax is validated by `seira check`. Executable code generation is planned for the Alpha series).*
+*(Note: In 0.0.2-s, syntax is validated by `seira check`. Executable code generation is planned for the Alpha series).*
 
 ---
 
 ## 7. Architecture & Documentation
 
 - [Architecture Overview](docs/architecture/overview.md)
+- [Repository Architecture](docs/architecture/repository.md)
+- [Compiler Architecture](docs/architecture/compiler.md)
+- [Source Management Architecture](docs/architecture/source-management.md)
+- [Diagnostics Architecture](docs/architecture/diagnostics.md)
+- [Testing Architecture](docs/architecture/testing.md)
+- [Runtime Boundary Architecture](docs/architecture/runtime-boundary.md)
+- [Backend Boundary Architecture](docs/architecture/backend-boundary.md)
 - [Language Specification](docs/language/overview.md)
-- [Compiler Architecture](docs/compiler/overview.md)
-- [Runtime Architecture](docs/runtime/overview.md)
-- [Standard Library Layout](docs/standard-library/overview.md)
 - [RFC Process & Templates](docs/rfcs/README.md)
 - [Development Setup & Guidelines](docs/contributing/development-setup.md)
 

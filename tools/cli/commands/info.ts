@@ -12,7 +12,7 @@ import { SEIRA_VERSION } from './version.ts';
 export function runInfo(): void {
   console.log('Seira Environment & Toolchain Information');
   console.log('========================================');
-  console.log(`Seira Version:         ${SEIRA_VERSION} (Seed Foundation)`);
+  console.log(`Seira Version:         ${SEIRA_VERSION} (Repository Architecture)`);
   console.log(`Language Axiom:        Everything is a Value. Programs are Transformations.`);
   console.log(`Host Platform:         ${platform()} (${arch()})`);
   console.log(`Host Node.js:          ${process.version}`);
@@ -21,10 +21,12 @@ export function runInfo(): void {
   console.log(`License:               MIT License`);
   console.log('');
   console.log('Compiler Pipeline Status:');
+  console.log('  [x] Source Manager:  Active (0.0.2-s)');
   console.log('  [x] Lexer:           Active (0.0.1-s)');
   console.log('  [x] Parser:          Active (0.0.1-s)');
-  console.log('  [x] Diagnostics:     Active (0.0.1-s)');
-  console.log('  [ ] Resolver:        Skeleton (Reserved: 0.0.2-s)');
+  console.log('  [x] Diagnostics:     Active (0.0.2-s)');
+  console.log('  [x] Compiler Driver: Active (0.0.2-s)');
+  console.log('  [ ] Resolver:        Skeleton (Reserved: 0.0.3-s)');
   console.log('  [ ] Typecheck:       Skeleton (Reserved: 0.0.3-s)');
   console.log('  [ ] HIR:             Skeleton (Reserved: 0.0.11-d)');
   console.log('  [ ] MIR:             Skeleton (Reserved: 0.0.11-d)');
