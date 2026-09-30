@@ -15,7 +15,7 @@
  * «Everything is a Value.»
  */
 
-import type { FunctionDecl } from '../../compiler/ast/ast.ts';
+import type { FunctionDecl, LambdaExpr } from '../../compiler/ast/ast.ts';
 import type { Span } from '../../compiler/source/span.ts';
 
 // ─── Value Tags ──────────────────────────────────────────────────────────────
@@ -32,6 +32,9 @@ export const RuntimeTag = {
   Option: 'Option',
   Result: 'Result',
   List: 'List',
+  Tuple: 'Tuple',
+  Map: 'Map',
+  Set: 'Set',
   Function: 'Function',
   Builtin: 'Builtin',
 } as const;
@@ -96,11 +99,32 @@ export interface ListRuntimeValue {
   readonly elements: ReadonlyArray<RuntimeValue>;
 }
 
+export interface TupleRuntimeValue {
+  readonly tag: 'Tuple';
+  readonly elements: ReadonlyArray<RuntimeValue>;
+}
+
+export interface MapEntryRuntime {
+  readonly key: RuntimeValue;
+  readonly value: RuntimeValue;
+}
+
+export interface MapRuntimeValue {
+  readonly tag: 'Map';
+  readonly entries: ReadonlyArray<MapEntryRuntime>;
+}
+
+export interface SetRuntimeValue {
+  readonly tag: 'Set';
+  readonly elements: ReadonlyArray<RuntimeValue>;
+}
+
 /** Runtime function value carrying its lexical closure environment. */
 export interface FunctionRuntimeValue {
   readonly tag: 'Function';
   readonly name: string;
-  readonly decl: FunctionDecl;
+  readonly decl?: FunctionDecl;
+  readonly lambda?: LambdaExpr;
   /** Captured lexical environment at the point of function definition. */
   readonly closure: RuntimeEnvironment;
 }
@@ -123,6 +147,9 @@ export type RuntimeValue =
   | OptionRuntimeValue
   | ResultRuntimeValue
   | ListRuntimeValue
+  | TupleRuntimeValue
+  | MapRuntimeValue
+  | SetRuntimeValue
   | FunctionRuntimeValue
   | BuiltinRuntimeValue;
 
@@ -180,12 +207,37 @@ export function rtList(elements: RuntimeValue[]): ListRuntimeValue {
   return { tag: 'List', elements };
 }
 
+export function rtTuple(elements: ReadonlyArray<RuntimeValue>): TupleRuntimeValue {
+  return { tag: 'Tuple', elements };
+}
+
+export function rtMap(entries: ReadonlyArray<MapEntryRuntime>): MapRuntimeValue {
+  return { tag: 'Map', entries };
+}
+
+export function rtSet(elements: ReadonlyArray<RuntimeValue>): SetRuntimeValue {
+  const unique: RuntimeValue[] = [];
+  for (const elem of elements) {
+    if (!unique.some((u) => runtimeValuesEqual(u, elem))) {
+      unique.push(elem);
+    }
+  }
+  return { tag: 'Set', elements: unique };
+}
+
 export function rtFunction(
   name: string,
   decl: FunctionDecl,
   closure: RuntimeEnvironment
 ): FunctionRuntimeValue {
   return { tag: 'Function', name, decl, closure };
+}
+
+export function rtLambda(
+  lambda: LambdaExpr,
+  closure: RuntimeEnvironment
+): FunctionRuntimeValue {
+  return { tag: 'Function', name: '<lambda>', lambda, closure };
 }
 
 export function rtBuiltin(name: string): BuiltinRuntimeValue {
@@ -223,6 +275,12 @@ export function formatRuntimeValue(v: RuntimeValue): string {
         : `Err(${formatRuntimeValue(v.value)})`;
     case 'List':
       return `[${v.elements.map(formatRuntimeValue).join(', ')}]`;
+    case 'Tuple':
+      return `(${v.elements.map(formatRuntimeValue).join(', ')})`;
+    case 'Map':
+      return `{${v.entries.map((e) => `${formatRuntimeValue(e.key)}: ${formatRuntimeValue(e.value)}`).join(', ')}}`;
+    case 'Set':
+      return `set[${v.elements.map(formatRuntimeValue).join(', ')}]`;
     case 'Function':
       return `<fn ${v.name}>`;
     case 'Builtin':
@@ -270,6 +328,24 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       const bList = b as ListRuntimeValue;
       if (a.elements.length !== bList.elements.length) return false;
       return a.elements.every((el, idx) => runtimeValuesEqual(el, bList.elements[idx]));
+    }
+    case 'Tuple': {
+      const bTup = b as TupleRuntimeValue;
+      if (a.elements.length !== bTup.elements.length) return false;
+      return a.elements.every((el, idx) => runtimeValuesEqual(el, bTup.elements[idx]));
+    }
+    case 'Map': {
+      const bMap = b as MapRuntimeValue;
+      if (a.entries.length !== bMap.entries.length) return false;
+      return a.entries.every((aEntry) => {
+        const bEntry = bMap.entries.find((e) => runtimeValuesEqual(e.key, aEntry.key));
+        return bEntry !== undefined && runtimeValuesEqual(aEntry.value, bEntry.value);
+      });
+    }
+    case 'Set': {
+      const bSet = b as SetRuntimeValue;
+      if (a.elements.length !== bSet.elements.length) return false;
+      return a.elements.every((aElem) => bSet.elements.some((bElem) => runtimeValuesEqual(aElem, bElem)));
     }
     case 'Function':
       return a.name === (b as FunctionRuntimeValue).name;

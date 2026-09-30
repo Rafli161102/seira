@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.5-s Execution Foundation
+# Specification: 0.0.6-s Data & Control Foundation
 
 [package]
 name = "seira"
-version = "0.0.5-s"
+version = "0.0.6-s"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — Execution Foundation"
+description = "The Seira Programming Language — Data & Control Foundation"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 

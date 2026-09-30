@@ -11,6 +11,55 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
 
+## [0.0.6-s] - 2026-09-30
+
+### Added
+- **Structured Control Flow**:
+  - `if` / `if ... else`: Expression-oriented branching producing compatible values. Strict `Bool` condition required (`E3005`).
+  - `while <cond> { ... }`: Evaluates strictly `Bool` condition, executing body deterministically.
+  - `for <item> in <collection> { ... }`: Iterable over `List` and `Set` collections. Rejects non-iterable types with `E3007`. Scopes loop variable within iteration body.
+  - `loop { ... }`: Unconditional explicit repetition without implicit termination.
+  - `break`: Exits the innermost loop. Strictly rejected outside loops during name resolution with structured diagnostic `E2004`.
+  - `continue`: Skips remainder of current iteration to next iteration. Strictly rejected outside loops during name resolution with structured diagnostic `E2004`.
+  - Nested loops, blocks, and early returns (`return`, `?`) compose cleanly with control flow.
+- **Pattern Matching Subsystem (`compiler/ast/`, `compiler/typecheck/`, `runtime/execution/`)**:
+  - Executable `match <expr> { ... }` expressions producing values with strict left-to-right arm evaluation.
+  - Supported pattern models:
+    - Literal patterns: `0 => ...`, `"text" => ...`, `true => ...`
+    - Wildcard pattern: `_ => ...`
+    - Binding patterns: `x => ...` (receives matched value bound in arm scope)
+    - Option patterns: `Some(x) => ...`, `None => ...`
+    - Result patterns: `Ok(x) => ...`, `Err(e) => ...`
+  - Pattern type compatibility checking: Invalid pattern kinds for the scrutinee type produce `E5002`.
+  - Static exhaustiveness validation: Non-exhaustive matches (e.g. missing `None`, `Err`, or wildcard fallback) produce `E5001`.
+  - Arm value type compatibility: Incompatible branch/arm types produce `E3001`.
+- **Collections & Safe Indexing**:
+  - `List<T>`: Homogeneous indexed sequence (`[1, 2, 3]`). Enforces type homogeneity on initialization (`E3001`). Safe indexing (`list[index]`) returns `Option<T>` (`Some(val)` for valid index, `None` for out-of-range index; zero runtime panic or JS `undefined`).
+  - `Tuple`: Heterogeneous fixed-arity product type (`(1, "two", true)`). Positional numeric member access (`t.0`, `t.1`) statically validated against tuple arity (`E3006`).
+  - `Map<K, V>`: Key-value associative collection (`{"a": 1, "b": 2}`). Index lookup (`map[key]`) returns `Option<V>` (`Some(val)` or `None`; zero runtime panic or JS `undefined`).
+  - `Set<T>`: Unordered unique collection (`set[1, 2, 3]`). Operations: `.contains(item)` -> `Bool`, `.insert(item)` -> `Unit`, `.remove(item)` -> `Unit`, `.length` -> `Int`.
+  - Structural value equality: `==` compares collections element-by-element by value, never by JS reference identity.
+  - Immutable by default; mutable updates require explicit `mut` bindings.
+- **Functions, Lambdas, Closures & Higher-Order Functions**:
+  - First-class lambda expressions: `x => expr`, `(a, b) => expr`, and block lambdas `{ ... }`.
+  - Lexical closures: Lambdas capture lexical bindings from enclosing scopes without mutating outer bindings or leaking JS closure state.
+  - Higher-order functions: Functions can be passed as arguments, returned from other functions, stored in variables, and invoked through runtime function values.
+- **Option & Result Integration**:
+  - Integrated `Some`, `None`, `Ok`, `Err` with pattern matching, indexing, fallback operator (`??`), and propagation operator (`?`).
+  - `?` operator immediately propagates `None` or `Err` across expressions, block statements, and variable bindings.
+- **Pipeline Composition**:
+  - Preserved and verified pipeline expressions `data |> f` and `data |> f(extra)`.
+  - Full support for pipelines with function values and lambdas: `data |> (x => x * 2)`, `data |> double`.
+- **Diagnostic Extensions**:
+  - `E2004`: `break` or `continue` outside loop statement.
+  - `E3006`: Tuple index out of bounds or invalid member access.
+  - `E3007`: Target of `for` loop is not an iterable collection (`List` or `Set`).
+  - `E5001`: Non-exhaustive pattern matching in `match` expression.
+  - `E5002`: Pattern kind is invalid for the matched expression type.
+- **Testing**:
+  - Added `tests/unit/execution/data_control.test.ts` covering all control flow, pattern matching, collections, safe indexing, closures, higher-order functions, and negative diagnostic paths.
+  - Total test suite expanded to 196 tests with 100% pass rate.
+
 ---
 
 ## [0.0.5-s] - 2026-09-30

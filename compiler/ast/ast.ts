@@ -47,7 +47,22 @@ export type NodeKind =
   | 'Attribute'
   | 'IdentifierPattern'
   | 'LiteralPattern'
-  | 'WildcardPattern';
+  | 'WildcardPattern'
+  | 'ConstructorPattern'
+  | 'WhileStmt'
+  | 'ForStmt'
+  | 'LoopStmt'
+  | 'BreakStmt'
+  | 'ContinueStmt'
+  | 'MatchExpr'
+  | 'MatchArm'
+  | 'ListLiteral'
+  | 'TupleLiteral'
+  | 'MapLiteral'
+  | 'MapEntry'
+  | 'SetLiteral'
+  | 'IndexExpr'
+  | 'LambdaExpr';
 
 export interface BaseNode {
   readonly kind: NodeKind;
@@ -63,7 +78,9 @@ export type ASTNode =
   | Expr
   | TypeAnnotation
   | Attribute
-  | Pattern;
+  | Pattern
+  | MatchArm
+  | MapEntry;
 
 export interface Program extends BaseNode {
   readonly kind: 'Program';
@@ -166,7 +183,38 @@ export type Stmt =
   | AssignStmt
   | ReturnStmt
   | ExprStmt
-  | WithStmt;
+  | WithStmt
+  | WhileStmt
+  | ForStmt
+  | LoopStmt
+  | BreakStmt
+  | ContinueStmt;
+
+export interface WhileStmt extends BaseNode {
+  readonly kind: 'WhileStmt';
+  readonly condition: Expr;
+  readonly body: Block;
+}
+
+export interface ForStmt extends BaseNode {
+  readonly kind: 'ForStmt';
+  readonly variable: string;
+  readonly iterable: Expr;
+  readonly body: Block;
+}
+
+export interface LoopStmt extends BaseNode {
+  readonly kind: 'LoopStmt';
+  readonly body: Block;
+}
+
+export interface BreakStmt extends BaseNode {
+  readonly kind: 'BreakStmt';
+}
+
+export interface ContinueStmt extends BaseNode {
+  readonly kind: 'ContinueStmt';
+}
 
 export interface LetStmt extends BaseNode {
   readonly kind: 'LetStmt';
@@ -215,7 +263,7 @@ export interface WithStmt extends BaseNode {
   readonly body: Block;
 }
 
-export type Pattern = IdentifierPattern | LiteralPattern | WildcardPattern;
+export type Pattern = IdentifierPattern | LiteralPattern | WildcardPattern | ConstructorPattern;
 
 export interface IdentifierPattern extends BaseNode {
   readonly kind: 'IdentifierPattern';
@@ -232,6 +280,12 @@ export interface WildcardPattern extends BaseNode {
   readonly kind: 'WildcardPattern';
 }
 
+export interface ConstructorPattern extends BaseNode {
+  readonly kind: 'ConstructorPattern';
+  readonly name: string;
+  readonly args: Pattern[];
+}
+
 export type Expr =
   | BinaryExpr
   | UnaryExpr
@@ -245,7 +299,14 @@ export type Expr =
   | CallExpr
   | MemberExpr
   | Identifier
-  | Literal;
+  | Literal
+  | MatchExpr
+  | ListLiteral
+  | TupleLiteral
+  | MapLiteral
+  | SetLiteral
+  | IndexExpr
+  | LambdaExpr;
 
 export interface BinaryExpr extends BaseNode {
   readonly kind: 'BinaryExpr';
@@ -326,4 +387,54 @@ export interface Literal extends BaseNode {
   readonly value: string | number | boolean;
   readonly raw: string;
   readonly literalKind?: 'int' | 'uint' | 'float' | 'string' | 'char' | 'bool';
+}
+
+export interface MatchArm extends BaseNode {
+  readonly kind: 'MatchArm';
+  readonly pattern: Pattern;
+  readonly body: Expr | Block;
+}
+
+export interface MatchExpr extends BaseNode {
+  readonly kind: 'MatchExpr';
+  readonly value: Expr;
+  readonly arms: MatchArm[];
+}
+
+export interface ListLiteral extends BaseNode {
+  readonly kind: 'ListLiteral';
+  readonly elements: Expr[];
+}
+
+export interface TupleLiteral extends BaseNode {
+  readonly kind: 'TupleLiteral';
+  readonly elements: Expr[];
+}
+
+export interface MapEntry extends BaseNode {
+  readonly kind: 'MapEntry';
+  readonly key: Expr;
+  readonly value: Expr;
+}
+
+export interface MapLiteral extends BaseNode {
+  readonly kind: 'MapLiteral';
+  readonly entries: MapEntry[];
+}
+
+export interface SetLiteral extends BaseNode {
+  readonly kind: 'SetLiteral';
+  readonly elements: Expr[];
+}
+
+export interface IndexExpr extends BaseNode {
+  readonly kind: 'IndexExpr';
+  readonly object: Expr;
+  readonly index: Expr;
+}
+
+export interface LambdaExpr extends BaseNode {
+  readonly kind: 'LambdaExpr';
+  readonly params: Param[];
+  readonly body: Expr | Block;
 }

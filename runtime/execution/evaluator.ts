@@ -29,30 +29,52 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BreakStmt,
   CallExpr,
   ConstStmt,
+  ConstructorPattern,
+  ContinueStmt,
   Expr,
   ExprStmt,
+  ForStmt,
   FunctionDecl,
   Identifier,
+  IdentifierPattern,
   IfExpr,
+  IndexExpr,
+  LambdaExpr,
   LetStmt,
+  ListLiteral,
   Literal,
+  LiteralPattern,
+  LoopStmt,
+  MapLiteral,
+  MatchArm,
+  MatchExpr,
   MemberExpr,
   OptionFallbackExpr,
   OptionPropagateExpr,
+  Pattern,
   PipelineExpr,
   Program,
   ReturnStmt,
+  SetLiteral,
   Stmt,
+  TupleLiteral,
   UnaryExpr,
+  WhileStmt,
+  WildcardPattern,
   WithStmt,
 } from '../../compiler/ast/ast.ts';
 import type { Span } from '../../compiler/source/span.ts';
 import { DiagnosticBag } from '../../compiler/diagnostics/index.ts';
 import {
+  breakOutcome,
+  continueOutcome,
   divisionByZeroError,
   invalidStateError,
+  isBreak,
+  isContinue,
   isPanic,
   isReturn,
   normalOutcome,
@@ -61,6 +83,8 @@ import {
   stackOverflowError,
   uintUnderflowError,
   unsupportedOperationError,
+  type BreakOutcome,
+  type ContinueOutcome,
   type NormalOutcome,
   type PanicOutcome,
   type ReturnOutcome,
@@ -76,11 +100,15 @@ import {
   rtFloat,
   rtFunction,
   rtInt,
+  rtLambda,
   rtList,
+  rtMap,
   rtNone,
   rtOk,
+  rtSet,
   rtSome,
   rtString,
+  rtTuple,
   rtUInt,
   runtimeValuesEqual,
   RuntimeEnvironment,
@@ -90,11 +118,15 @@ import {
   type FunctionRuntimeValue,
   type IntRuntimeValue,
   type ListRuntimeValue,
+  type MapRuntimeValue,
   type OptionRuntimeValue,
   type ResultRuntimeValue,
   type RuntimeValue,
+  type SetRuntimeValue,
+  type TupleRuntimeValue,
   type UIntRuntimeValue,
 } from './values.ts';
+
 
 // ─── Execution Context ────────────────────────────────────────────────────────
 
@@ -282,14 +314,96 @@ export class Evaluator {
         return this.executeReturnStmt(stmt as ReturnStmt, env);
       case 'WithStmt':
         return this.executeWithStmt(stmt as WithStmt, env);
+      case 'WhileStmt':
+        return this.executeWhileStmt(stmt as WhileStmt, env);
+      case 'ForStmt':
+        return this.executeForStmt(stmt as ForStmt, env);
+      case 'LoopStmt':
+        return this.executeLoopStmt(stmt as LoopStmt, env);
+      case 'BreakStmt':
+        return breakOutcome();
+      case 'ContinueStmt':
+        return continueOutcome();
     }
+  }
+
+  private executeWhileStmt(stmt: WhileStmt, env: RuntimeEnvironment): RuntimeOutcome {
+    while (true) {
+      const condOutcome = this.evaluateExpr(stmt.condition, env);
+      if (isPanic(condOutcome)) return condOutcome;
+      if (isReturn(condOutcome)) return condOutcome;
+      if (isBreak(condOutcome) || isContinue(condOutcome)) return condOutcome;
+
+      if (condOutcome.value.tag !== 'Bool') {
+        return panicOutcome(invalidStateError(
+          `'while' condition must be a Bool value, got ${condOutcome.value.tag}. Seira has no truthy/falsy semantics.`,
+          stmt.condition.span, this.ctx.config.fileName
+        ));
+      }
+
+      if (!(condOutcome.value as BoolRuntimeValue).value) {
+        break;
+      }
+
+      const bodyOutcome = this.executeBlock(stmt.body, env);
+      if (isPanic(bodyOutcome)) return bodyOutcome;
+      if (isReturn(bodyOutcome)) return bodyOutcome;
+      if (isBreak(bodyOutcome)) break;
+      if (isContinue(bodyOutcome)) continue;
+    }
+    return normalOutcome(UNIT_VALUE);
+  }
+
+  private executeLoopStmt(stmt: LoopStmt, env: RuntimeEnvironment): RuntimeOutcome {
+    while (true) {
+      const bodyOutcome = this.executeBlock(stmt.body, env);
+      if (isPanic(bodyOutcome)) return bodyOutcome;
+      if (isReturn(bodyOutcome)) return bodyOutcome;
+      if (isBreak(bodyOutcome)) break;
+      if (isContinue(bodyOutcome)) continue;
+    }
+    return normalOutcome(UNIT_VALUE);
+  }
+
+  private executeForStmt(stmt: ForStmt, env: RuntimeEnvironment): RuntimeOutcome {
+    const iterOutcome = this.evaluateExpr(stmt.iterable, env);
+    if (isPanic(iterOutcome)) return iterOutcome;
+    if (isReturn(iterOutcome)) return iterOutcome;
+    if (isBreak(iterOutcome) || isContinue(iterOutcome)) return iterOutcome;
+
+    const iterableVal = iterOutcome.value;
+    let items: ReadonlyArray<RuntimeValue>;
+
+    if (iterableVal.tag === 'List') {
+      items = (iterableVal as ListRuntimeValue).elements;
+    } else if (iterableVal.tag === 'Set') {
+      items = (iterableVal as SetRuntimeValue).elements;
+    } else {
+      return panicOutcome(invalidStateError(
+        `Cannot iterate over value of type ${iterableVal.tag}.`,
+        stmt.iterable.span, this.ctx.config.fileName
+      ));
+    }
+
+    for (const item of items) {
+      const iterEnv = env.child('for');
+      iterEnv.define(stmt.variable, item, false);
+
+      const bodyOutcome = this.executeBlock(stmt.body, iterEnv);
+      if (isPanic(bodyOutcome)) return bodyOutcome;
+      if (isReturn(bodyOutcome)) return bodyOutcome;
+      if (isBreak(bodyOutcome)) break;
+      if (isContinue(bodyOutcome)) continue;
+    }
+
+    return normalOutcome(UNIT_VALUE);
   }
 
   private executeBindingStmt(stmt: BindingStmt, env: RuntimeEnvironment): RuntimeOutcome {
     const initOutcome = this.evaluateExpr(stmt.initializer, env);
-    if (isPanic(initOutcome)) return initOutcome;
+    if (initOutcome.kind !== 'Normal') return initOutcome;
 
-    const value = initOutcome.kind === 'Return' ? initOutcome.value : initOutcome.value;
+    const value = initOutcome.value;
 
     // Check if this is a reassignment to an existing mutable binding
     const existing = env.lookup(stmt.name);
@@ -316,8 +430,8 @@ export class Evaluator {
     let value: RuntimeValue = UNIT_VALUE;
     if (stmt.initializer) {
       const outcome = this.evaluateExpr(stmt.initializer, env);
-      if (isPanic(outcome)) return outcome;
-      value = outcome.kind === 'Normal' || outcome.kind === 'Return' ? outcome.value : UNIT_VALUE;
+      if (outcome.kind !== 'Normal') return outcome;
+      value = outcome.value;
     }
     env.define(stmt.name, value, stmt.isMut);
     return normalOutcome(UNIT_VALUE);
@@ -325,18 +439,16 @@ export class Evaluator {
 
   private executeConstStmt(stmt: ConstStmt, env: RuntimeEnvironment): RuntimeOutcome {
     const outcome = this.evaluateExpr(stmt.initializer, env);
-    if (isPanic(outcome)) return outcome;
-    const value = outcome.kind === 'Normal' || outcome.kind === 'Return' ? outcome.value : UNIT_VALUE;
+    if (outcome.kind !== 'Normal') return outcome;
+    const value = outcome.value;
     env.define(stmt.name, value, false /* const is always immutable */);
     return normalOutcome(UNIT_VALUE);
   }
 
   private executeAssignStmt(stmt: AssignStmt, env: RuntimeEnvironment): RuntimeOutcome {
     const valOutcome = this.evaluateExpr(stmt.value, env);
-    if (isPanic(valOutcome)) return valOutcome;
-    const newValue = valOutcome.kind === 'Normal' || valOutcome.kind === 'Return'
-      ? valOutcome.value
-      : UNIT_VALUE;
+    if (valOutcome.kind !== 'Normal') return valOutcome;
+    const newValue = valOutcome.value;
 
     if (stmt.target.kind !== 'Identifier') {
       return panicOutcome(unsupportedOperationError(
@@ -435,6 +547,8 @@ export class Evaluator {
 
       if (isPanic(outcome)) return outcome;
       if (isReturn(outcome)) return outcome;
+      if (isBreak(outcome)) return outcome;
+      if (isContinue(outcome)) return outcome;
 
       // Track the last produced value (blocks are expression-oriented)
       if (outcome.kind === 'Normal') {
@@ -473,6 +587,20 @@ export class Evaluator {
         return this.evaluateAssignmentExpr(expr as AssignmentExpr, env);
       case 'MemberExpr':
         return this.evaluateMemberExpr(expr as MemberExpr, env);
+      case 'MatchExpr':
+        return this.evaluateMatchExpr(expr as MatchExpr, env);
+      case 'ListLiteral':
+        return this.evaluateListLiteral(expr as ListLiteral, env);
+      case 'TupleLiteral':
+        return this.evaluateTupleLiteral(expr as TupleLiteral, env);
+      case 'MapLiteral':
+        return this.evaluateMapLiteral(expr as MapLiteral, env);
+      case 'SetLiteral':
+        return this.evaluateSetLiteral(expr as SetLiteral, env);
+      case 'IndexExpr':
+        return this.evaluateIndexExpr(expr as IndexExpr, env);
+      case 'LambdaExpr':
+        return this.evaluateLambdaExpr(expr as LambdaExpr, env);
       case 'RangeExpr':
         return panicOutcome(unsupportedOperationError(
           'range expression execution', expr.span, this.ctx.config.fileName
@@ -539,8 +667,7 @@ export class Evaluator {
   private evaluateBinaryExpr(expr: BinaryExpr, env: RuntimeEnvironment): RuntimeOutcome {
     // Left-to-right deterministic evaluation
     const leftOutcome = this.evaluateExpr(expr.left, env);
-    if (isPanic(leftOutcome)) return leftOutcome;
-    if (isReturn(leftOutcome)) return leftOutcome;
+    if (leftOutcome.kind !== 'Normal') return leftOutcome;
     const left = leftOutcome.value;
 
     // Short-circuit for logical operators
@@ -554,8 +681,7 @@ export class Evaluator {
       }
       if (!(left as BoolRuntimeValue).value) return normalOutcome(rtBool(false));
       const rightOutcome = this.evaluateExpr(expr.right, env);
-      if (isPanic(rightOutcome)) return rightOutcome;
-      if (isReturn(rightOutcome)) return rightOutcome;
+      if (rightOutcome.kind !== 'Normal') return rightOutcome;
       const right = rightOutcome.value;
       if (right.tag !== 'Bool') {
         return panicOutcome(invalidStateError(
@@ -575,8 +701,7 @@ export class Evaluator {
       }
       if ((left as BoolRuntimeValue).value) return normalOutcome(rtBool(true));
       const rightOutcome = this.evaluateExpr(expr.right, env);
-      if (isPanic(rightOutcome)) return rightOutcome;
-      if (isReturn(rightOutcome)) return rightOutcome;
+      if (rightOutcome.kind !== 'Normal') return rightOutcome;
       const right = rightOutcome.value;
       if (right.tag !== 'Bool') {
         return panicOutcome(invalidStateError(
@@ -588,8 +713,7 @@ export class Evaluator {
     }
 
     const rightOutcome = this.evaluateExpr(expr.right, env);
-    if (isPanic(rightOutcome)) return rightOutcome;
-    if (isReturn(rightOutcome)) return rightOutcome;
+    if (rightOutcome.kind !== 'Normal') return rightOutcome;
     const right = rightOutcome.value;
 
     return this.applyBinaryOp(expr.operator, left, right, expr.span);
@@ -738,8 +862,7 @@ export class Evaluator {
 
   private evaluateUnaryExpr(expr: UnaryExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const operandOutcome = this.evaluateExpr(expr.operand, env);
-    if (isPanic(operandOutcome)) return operandOutcome;
-    if (isReturn(operandOutcome)) return operandOutcome;
+    if (operandOutcome.kind !== 'Normal') return operandOutcome;
     const operand = operandOutcome.value;
 
     switch (expr.operator) {
@@ -776,8 +899,7 @@ export class Evaluator {
 
   private evaluateIfExpr(expr: IfExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const condOutcome = this.evaluateExpr(expr.condition, env);
-    if (isPanic(condOutcome)) return condOutcome;
-    if (isReturn(condOutcome)) return condOutcome;
+    if (condOutcome.kind !== 'Normal') return condOutcome;
     const cond = condOutcome.value;
 
     // Strict Bool requirement — no JavaScript truthiness
@@ -820,22 +942,10 @@ export class Evaluator {
   private evaluatePipelineExpr(expr: PipelineExpr, env: RuntimeEnvironment): RuntimeOutcome {
     // Evaluate left side (the piped value)
     const leftOutcome = this.evaluateExpr(expr.left, env);
-    if (isPanic(leftOutcome)) return leftOutcome;
-    if (isReturn(leftOutcome)) return leftOutcome;
+    if (leftOutcome.kind !== 'Normal') return leftOutcome;
     const pipedValue = leftOutcome.value;
 
-    // The right side is either an Identifier (bare function) or a CallExpr
     const right = expr.right;
-
-    if (right.kind === 'Identifier') {
-      // data |> f  →  f(data)
-      return this.callFunctionByName(
-        (right as Identifier).name,
-        [pipedValue],
-        right.span,
-        env
-      );
-    }
 
     if (right.kind === 'CallExpr') {
       const call = right as CallExpr;
@@ -843,8 +953,7 @@ export class Evaluator {
       const evaluatedArgs: RuntimeValue[] = [pipedValue];
       for (const argExpr of call.args) {
         const argOutcome = this.evaluateExpr(argExpr, env);
-        if (isPanic(argOutcome)) return argOutcome;
-        if (isReturn(argOutcome)) return argOutcome;
+        if (argOutcome.kind !== 'Normal') return argOutcome;
         evaluatedArgs.push(argOutcome.value);
       }
 
@@ -859,13 +968,35 @@ export class Evaluator {
 
       // Evaluate the callee and call it
       const calleeOutcome = this.evaluateExpr(call.callee, env);
-      if (isPanic(calleeOutcome)) return calleeOutcome;
-      if (isReturn(calleeOutcome)) return calleeOutcome;
+      if (calleeOutcome.kind !== 'Normal') return calleeOutcome;
       return this.callFunctionValue(calleeOutcome.value, evaluatedArgs, call.span);
     }
 
+    if (right.kind === 'Identifier') {
+      // data |> f  →  f(data)
+      return this.callFunctionByName(
+        (right as Identifier).name,
+        [pipedValue],
+        right.span,
+        env
+      );
+    }
+
+    if (right.kind === 'LambdaExpr') {
+      const lambdaOutcome = this.evaluateLambdaExpr(right as LambdaExpr, env);
+      if (lambdaOutcome.kind !== 'Normal') return lambdaOutcome;
+      return this.callFunctionValue(lambdaOutcome.value, [pipedValue], right.span);
+    }
+
+    // Fallback: evaluate right and if it's a function value or builtin, call it
+    const rightOutcome = this.evaluateExpr(right, env);
+    if (rightOutcome.kind !== 'Normal') return rightOutcome;
+    if (rightOutcome.value.tag === 'Function' || rightOutcome.value.tag === 'Builtin') {
+      return this.callFunctionValue(rightOutcome.value, [pipedValue], right.span);
+    }
+
     return panicOutcome(invalidStateError(
-      'Pipeline right-hand side must be a function identifier or call expression.',
+      'Pipeline right-hand side must be a function identifier, call expression, or callable value.',
       expr.span, this.ctx.config.fileName
     ));
   }
@@ -874,8 +1005,7 @@ export class Evaluator {
 
   private evaluateOptionFallbackExpr(expr: OptionFallbackExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const leftOutcome = this.evaluateExpr(expr.left, env);
-    if (isPanic(leftOutcome)) return leftOutcome;
-    if (isReturn(leftOutcome)) return leftOutcome;
+    if (leftOutcome.kind !== 'Normal') return leftOutcome;
     const left = leftOutcome.value;
 
     if (left.tag === 'Option') {
@@ -895,8 +1025,7 @@ export class Evaluator {
 
   private evaluateOptionPropagateExpr(expr: OptionPropagateExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const operandOutcome = this.evaluateExpr(expr.operand, env);
-    if (isPanic(operandOutcome)) return operandOutcome;
-    if (isReturn(operandOutcome)) return operandOutcome;
+    if (operandOutcome.kind !== 'Normal') return operandOutcome;
     const operand = operandOutcome.value;
 
     if (operand.tag === 'Option') {
@@ -923,14 +1052,54 @@ export class Evaluator {
   // ─── Call Expression ──────────────────────────────────────────────────────
 
   private evaluateCallExpr(expr: CallExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    // If callee is a MemberExpr, check for method calls (e.g. set.contains, set.insert, set.remove, list/set.length())
+    if (expr.callee.kind === 'MemberExpr') {
+      const member = expr.callee as MemberExpr;
+      const targetOutcome = this.evaluateExpr(member.object, env);
+      if (targetOutcome.kind !== 'Normal') return targetOutcome;
+      const target = targetOutcome.value;
+
+      // Evaluate arguments
+      const args: RuntimeValue[] = [];
+      for (const argExpr of expr.args) {
+        const argOutcome = this.evaluateExpr(argExpr, env);
+        if (argOutcome.kind !== 'Normal') return argOutcome;
+        args.push(argOutcome.value);
+      }
+
+      if (target.tag === 'Set') {
+        const setVal = target as SetRuntimeValue;
+        if (member.property === 'contains') {
+          const item = args[0] ?? UNIT_VALUE;
+          const found = setVal.elements.some((elem) => runtimeValuesEqual(elem, item));
+          return normalOutcome(rtBool(found));
+        }
+        if (member.property === 'insert') {
+          const item = args[0] ?? UNIT_VALUE;
+          return normalOutcome(rtSet([...setVal.elements, item]));
+        }
+        if (member.property === 'remove') {
+          const item = args[0] ?? UNIT_VALUE;
+          const newElems = setVal.elements.filter((elem) => !runtimeValuesEqual(elem, item));
+          return normalOutcome(rtSet(newElems));
+        }
+        if (member.property === 'length') {
+          return normalOutcome(rtInt(BigInt(setVal.elements.length)));
+        }
+      }
+
+      if (target.tag === 'List' && member.property === 'length') {
+        return normalOutcome(rtInt(BigInt((target as ListRuntimeValue).elements.length)));
+      }
+    }
+
     // If callee is an Identifier, resolve by name (handles built-ins and hoisted functions directly)
     if (expr.callee.kind === 'Identifier') {
       const name = (expr.callee as Identifier).name;
       const args: RuntimeValue[] = [];
       for (const argExpr of expr.args) {
         const argOutcome = this.evaluateExpr(argExpr, env);
-        if (isPanic(argOutcome)) return argOutcome;
-        if (isReturn(argOutcome)) return argOutcome;
+        if (argOutcome.kind !== 'Normal') return argOutcome;
         args.push(argOutcome.value);
       }
       return this.callFunctionByName(name, args, expr.span, env);
@@ -938,16 +1107,14 @@ export class Evaluator {
 
     // Evaluate callee
     const calleeOutcome = this.evaluateExpr(expr.callee, env);
-    if (isPanic(calleeOutcome)) return calleeOutcome;
-    if (isReturn(calleeOutcome)) return calleeOutcome;
+    if (calleeOutcome.kind !== 'Normal') return calleeOutcome;
     const callee = calleeOutcome.value;
 
     // Evaluate arguments left-to-right (deterministic evaluation order)
     const args: RuntimeValue[] = [];
     for (const argExpr of expr.args) {
       const argOutcome = this.evaluateExpr(argExpr, env);
-      if (isPanic(argOutcome)) return argOutcome;
-      if (isReturn(argOutcome)) return argOutcome;
+      if (argOutcome.kind !== 'Normal') return argOutcome;
       args.push(argOutcome.value);
     }
 
@@ -1031,7 +1198,31 @@ export class Evaluator {
     args: RuntimeValue[],
     callSite?: Span
   ): RuntimeOutcome {
-    const decl = fn.decl;
+    if (fn.lambda) {
+      const lambda = fn.lambda;
+      this.ctx.pushFrame({ functionName: '<lambda>', callSite });
+      const lambdaEnv = fn.closure.child('lambda');
+
+      for (let i = 0; i < lambda.params.length; i++) {
+        const param = lambda.params[i];
+        const argValue = args[i] ?? UNIT_VALUE;
+        lambdaEnv.define(param.name, argValue, false);
+      }
+
+      let outcome: RuntimeOutcome;
+      if (lambda.body.kind === 'Block') {
+        outcome = this.executeBlock(lambda.body as Block, lambdaEnv);
+      } else {
+        outcome = this.evaluateExpr(lambda.body as Expr, lambdaEnv);
+      }
+
+      this.ctx.popFrame();
+      if (isPanic(outcome)) return outcome;
+      if (isReturn(outcome)) return normalOutcome(outcome.value);
+      return outcome;
+    }
+
+    const decl = fn.decl!;
     this.ctx.pushFrame({ functionName: fn.name, callSite });
 
     // Create a function execution scope, parented to the closure environment
@@ -1083,8 +1274,7 @@ export class Evaluator {
 
   private evaluateAssignmentExpr(expr: AssignmentExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const valOutcome = this.evaluateExpr(expr.value, env);
-    if (isPanic(valOutcome)) return valOutcome;
-    if (isReturn(valOutcome)) return valOutcome;
+    if (valOutcome.kind !== 'Normal') return valOutcome;
     const newValue = valOutcome.value;
 
     if (expr.target.kind !== 'Identifier') {
@@ -1127,9 +1317,245 @@ export class Evaluator {
   // ─── Member Expression ────────────────────────────────────────────────────
 
   private evaluateMemberExpr(expr: MemberExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    const targetOutcome = this.evaluateExpr(expr.object, env);
+    if (targetOutcome.kind !== 'Normal') return targetOutcome;
+    const target = targetOutcome.value;
+
+    // Tuple positional index: e.g. user.0, user.1
+    if (target.tag === 'Tuple') {
+      const tuple = target as TupleRuntimeValue;
+      const index = parseInt(expr.property, 10);
+      if (!isNaN(index) && index >= 0 && index < tuple.elements.length) {
+        return normalOutcome(tuple.elements[index]);
+      }
+      return panicOutcome(invalidStateError(
+        `Tuple index .${expr.property} out of bounds for tuple of arity ${tuple.elements.length}.`,
+        expr.span, this.ctx.config.fileName
+      ));
+    }
+
+    // .length property
+    if (expr.property === 'length') {
+      if (target.tag === 'List') {
+        return normalOutcome(rtInt(BigInt((target as ListRuntimeValue).elements.length)));
+      }
+      if (target.tag === 'Set') {
+        return normalOutcome(rtInt(BigInt((target as SetRuntimeValue).elements.length)));
+      }
+      if (target.tag === 'Map') {
+        return normalOutcome(rtInt(BigInt((target as MapRuntimeValue).entries.length)));
+      }
+      if (target.tag === 'String') {
+        return normalOutcome(rtInt(BigInt(target.value.length)));
+      }
+    }
+
     return panicOutcome(unsupportedOperationError(
-      'member access', expr.span, this.ctx.config.fileName
+      `member access .${expr.property} on ${target.tag}`,
+      expr.span, this.ctx.config.fileName
     ));
+  }
+
+  // ─── Match Expression ─────────────────────────────────────────────────────
+
+  private evaluateMatchExpr(expr: MatchExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    const targetOutcome = this.evaluateExpr(expr.value, env);
+    if (targetOutcome.kind !== 'Normal') return targetOutcome;
+    const targetVal = targetOutcome.value;
+
+    for (const arm of expr.arms) {
+      const matchResult = this.matchPattern(arm.pattern, targetVal);
+      if (matchResult.matched) {
+        const armEnv = env.child('match_arm');
+        if (matchResult.bindings) {
+          for (const [name, val] of matchResult.bindings) {
+            armEnv.define(name, val, false);
+          }
+        }
+
+        if (arm.body.kind === 'Block') {
+          return this.executeBlock(arm.body as Block, armEnv);
+        } else {
+          return this.evaluateExpr(arm.body as Expr, armEnv);
+        }
+      }
+    }
+
+    return panicOutcome(invalidStateError(
+      'Non-exhaustive pattern match at runtime.',
+      expr.span, this.ctx.config.fileName
+    ));
+  }
+
+  private matchPattern(
+    pattern: Pattern,
+    value: RuntimeValue
+  ): { matched: boolean; bindings?: Map<string, RuntimeValue> } {
+    switch (pattern.kind) {
+      case 'WildcardPattern':
+        return { matched: true };
+
+      case 'IdentifierPattern': {
+        const id = pattern as IdentifierPattern;
+        if (id.name === 'None') {
+          if (value.tag === 'Option' && !(value as OptionRuntimeValue).isSome) {
+            return { matched: true };
+          }
+          return { matched: false };
+        }
+        const bindings = new Map<string, RuntimeValue>();
+        bindings.set(id.name, value);
+        return { matched: true, bindings };
+      }
+
+      case 'LiteralPattern': {
+        const lit = (pattern as LiteralPattern).literal;
+        const litOutcome = this.evaluateLiteral(lit);
+        if (litOutcome.kind === 'Normal') {
+          if (runtimeValuesEqual(litOutcome.value, value)) {
+            return { matched: true };
+          }
+        }
+        return { matched: false };
+      }
+
+      case 'ConstructorPattern': {
+        const ctor = pattern as ConstructorPattern;
+        if (ctor.name === 'Some') {
+          if (value.tag === 'Option' && (value as OptionRuntimeValue).isSome) {
+            const innerVal = (value as OptionRuntimeValue).inner!;
+            if (ctor.args.length > 0) {
+              return this.matchPattern(ctor.args[0], innerVal);
+            }
+            return { matched: true };
+          }
+          return { matched: false };
+        }
+
+        if (ctor.name === 'None') {
+          if (value.tag === 'Option' && !(value as OptionRuntimeValue).isSome) {
+            return { matched: true };
+          }
+          return { matched: false };
+        }
+
+        if (ctor.name === 'Ok') {
+          if (value.tag === 'Result' && (value as ResultRuntimeValue).isOk) {
+            const innerVal = (value as ResultRuntimeValue).value;
+            if (ctor.args.length > 0) {
+              return this.matchPattern(ctor.args[0], innerVal);
+            }
+            return { matched: true };
+          }
+          return { matched: false };
+        }
+
+        if (ctor.name === 'Err') {
+          if (value.tag === 'Result' && !(value as ResultRuntimeValue).isOk) {
+            const innerVal = (value as ResultRuntimeValue).value;
+            if (ctor.args.length > 0) {
+              return this.matchPattern(ctor.args[0], innerVal);
+            }
+            return { matched: true };
+          }
+          return { matched: false };
+        }
+
+        return { matched: false };
+      }
+
+      default:
+        return { matched: false };
+    }
+  }
+
+  // ─── Collections & Lambdas ────────────────────────────────────────────────
+
+  private evaluateListLiteral(expr: ListLiteral, env: RuntimeEnvironment): RuntimeOutcome {
+    const elements: RuntimeValue[] = [];
+    for (const elem of expr.elements) {
+      const outcome = this.evaluateExpr(elem, env);
+      if (outcome.kind !== 'Normal') return outcome;
+      elements.push(outcome.value);
+    }
+    return normalOutcome(rtList(elements));
+  }
+
+  private evaluateTupleLiteral(expr: TupleLiteral, env: RuntimeEnvironment): RuntimeOutcome {
+    const elements: RuntimeValue[] = [];
+    for (const elem of expr.elements) {
+      const outcome = this.evaluateExpr(elem, env);
+      if (outcome.kind !== 'Normal') return outcome;
+      elements.push(outcome.value);
+    }
+    return normalOutcome(rtTuple(elements));
+  }
+
+  private evaluateMapLiteral(expr: MapLiteral, env: RuntimeEnvironment): RuntimeOutcome {
+    const entries: { key: RuntimeValue; value: RuntimeValue }[] = [];
+    for (const entry of expr.entries) {
+      const keyOutcome = this.evaluateExpr(entry.key, env);
+      if (keyOutcome.kind !== 'Normal') return keyOutcome;
+
+      const valOutcome = this.evaluateExpr(entry.value, env);
+      if (valOutcome.kind !== 'Normal') return valOutcome;
+
+      entries.push({ key: keyOutcome.value, value: valOutcome.value });
+    }
+    return normalOutcome(rtMap(entries));
+  }
+
+  private evaluateSetLiteral(expr: SetLiteral, env: RuntimeEnvironment): RuntimeOutcome {
+    const elements: RuntimeValue[] = [];
+    for (const elem of expr.elements) {
+      const outcome = this.evaluateExpr(elem, env);
+      if (outcome.kind !== 'Normal') return outcome;
+      elements.push(outcome.value);
+    }
+    return normalOutcome(rtSet(elements));
+  }
+
+  private evaluateIndexExpr(expr: IndexExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    const targetOutcome = this.evaluateExpr(expr.object, env);
+    if (targetOutcome.kind !== 'Normal') return targetOutcome;
+    const targetVal = targetOutcome.value;
+
+    const indexOutcome = this.evaluateExpr(expr.index, env);
+    if (indexOutcome.kind !== 'Normal') return indexOutcome;
+    const indexVal = indexOutcome.value;
+
+    if (targetVal.tag === 'List') {
+      const list = targetVal as ListRuntimeValue;
+      if (indexVal.tag === 'Int' || indexVal.tag === 'UInt') {
+        const idx = Number((indexVal as IntRuntimeValue | UIntRuntimeValue).value);
+        if (idx >= 0 && idx < list.elements.length) {
+          return normalOutcome(rtSome(list.elements[idx]));
+        }
+        return normalOutcome(rtNone);
+      }
+      return panicOutcome(invalidStateError(
+        `List index must be an integer, got ${indexVal.tag}.`,
+        expr.index.span, this.ctx.config.fileName
+      ));
+    }
+
+    if (targetVal.tag === 'Map') {
+      const map = targetVal as MapRuntimeValue;
+      const entry = map.entries.find((e) => runtimeValuesEqual(e.key, indexVal));
+      if (entry) {
+        return normalOutcome(rtSome(entry.value));
+      }
+      return normalOutcome(rtNone);
+    }
+
+    return panicOutcome(invalidStateError(
+      `Cannot index value of type ${targetVal.tag}.`,
+      expr.span, this.ctx.config.fileName
+    ));
+  }
+
+  private evaluateLambdaExpr(expr: LambdaExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    return normalOutcome(rtLambda(expr, env));
   }
 
   // ─── Built-in Functions ───────────────────────────────────────────────────

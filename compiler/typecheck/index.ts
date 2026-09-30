@@ -28,25 +28,43 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BreakStmt,
   CallExpr,
   ConstStmt,
+  ConstructorPattern,
+  ContinueStmt,
   Expr,
   ExprStmt,
+  ForStmt,
   FunctionDecl,
   Identifier,
+  IdentifierPattern,
   IfExpr,
+  IndexExpr,
+  LambdaExpr,
   LetStmt,
+  ListLiteral,
   Literal,
+  LiteralPattern,
+  LoopStmt,
+  MapLiteral,
+  MatchArm,
+  MatchExpr,
   MemberExpr,
   OptionFallbackExpr,
   OptionPropagateExpr,
+  Pattern,
   PipelineExpr,
   Program,
   RangeExpr,
   ReturnStmt,
+  SetLiteral,
   Stmt,
+  TupleLiteral,
   TypeAnnotation,
   UnaryExpr,
+  WhileStmt,
+  WildcardPattern,
   WithStmt,
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
@@ -56,8 +74,12 @@ import {
   BYTE_TYPE,
   CHAR_TYPE,
   createFunctionType,
+  createListType,
+  createMapType,
   createOptionType,
   createResultType,
+  createSetType,
+  createTupleType,
   FLOAT_TYPE,
   formatType,
   INT_TYPE,
@@ -74,7 +96,7 @@ import {
   UNIT_TYPE,
   UNKNOWN_TYPE,
 } from './types.ts';
-import type { FunctionType, OptionType, ResultType, Type } from './types.ts';
+import type { FunctionType, MapType, OptionType, ResultType, SetType, Type } from './types.ts';
 
 export * from './types.ts';
 
@@ -158,26 +180,12 @@ export class TypeChecker {
       case 'FunctionDecl':
         this.checkFunctionDecl(item as FunctionDecl);
         break;
-      case 'BindingStmt':
-        this.checkBindingStmt(item as BindingStmt);
+      case 'StructDecl':
+      case 'EnumDecl':
+      case 'TypeAliasDecl':
         break;
-      case 'LetStmt':
-        this.checkLetStmt(item as LetStmt);
-        break;
-      case 'ConstStmt':
-        this.checkConstStmt(item as ConstStmt);
-        break;
-      case 'AssignStmt':
-        this.checkAssignStmt(item as AssignStmt);
-        break;
-      case 'ExprStmt':
-        this.checkExpression((item as ExprStmt).expression);
-        break;
-      case 'ReturnStmt':
-        this.checkReturnStmt(item as ReturnStmt);
-        break;
-      case 'WithStmt':
-        this.checkWithStmt(item as WithStmt);
+      default:
+        this.checkStatement(item as Stmt);
         break;
     }
   }
@@ -203,7 +211,7 @@ export class TypeChecker {
 
     if (fn.isExpressionBody && fn.bodyExpr) {
       const exprType = this.checkExpression(fn.bodyExpr);
-      if (!isTypeAssignable(declaredReturn, exprType) && !isUnknown(exprType)) {
+      if (fn.returnType && !isTypeAssignable(declaredReturn, exprType) && !isUnknown(exprType)) {
         this.diagnostics.reportError(
           'E3004',
           `Return type mismatch in function '${fn.name}': expected '${formatType(declaredReturn)}', but found '${formatType(exprType)}'.`,
@@ -457,7 +465,64 @@ export class TypeChecker {
       case 'WithStmt':
         this.checkWithStmt(stmt as WithStmt);
         break;
+      case 'WhileStmt':
+        this.checkWhileStmt(stmt as WhileStmt);
+        break;
+      case 'ForStmt':
+        this.checkForStmt(stmt as ForStmt);
+        break;
+      case 'LoopStmt':
+        this.checkLoopStmt(stmt as LoopStmt);
+        break;
+      case 'BreakStmt':
+      case 'ContinueStmt':
+        break;
     }
+  }
+
+  private checkWhileStmt(stmt: WhileStmt): void {
+    const condType = this.checkExpression(stmt.condition);
+    if (!isBool(condType) && !isUnknown(condType)) {
+      this.diagnostics.reportError(
+        'E3005',
+        `While loop condition must be of type Bool, but found '${formatType(condType)}'.`,
+        stmt.condition.span,
+        this.currentFile,
+        'Seira requires explicit Bool conditions with no implicit truthiness.'
+      );
+    }
+    this.checkBlock(stmt.body);
+  }
+
+  private checkForStmt(stmt: ForStmt): void {
+    const iterType = this.checkExpression(stmt.iterable);
+    let elemType: Type = UNKNOWN_TYPE;
+
+    if (iterType.kind === 'List') {
+      elemType = iterType.element;
+    } else if (iterType.kind === 'Set') {
+      elemType = iterType.element;
+    } else if (iterType.kind === 'Tuple') {
+      elemType = iterType.elements.length > 0 ? iterType.elements[0] : UNKNOWN_TYPE;
+    } else if (!isUnknown(iterType)) {
+      this.diagnostics.reportError(
+        'E3007',
+        `Cannot iterate over expression of type '${formatType(iterType)}'. Only collections (List, Set) are iterable.`,
+        stmt.iterable.span,
+        this.currentFile
+      );
+    }
+
+    const sym = this.currentResolverResult?.declaredSymbols.get(stmt);
+    if (sym) {
+      sym.type = elemType;
+    }
+
+    this.checkBlock(stmt.body);
+  }
+
+  private checkLoopStmt(stmt: LoopStmt): void {
+    this.checkBlock(stmt.body);
   }
 
   public checkExpression(expr: Expr): Type {
@@ -690,9 +755,68 @@ export class TypeChecker {
           } else {
             resultType = objType;
           }
+        } else if (objType.kind === 'Tuple') {
+          const idx = parseInt(mem.property, 10);
+          if (!isNaN(idx) && idx >= 0 && idx < objType.elements.length) {
+            resultType = objType.elements[idx];
+          } else {
+            this.diagnostics.reportError(
+              'E3002',
+              `Tuple index '${mem.property}' is out of bounds for tuple with ${objType.elements.length} elements.`,
+              mem.span,
+              this.currentFile
+            );
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Set') {
+          if (mem.property === 'length') {
+            resultType = INT_TYPE;
+          } else if (mem.property === 'contains') {
+            resultType = createFunctionType([objType.element], BOOL_TYPE);
+          } else if (mem.property === 'insert') {
+            resultType = createFunctionType([objType.element], objType);
+          } else if (mem.property === 'remove') {
+            resultType = createFunctionType([objType.element], objType);
+          } else {
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'List') {
+          if (mem.property === 'length') {
+            resultType = INT_TYPE;
+          } else {
+            resultType = UNKNOWN_TYPE;
+          }
         } else {
           resultType = UNKNOWN_TYPE;
         }
+        break;
+      }
+      case 'MatchExpr': {
+        resultType = this.checkMatchExpr(expr as MatchExpr);
+        break;
+      }
+      case 'ListLiteral': {
+        resultType = this.checkListLiteral(expr as ListLiteral);
+        break;
+      }
+      case 'TupleLiteral': {
+        resultType = this.checkTupleLiteral(expr as TupleLiteral);
+        break;
+      }
+      case 'MapLiteral': {
+        resultType = this.checkMapLiteral(expr as MapLiteral);
+        break;
+      }
+      case 'SetLiteral': {
+        resultType = this.checkSetLiteral(expr as SetLiteral);
+        break;
+      }
+      case 'IndexExpr': {
+        resultType = this.checkIndexExpr(expr as IndexExpr);
+        break;
+      }
+      case 'LambdaExpr': {
+        resultType = this.checkLambdaExpr(expr as LambdaExpr);
         break;
       }
     }
@@ -856,60 +980,67 @@ export class TypeChecker {
   private checkPipeline(pipe: PipelineExpr): Type {
     const valType = this.checkExpression(pipe.left);
 
-    if (pipe.right.kind === 'Identifier') {
-      const id = pipe.right as Identifier;
-      const sym = this.currentResolverResult?.resolvedSymbols.get(id);
+    if (pipe.right.kind === 'CallExpr') {
+      const call = pipe.right as CallExpr;
+      let calleeType: Type = UNKNOWN_TYPE;
+      let calleeName = 'anonymous';
 
-      if (sym && sym.type && sym.type.kind === 'Function') {
-        const fnType = sym.type as FunctionType;
+      if (call.callee.kind === 'Identifier') {
+        const id = call.callee as Identifier;
+        calleeName = id.name;
+        const sym = this.currentResolverResult?.resolvedSymbols.get(id);
+        if (sym && sym.type) {
+          calleeType = sym.type;
+        }
+      } else {
+        calleeType = this.checkExpression(call.callee);
+      }
+
+      if (calleeType.kind === 'Function') {
+        const fnType = calleeType as FunctionType;
+        const totalArgs = [valType, ...call.args.map((a) => this.checkExpression(a))];
+
+        if (totalArgs.length !== fnType.params.length) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Pipeline call to '${calleeName}' expects ${fnType.params.length} arguments (including pipeline value), but got ${totalArgs.length}.`,
+            call.span,
+            this.currentFile
+          );
+        } else {
+          for (let i = 0; i < totalArgs.length; i++) {
+            if (!isTypeAssignable(fnType.params[i], totalArgs[i]) && !isUnknown(totalArgs[i])) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Pipeline argument ${i + 1} type mismatch: expected '${formatType(fnType.params[i])}', got '${formatType(totalArgs[i])}'.`,
+                pipe.span,
+                this.currentFile
+              );
+            }
+          }
+        }
+        return fnType.returnType;
+      }
+    } else {
+      const rightType = this.checkExpression(pipe.right);
+      if (rightType.kind === 'Function') {
+        const fnType = rightType as FunctionType;
         if (fnType.params.length < 1) {
           this.diagnostics.reportError(
             'E3003',
-            `Pipeline target '${id.name}' takes 0 arguments and cannot receive pipeline value.`,
+            `Pipeline target takes 0 arguments and cannot receive pipeline value.`,
             pipe.right.span,
             this.currentFile
           );
-        } else if (!isTypeAssignable(fnType.params[0], valType) && !isUnknown(valType)) {
+        } else if (!isTypeAssignable(fnType.params[0], valType) && !isUnknown(valType) && !isUnknown(fnType.params[0])) {
           this.diagnostics.reportError(
             'E3003',
-            `Pipeline type mismatch: target '${id.name}' expects '${formatType(fnType.params[0])}' as first argument, but pipeline value is '${formatType(valType)}'.`,
+            `Pipeline type mismatch: target expects '${formatType(fnType.params[0])}' as first argument, but pipeline value is '${formatType(valType)}'.`,
             pipe.left.span,
             this.currentFile
           );
         }
         return fnType.returnType;
-      }
-    } else if (pipe.right.kind === 'CallExpr') {
-      const call = pipe.right as CallExpr;
-      if (call.callee.kind === 'Identifier') {
-        const id = call.callee as Identifier;
-        const sym = this.currentResolverResult?.resolvedSymbols.get(id);
-
-        if (sym && sym.type && sym.type.kind === 'Function') {
-          const fnType = sym.type as FunctionType;
-          const totalArgs = [valType, ...call.args.map((a) => this.checkExpression(a))];
-
-          if (totalArgs.length !== fnType.params.length) {
-            this.diagnostics.reportError(
-              'E3003',
-              `Pipeline call to '${id.name}' expects ${fnType.params.length} arguments (including pipeline value), but got ${totalArgs.length}.`,
-              call.span,
-              this.currentFile
-            );
-          } else {
-            for (let i = 0; i < totalArgs.length; i++) {
-              if (!isTypeAssignable(fnType.params[i], totalArgs[i]) && !isUnknown(totalArgs[i])) {
-                this.diagnostics.reportError(
-                  'E3003',
-                  `Pipeline argument ${i + 1} type mismatch: expected '${formatType(fnType.params[i])}', got '${formatType(totalArgs[i])}'.`,
-                  pipe.span,
-                  this.currentFile
-                );
-              }
-            }
-          }
-          return fnType.returnType;
-        }
       }
     }
 
@@ -955,6 +1086,19 @@ export class TypeChecker {
           : UNKNOWN_TYPE;
         return { kind: 'List', element: elem };
       }
+      case 'Tuple': {
+        const elems = annotation.generics ? annotation.generics.map((g) => this.resolveTypeAnnotation(g)) : [];
+        return createTupleType(elems);
+      }
+      case 'Map': {
+        const k = annotation.generics && annotation.generics.length > 0 ? this.resolveTypeAnnotation(annotation.generics[0]) : UNKNOWN_TYPE;
+        const v = annotation.generics && annotation.generics.length > 1 ? this.resolveTypeAnnotation(annotation.generics[1]) : UNKNOWN_TYPE;
+        return createMapType(k, v);
+      }
+      case 'Set': {
+        const elem = annotation.generics && annotation.generics.length > 0 ? this.resolveTypeAnnotation(annotation.generics[0]) : UNKNOWN_TYPE;
+        return createSetType(elem);
+      }
       default: {
         if (annotation.generics && annotation.generics.length > 0) {
           return {
@@ -967,4 +1111,297 @@ export class TypeChecker {
       }
     }
   }
+
+  private checkMatchExpr(matchExpr: MatchExpr): Type {
+    const valType = this.checkExpression(matchExpr.value);
+    let armResultType: Type = UNKNOWN_TYPE;
+
+    // Pattern tracking for exhaustiveness
+    let hasWildcardOrBinding = false;
+    let hasBoolTrue = false;
+    let hasBoolFalse = false;
+    let hasSome = false;
+    let hasNone = false;
+    let hasOk = false;
+    let hasErr = false;
+
+    for (const arm of matchExpr.arms) {
+      const pat = arm.pattern;
+      if (pat.kind === 'WildcardPattern') {
+        hasWildcardOrBinding = true;
+      } else if (pat.kind === 'IdentifierPattern') {
+        hasWildcardOrBinding = true;
+        const sym = this.currentResolverResult?.declaredSymbols.get(pat);
+        if (sym) {
+          sym.type = valType;
+        }
+      } else if (pat.kind === 'LiteralPattern') {
+        const lit = pat.literal;
+        let litType: Type = UNKNOWN_TYPE;
+        if (lit.literalKind === 'int') litType = INT_TYPE;
+        else if (lit.literalKind === 'uint') litType = UINT_TYPE;
+        else if (lit.literalKind === 'float') litType = FLOAT_TYPE;
+        else if (lit.literalKind === 'string') litType = STRING_TYPE;
+        else if (lit.literalKind === 'char') litType = CHAR_TYPE;
+        else if (lit.literalKind === 'bool') {
+          litType = BOOL_TYPE;
+          if (lit.value === true) hasBoolTrue = true;
+          if (lit.value === false) hasBoolFalse = true;
+        }
+        if (!isTypeAssignable(valType, litType) && !isUnknown(valType)) {
+          this.diagnostics.reportError(
+            'E5002',
+            `Pattern type mismatch: cannot match pattern of type '${formatType(litType)}' against expression of type '${formatType(valType)}'.`,
+            pat.span,
+            this.currentFile
+          );
+        }
+      } else if (pat.kind === 'ConstructorPattern') {
+        if (pat.name === 'Some') {
+          hasSome = true;
+          if (valType.kind !== 'Option' && !isUnknown(valType)) {
+            this.diagnostics.reportError(
+              'E5002',
+              `Cannot match 'Some' pattern against non-Option type '${formatType(valType)}'.`,
+              pat.span,
+              this.currentFile
+            );
+          } else if (valType.kind === 'Option' && pat.args.length > 0) {
+            const inner = pat.args[0];
+            if (inner.kind === 'IdentifierPattern') {
+              const sym = this.currentResolverResult?.declaredSymbols.get(inner);
+              if (sym) sym.type = valType.inner;
+            }
+          }
+        } else if (pat.name === 'None') {
+          hasNone = true;
+          if (valType.kind !== 'Option' && !isUnknown(valType)) {
+            this.diagnostics.reportError(
+              'E5002',
+              `Cannot match 'None' pattern against non-Option type '${formatType(valType)}'.`,
+              pat.span,
+              this.currentFile
+            );
+          }
+        } else if (pat.name === 'Ok') {
+          hasOk = true;
+          if (valType.kind !== 'Result' && !isUnknown(valType)) {
+            this.diagnostics.reportError(
+              'E5002',
+              `Cannot match 'Ok' pattern against non-Result type '${formatType(valType)}'.`,
+              pat.span,
+              this.currentFile
+            );
+          } else if (valType.kind === 'Result' && pat.args.length > 0) {
+            const inner = pat.args[0];
+            if (inner.kind === 'IdentifierPattern') {
+              const sym = this.currentResolverResult?.declaredSymbols.get(inner);
+              if (sym) sym.type = valType.ok;
+            }
+          }
+        } else if (pat.name === 'Err') {
+          hasErr = true;
+          if (valType.kind !== 'Result' && !isUnknown(valType)) {
+            this.diagnostics.reportError(
+              'E5002',
+              `Cannot match 'Err' pattern against non-Result type '${formatType(valType)}'.`,
+              pat.span,
+              this.currentFile
+            );
+          } else if (valType.kind === 'Result' && pat.args.length > 0) {
+            const inner = pat.args[0];
+            if (inner.kind === 'IdentifierPattern') {
+              const sym = this.currentResolverResult?.declaredSymbols.get(inner);
+              if (sym) sym.type = valType.err;
+            }
+          }
+        }
+      }
+
+      // Check arm body
+      const bodyType =
+        arm.body.kind === 'Block'
+          ? this.checkBlock(arm.body as Block)
+          : this.checkExpression(arm.body as Expr);
+
+      if (isUnknown(armResultType)) {
+        armResultType = bodyType;
+      } else {
+        if (
+          !isTypeAssignable(armResultType, bodyType) &&
+          !isTypeAssignable(bodyType, armResultType) &&
+          !isUnknown(bodyType) &&
+          !isUnknown(armResultType)
+        ) {
+          this.diagnostics.reportError(
+            'E3001',
+            `Match arm type mismatch: expected '${formatType(armResultType)}', but found '${formatType(bodyType)}'.`,
+            arm.body.span,
+            this.currentFile
+          );
+        }
+      }
+    }
+
+    // Exhaustiveness checking (E5001)
+    let isExhaustive = false;
+    if (hasWildcardOrBinding) {
+      isExhaustive = true;
+    } else if (isBool(valType) && hasBoolTrue && hasBoolFalse) {
+      isExhaustive = true;
+    } else if (valType.kind === 'Option' && hasSome && hasNone) {
+      isExhaustive = true;
+    } else if (valType.kind === 'Result' && hasOk && hasErr) {
+      isExhaustive = true;
+    }
+
+    if (!isExhaustive && !isUnknown(valType)) {
+      this.diagnostics.reportError(
+        'E5001',
+        `Non-exhaustive pattern match for type '${formatType(valType)}'.`,
+        matchExpr.span,
+        this.currentFile,
+        "Ensure all possible values are matched or provide a wildcard '_' or binding pattern."
+      );
+    }
+
+    return armResultType;
+  }
+
+  private checkListLiteral(lit: ListLiteral): Type {
+    if (lit.elements.length === 0) {
+      return createListType(UNKNOWN_TYPE);
+    }
+    const elemType = this.checkExpression(lit.elements[0]);
+    for (let i = 1; i < lit.elements.length; i++) {
+      const currentType = this.checkExpression(lit.elements[i]);
+      if (!isTypeAssignable(elemType, currentType) && !isUnknown(currentType) && !isUnknown(elemType)) {
+        this.diagnostics.reportError(
+          'E3001',
+          `List element ${i + 1} type mismatch: expected '${formatType(elemType)}', but found '${formatType(currentType)}'.`,
+          lit.elements[i].span,
+          this.currentFile,
+          'Seira lists are strictly homogeneous.'
+        );
+      }
+    }
+    return createListType(elemType);
+  }
+
+  private checkTupleLiteral(lit: TupleLiteral): Type {
+    const elemTypes = lit.elements.map((e) => this.checkExpression(e));
+    return createTupleType(elemTypes);
+  }
+
+  private checkMapLiteral(lit: MapLiteral): Type {
+    if (lit.entries.length === 0) {
+      return createMapType(UNKNOWN_TYPE, UNKNOWN_TYPE);
+    }
+    const keyType = this.checkExpression(lit.entries[0].key);
+    const valType = this.checkExpression(lit.entries[0].value);
+    for (let i = 1; i < lit.entries.length; i++) {
+      const curKey = this.checkExpression(lit.entries[i].key);
+      const curVal = this.checkExpression(lit.entries[i].value);
+      if (!isTypeAssignable(keyType, curKey) && !isUnknown(curKey) && !isUnknown(keyType)) {
+        this.diagnostics.reportError(
+          'E3001',
+          `Map key ${i + 1} type mismatch: expected '${formatType(keyType)}', but found '${formatType(curKey)}'.`,
+          lit.entries[i].key.span,
+          this.currentFile
+        );
+      }
+      if (!isTypeAssignable(valType, curVal) && !isUnknown(curVal) && !isUnknown(valType)) {
+        this.diagnostics.reportError(
+          'E3001',
+          `Map value ${i + 1} type mismatch: expected '${formatType(valType)}', but found '${formatType(curVal)}'.`,
+          lit.entries[i].value.span,
+          this.currentFile
+        );
+      }
+    }
+    return createMapType(keyType, valType);
+  }
+
+  private checkSetLiteral(lit: SetLiteral): Type {
+    if (lit.elements.length === 0) {
+      return createSetType(UNKNOWN_TYPE);
+    }
+    const elemType = this.checkExpression(lit.elements[0]);
+    for (let i = 1; i < lit.elements.length; i++) {
+      const curType = this.checkExpression(lit.elements[i]);
+      if (!isTypeAssignable(elemType, curType) && !isUnknown(curType) && !isUnknown(elemType)) {
+        this.diagnostics.reportError(
+          'E3001',
+          `Set element ${i + 1} type mismatch: expected '${formatType(elemType)}', but found '${formatType(curType)}'.`,
+          lit.elements[i].span,
+          this.currentFile
+        );
+      }
+    }
+    return createSetType(elemType);
+  }
+
+  private checkIndexExpr(idx: IndexExpr): Type {
+    const objType = this.checkExpression(idx.object);
+    const indexType = this.checkExpression(idx.index);
+
+    if (objType.kind === 'List') {
+      if (!isInt(indexType) && !isUInt(indexType) && !isUnknown(indexType)) {
+        this.diagnostics.reportError(
+          'E3002',
+          `List index must be of type Int or UInt, but found '${formatType(indexType)}'.`,
+          idx.index.span,
+          this.currentFile
+        );
+      }
+      return createOptionType(objType.element);
+    }
+
+    if (objType.kind === 'Map') {
+      if (!isTypeAssignable(objType.key, indexType) && !isUnknown(indexType) && !isUnknown(objType.key)) {
+        this.diagnostics.reportError(
+          'E3002',
+          `Map key mismatch: expected '${formatType(objType.key)}', but found '${formatType(indexType)}'.`,
+          idx.index.span,
+          this.currentFile
+        );
+      }
+      return createOptionType(objType.value);
+    }
+
+    if (!isUnknown(objType)) {
+      this.diagnostics.reportError(
+        'E3002',
+        `Cannot index into expression of type '${formatType(objType)}'. Safe indexing is supported on List and Map.`,
+        idx.span,
+        this.currentFile
+      );
+    }
+
+    return UNKNOWN_TYPE;
+  }
+
+  private checkLambdaExpr(lambda: LambdaExpr): Type {
+    const prevReturn = this.currentFunctionReturnType;
+    const paramTypes: Type[] = [];
+
+    for (const param of lambda.params) {
+      const pType = param.typeAnnotation ? this.resolveTypeAnnotation(param.typeAnnotation) : UNKNOWN_TYPE;
+      paramTypes.push(pType);
+      const sym = this.currentResolverResult?.declaredSymbols.get(param);
+      if (sym) {
+        sym.type = pType;
+      }
+    }
+
+    this.currentFunctionReturnType = undefined;
+    const bodyType =
+      lambda.body.kind === 'Block'
+        ? this.checkBlock(lambda.body as Block)
+        : this.checkExpression(lambda.body as Expr);
+
+    this.currentFunctionReturnType = prevReturn;
+    return createFunctionType(paramTypes, bodyType);
+  }
 }
+

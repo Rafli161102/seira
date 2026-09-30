@@ -43,12 +43,25 @@ export interface ReturnOutcome {
   readonly value: RuntimeValue;
 }
 
+export interface BreakOutcome {
+  readonly kind: 'Break';
+}
+
+export interface ContinueOutcome {
+  readonly kind: 'Continue';
+}
+
 export interface PanicOutcome {
   readonly kind: 'Panic';
   readonly error: RuntimeError;
 }
 
-export type RuntimeOutcome = NormalOutcome | ReturnOutcome | PanicOutcome;
+export type RuntimeOutcome =
+  | NormalOutcome
+  | ReturnOutcome
+  | BreakOutcome
+  | ContinueOutcome
+  | PanicOutcome;
 
 // ─── Outcome Constructors ─────────────────────────────────────────────────────
 
@@ -60,22 +73,36 @@ export function returnOutcome(value: RuntimeValue): ReturnOutcome {
   return { kind: 'Return', value };
 }
 
+export function breakOutcome(): BreakOutcome {
+  return { kind: 'Break' };
+}
+
+export function continueOutcome(): ContinueOutcome {
+  return { kind: 'Continue' };
+}
+
 export function panicOutcome(error: RuntimeError): PanicOutcome {
   return { kind: 'Panic', error };
 }
 
-// ─── Outcome Utilities ────────────────────────────────────────────────────────
-
-export function isNormal(outcome: RuntimeOutcome): outcome is NormalOutcome {
-  return outcome.kind === 'Normal';
+export function isNormal(outcome: RuntimeOutcome | undefined): outcome is NormalOutcome {
+  return outcome !== undefined && outcome.kind === 'Normal';
 }
 
-export function isReturn(outcome: RuntimeOutcome): outcome is ReturnOutcome {
-  return outcome.kind === 'Return';
+export function isReturn(outcome: RuntimeOutcome | undefined): outcome is ReturnOutcome {
+  return outcome !== undefined && outcome.kind === 'Return';
 }
 
-export function isPanic(outcome: RuntimeOutcome): outcome is PanicOutcome {
-  return outcome.kind === 'Panic';
+export function isBreak(outcome: RuntimeOutcome | undefined): outcome is BreakOutcome {
+  return outcome !== undefined && outcome.kind === 'Break';
+}
+
+export function isContinue(outcome: RuntimeOutcome | undefined): outcome is ContinueOutcome {
+  return outcome !== undefined && outcome.kind === 'Continue';
+}
+
+export function isPanic(outcome: RuntimeOutcome | undefined): outcome is PanicOutcome {
+  return outcome !== undefined && outcome.kind === 'Panic';
 }
 
 /** Extracts the value from a Normal or Return outcome. Panics if called on a Panic outcome. */

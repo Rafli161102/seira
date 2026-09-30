@@ -30,16 +30,43 @@ Every diagnostic message includes:
 | Code Range | Category | Description | Status |
 |---|---|---|---|
 | `E1xxx` | Syntax / Lexical / Parse | Grammar violations, banned tokens (`++`, `&&`), unclosed delimiters | **Active (0.0.1-s)** |
-| `E2xxx` | Name / Resolution | Undeclared identifiers, duplicate definitions, scope violations | **Architectural (0.0.2-s)** |
-| `E3xxx` | Type System | Type mismatch, immutable mutation, unhandled `Option`/`Result` | **Architectural (0.0.2-s)** |
+| `E2xxx` | Name / Resolution | Undeclared identifiers, duplicate definitions, loop control violations | **Active (0.0.4-s / 0.0.6-s)** |
+| `E3xxx` | Type System | Type mismatch, operator types, collection indexing, iteration targets | **Active (0.0.4-s / 0.0.6-s)** |
 | `E4xxx` | Trait / Generics | Unimplemented trait methods, unsatisfied generic constraints | **Reserved** |
-| `E5xxx` | Pattern Matching | Non-exhaustive patterns, unreachable match arms | **Reserved** |
+| `E5xxx` | Pattern Matching | Non-exhaustive patterns, invalid pattern kinds | **Active (0.0.6-s)** |
 | `E6xxx` | Effect System | Calling effectful function (`!`) outside effect context | **Architectural (0.0.2-s)** |
 | `E7xxx` | Resource / Ownership | Escaped scoped resource, use-after-move | **Architectural (0.0.2-s)** |
 | `E8xxx` | Module / Visibility | Private item access, circular module imports | **Reserved** |
 | `E9xxx` | Build / Backend | Unsupported target, missing file, code emission error | **Active (0.0.2-s)** |
 | `W1xxx` | Warnings | Unused variables, dead code, deprecations | **Active (0.0.2-s)** |
 | `I1xxx` | Information | Milestone notices, compilation progress, hints | **Active (0.0.1-s)** |
+
+### Active Compiler Diagnostic Codes:
+
+#### Syntax / Lexical (`E1xxx`):
+- `E1001`: Unexpected token or character
+- `E1002`: Banned operator (`++`, `--`, `&&`, `||`, `null`, `===`)
+- `E1003`: Unclosed delimiter
+- `E1004`: Parse syntax error / expected token
+
+#### Name Resolution (`E2xxx`):
+- `E2001`: Unresolved identifier reference
+- `E2002`: Duplicate binding declared in the same lexical scope
+- `E2003`: Reassignment to immutable binding
+- `E2004`: `break` or `continue` outside loop statement
+
+#### Type Analysis (`E3xxx`):
+- `E3001`: Type mismatch between expected and actual expression types
+- `E3002`: Operator type incompatibility
+- `E3003`: Function call argument count or type mismatch
+- `E3004`: Function return type mismatch
+- `E3005`: Condition expression in `if` or `while` is not strictly `Bool`
+- `E3006`: Tuple index out of range or invalid numeric member access
+- `E3007`: Iteration target of `for` loop is not an iterable collection (`List` or `Set`)
+
+#### Pattern Matching (`E5xxx`):
+- `E5001`: Non-exhaustive pattern matching in `match` expression
+- `E5002`: Pattern kind is invalid for the matched expression type
 
 ### Runtime Diagnostic Code Family (0.0.5-s+)
 
