@@ -1,16 +1,20 @@
 /**
  * Seira Abstract Syntax Tree (AST) Definitions
+ *
  * Strongly typed node hierarchy reflecting locked Seira syntax semantics:
  * - Functions as first-class transformations
  * - Pipelines (|>), Option/Result propagation (?), fallback (??)
  * - Explicit mutation (mut) and resource lifecycles (with)
  * - Effect tracking (!)
+ * - Prepared architecture for modules, imports, attributes, and patterns
  */
 
-import type { Span } from '../diagnostics/index.ts';
+import type { Span } from '../source/span.ts';
 
 export type NodeKind =
   | 'Program'
+  | 'ModuleDecl'
+  | 'ImportDecl'
   | 'FunctionDecl'
   | 'Param'
   | 'Block'
@@ -29,84 +33,129 @@ export type NodeKind =
   | 'Literal'
   | 'TypeAnnotation'
   | 'StructDecl'
-  | 'TraitDecl';
+  | 'TraitDecl'
+  | 'Attribute'
+  | 'IdentifierPattern'
+  | 'LiteralPattern'
+  | 'WildcardPattern';
 
 export interface BaseNode {
-  kind: NodeKind;
-  span: Span;
+  readonly kind: NodeKind;
+  readonly span: Span;
 }
 
 export type ASTNode =
   | Program
-  | FunctionDecl
+  | TopLevelItem
   | Param
   | Block
   | Stmt
   | Expr
   | TypeAnnotation
-  | StructDecl
-  | TraitDecl;
+  | Attribute
+  | Pattern;
 
 export interface Program extends BaseNode {
-  kind: 'Program';
-  items: TopLevelItem[];
+  readonly kind: 'Program';
+  readonly items: TopLevelItem[];
 }
 
-export type TopLevelItem = FunctionDecl | StructDecl | TraitDecl | Stmt;
+export type TopLevelItem =
+  | ModuleDecl
+  | ImportDecl
+  | FunctionDecl
+  | StructDecl
+  | TraitDecl
+  | Stmt;
+
+export interface ModuleDecl extends BaseNode {
+  readonly kind: 'ModuleDecl';
+  readonly name: string;
+}
+
+export interface ImportDecl extends BaseNode {
+  readonly kind: 'ImportDecl';
+  readonly path: string;
+  readonly alias?: string;
+}
+
+export interface Attribute extends BaseNode {
+  readonly kind: 'Attribute';
+  readonly name: string;
+  readonly args?: ReadonlyArray<string>;
+}
 
 export interface TypeAnnotation extends BaseNode {
-  kind: 'TypeAnnotation';
-  name: string;
-  generics?: TypeAnnotation[];
-  isEffectful?: boolean; // marked with !
+  readonly kind: 'TypeAnnotation';
+  readonly name: string;
+  readonly generics?: TypeAnnotation[];
+  readonly isEffectful?: boolean; // marked with !
 }
 
 export interface Param extends BaseNode {
-  kind: 'Param';
-  name: string;
-  isMut: boolean;
-  typeAnnotation?: TypeAnnotation;
+  readonly kind: 'Param';
+  readonly name: string;
+  readonly isMut: boolean;
+  readonly typeAnnotation?: TypeAnnotation;
 }
 
 export interface FunctionDecl extends BaseNode {
-  kind: 'FunctionDecl';
-  name: string;
-  isEffectful: boolean; // marked with ! (e.g. fn write!())
-  params: Param[];
-  returnType?: TypeAnnotation;
-  body: Block;
+  readonly kind: 'FunctionDecl';
+  readonly name: string;
+  readonly isEffectful: boolean; // marked with ! (e.g. fn write!())
+  readonly params: Param[];
+  readonly returnType?: TypeAnnotation;
+  readonly body: Block;
+  readonly attributes?: ReadonlyArray<Attribute>;
 }
 
 export interface Block extends BaseNode {
-  kind: 'Block';
-  statements: Stmt[];
+  readonly kind: 'Block';
+  readonly statements: Stmt[];
 }
 
 export type Stmt = LetStmt | ReturnStmt | ExprStmt | WithStmt;
 
 export interface LetStmt extends BaseNode {
-  kind: 'LetStmt';
-  isMut: boolean;
-  name: string;
-  typeAnnotation?: TypeAnnotation;
-  initializer?: Expr;
+  readonly kind: 'LetStmt';
+  readonly isMut: boolean;
+  readonly name: string;
+  readonly typeAnnotation?: TypeAnnotation;
+  readonly initializer?: Expr;
 }
 
 export interface ReturnStmt extends BaseNode {
-  kind: 'ReturnStmt';
-  value?: Expr;
+  readonly kind: 'ReturnStmt';
+  readonly value?: Expr;
 }
 
 export interface ExprStmt extends BaseNode {
-  kind: 'ExprStmt';
-  expression: Expr;
+  readonly kind: 'ExprStmt';
+  readonly expression: Expr;
 }
 
 export interface WithStmt extends BaseNode {
-  kind: 'WithStmt';
-  resource: Expr;
-  alias?: string;
-  body: Block;
+  readonly kind: 'WithStmt';
+  readonly resource: Expr;
+  readonly alias?: string;
+  readonly body: Block;
+}
+
+export type Pattern = IdentifierPattern | LiteralPattern | WildcardPattern;
+
+export interface IdentifierPattern extends BaseNode {
+  readonly kind: 'IdentifierPattern';
+  readonly name: string;
+  readonly isMut: boolean;
+}
+
+export interface LiteralPattern extends BaseNode {
+  readonly kind: 'LiteralPattern';
+  readonly literal: Literal;
+}
+
+export interface WildcardPattern extends BaseNode {
+  readonly kind: 'WildcardPattern';
 }
 
 export type Expr =
@@ -121,67 +170,67 @@ export type Expr =
   | Literal;
 
 export interface BinaryExpr extends BaseNode {
-  kind: 'BinaryExpr';
-  operator: string; // '+', '-', '*', '/', '==', '!=', '<', '<=', '>', '>=', 'and', 'or'
-  left: Expr;
-  right: Expr;
+  readonly kind: 'BinaryExpr';
+  readonly operator: string; // '+', '-', '*', '/', '==', '!=', '<', '<=', '>', '>=', 'and', 'or'
+  readonly left: Expr;
+  readonly right: Expr;
 }
 
 export interface UnaryExpr extends BaseNode {
-  kind: 'UnaryExpr';
-  operator: string; // 'not', '-'
-  operand: Expr;
+  readonly kind: 'UnaryExpr';
+  readonly operator: string; // 'not', '-'
+  readonly operand: Expr;
 }
 
 export interface PipelineExpr extends BaseNode {
-  kind: 'PipelineExpr';
-  left: Expr;
-  right: Expr;
+  readonly kind: 'PipelineExpr';
+  readonly left: Expr;
+  readonly right: Expr;
 }
 
 export interface OptionFallbackExpr extends BaseNode {
-  kind: 'OptionFallbackExpr'; // ??
-  left: Expr;
-  right: Expr;
+  readonly kind: 'OptionFallbackExpr'; // ??
+  readonly left: Expr;
+  readonly right: Expr;
 }
 
 export interface OptionPropagateExpr extends BaseNode {
-  kind: 'OptionPropagateExpr'; // ?
-  operand: Expr;
+  readonly kind: 'OptionPropagateExpr'; // ?
+  readonly operand: Expr;
 }
 
 export interface CallExpr extends BaseNode {
-  kind: 'CallExpr';
-  callee: Expr;
-  args: Expr[];
+  readonly kind: 'CallExpr';
+  readonly callee: Expr;
+  readonly args: Expr[];
 }
 
 export interface MemberExpr extends BaseNode {
-  kind: 'MemberExpr';
-  object: Expr;
-  property: string;
-  isOptional: boolean; // true if ?.
+  readonly kind: 'MemberExpr';
+  readonly object: Expr;
+  readonly property: string;
+  readonly isOptional: boolean; // true if ?.
 }
 
 export interface Identifier extends BaseNode {
-  kind: 'Identifier';
-  name: string;
+  readonly kind: 'Identifier';
+  readonly name: string;
 }
 
 export interface Literal extends BaseNode {
-  kind: 'Literal';
-  value: string | number | boolean;
-  raw: string;
+  readonly kind: 'Literal';
+  readonly value: string | number | boolean;
+  readonly raw: string;
 }
 
 export interface StructDecl extends BaseNode {
-  kind: 'StructDecl';
-  name: string;
-  fields: { name: string; type: TypeAnnotation }[];
+  readonly kind: 'StructDecl';
+  readonly name: string;
+  readonly fields: { name: string; type: TypeAnnotation }[];
 }
 
 export interface TraitDecl extends BaseNode {
-  kind: 'TraitDecl';
-  name: string;
-  methods: FunctionDecl[];
+  readonly kind: 'TraitDecl';
+  readonly name: string;
+  readonly methods: FunctionDecl[];
 }

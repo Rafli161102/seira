@@ -10,6 +10,13 @@ export interface ResourceCleaner {
   dispose(): void;
 }
 
+export interface MemoryService {
+  readonly maxHeapBytes?: number;
+  allocate(size: number): ArrayBuffer;
+  free(buffer: ArrayBuffer): void;
+  createScope(): ResourceScope;
+}
+
 export class ResourceScope {
   private cleaners: ResourceCleaner[] = [];
   private isDisposed: boolean = false;

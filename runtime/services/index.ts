@@ -6,13 +6,25 @@
  * - Resource manager (active file descriptors, handles, lifecycle tracking)
  * - Clock / Time service
  *
- * Status: Architectural skeleton for Seed Foundation (0.0.1-s).
+ * Status: Architectural skeleton for Seed Foundation (0.0.1-s / 0.0.2-s).
  */
 
 export interface RuntimeService {
   readonly serviceName: string;
   initialize(): Promise<void> | void;
   shutdown(): Promise<void> | void;
+}
+
+export interface ResourceHandle {
+  readonly id: number;
+  readonly kind: string;
+  close(): void;
+}
+
+export interface ResourceManager extends RuntimeService {
+  registerHandle(handle: ResourceHandle): void;
+  releaseHandle(id: number): void;
+  getActiveHandles(): ReadonlyArray<ResourceHandle>;
 }
 
 export class ServiceRegistry {

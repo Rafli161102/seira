@@ -1,10 +1,10 @@
 /**
  * Seira CLI Check Command
- * Validates Seira source syntax via Seed Lexer and Parser.
+ * Orchestrates file validation through CompilerDriver.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { compileSource } from '../../../compiler/index.ts';
+import { existsSync } from 'node:fs';
+import { CompilerDriver } from '../../../compiler/driver/index.ts';
 
 export function runCheck(filePath?: string): number {
   if (!filePath) {
@@ -18,10 +18,11 @@ export function runCheck(filePath?: string): number {
     return 1;
   }
 
-  const source = readFileSync(filePath, 'utf-8');
-  const result = compileSource(source, filePath);
+  const driver = new CompilerDriver();
+  const result = driver.compileFile(filePath, { stopAfter: 'parse' });
 
   if (!result.success) {
+    const source = result.context.sourceManager.getFileByPath(filePath)?.text;
     console.error(result.diagnostics.format(source));
     console.error(`\nCheck failed with errors in '${filePath}'.`);
     return 1;
