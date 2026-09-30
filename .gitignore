@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs & caches
+dist/
+build/
+.seira_cache/
+target/
+
+# OS and Editor artifacts
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/

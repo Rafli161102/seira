@@ -1,0 +1,30 @@
+{
+  "name": "seira",
+  "version": "0.0.1-s",
+  "description": "The Seira Programming Language — Seed Foundation",
+  "type": "module",
+  "bin": {
+    "seira": "./bin/seira"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "seira": "./bin/seira"
+  },
+  "keywords": [
+    "seira",
+    "compiler",
+    "programming-language",
+    "llvm",
+    "wasm"
+  ],
+  "author": "RFLI and Seira Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - dev-infra
+  pull_request:
+    branches:
+      - main
+      - develop
+      - dev-infra
+
+jobs:
+  validate-and-test:
+    name: Build, Lint & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [22.x, 24.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Validate Repository Invariants
+        shell: bash
+        run: |
+          echo "Verifying essential files..."
+          test -f LICENSE || exit 1
+          test -f README.md || exit 1
+          test -f CONTRIBUTING.md || exit 1
+          test -f CODE_OF_CONDUCT.md || exit 1
+          test -f GOVERNANCE.md || exit 1
+          test -f SECURITY.md || exit 1
+          test -f CHANGELOG.md || exit 1
+          test -f Seira.toml || exit 1
+          test -f bin/seira || exit 1
+          echo "Repository structure verified."
+
+      - name: Type Check (TypeScript)
+        run: npm run typecheck
+
+      - name: Run Test Suite
+        run: npm test
+
+      - name: Verify CLI Execution
+        shell: bash
+        run: |
+          node --experimental-strip-types tools/cli/index.ts --version
+          node --experimental-strip-types tools/cli/index.ts info
+          node --experimental-strip-types tools/cli/index.ts check examples/hello_world.sra

@@ -1,0 +1,37 @@
+# Seira Project Manifest
+# Specification: 0.0.1-s Seed Foundation
+
+[package]
+name = "seira"
+version = "0.0.1-s"
+edition = "2026"
+authors = ["RFLI and Seira Contributors"]
+license = "MIT"
+description = "The Seira Programming Language — Seed Foundation"
+repository = "https://github.com/Rafli161102/seira"
+readme = "README.md"
+
+[target]
+default = "native"
+supported = [
+    "native",
+    "wasm32-unknown-unknown"
+]
+
+[dependencies]
+# Reserved for package dependencies in Development and Alpha series
+
+[dev-dependencies]
+# Reserved for development and testing dependencies
+
+[build-dependencies]
+# Reserved for custom build-phase dependencies
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = "thin"
