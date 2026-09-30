@@ -41,6 +41,7 @@ import type {
   Identifier,
   IdentifierPattern,
   IfExpr,
+  ImplDecl,
   IndexExpr,
   LambdaExpr,
   LetStmt,
@@ -242,7 +243,7 @@ export class Evaluator {
     // Build the global execution environment
     const env = new RuntimeEnvironment(undefined, 'global');
 
-    // Hoist all top-level function declarations into the global environment.
+    // Hoist all top-level function declarations and impl methods into the global environment.
     // This allows forward references to functions declared after their call site.
     for (const item of program.items) {
       if (item.kind === 'FunctionDecl') {
@@ -250,6 +251,13 @@ export class Evaluator {
         this.globalFunctions.set(fn.name, fn);
         const fnVal = rtFunction(fn.name, fn, env);
         env.define(fn.name, fnVal, false);
+      } else if (item.kind === 'ImplDecl') {
+        const impl = item as ImplDecl;
+        for (const method of impl.methods) {
+          this.globalFunctions.set(method.name, method);
+          const fnVal = rtFunction(method.name, method, env);
+          env.define(method.name, fnVal, false);
+        }
       }
     }
 
@@ -275,7 +283,16 @@ export class Evaluator {
     // If no `fn main()` exists, execute top-level statements/expressions normally.
     let lastOutcome: RuntimeOutcome = normalOutcome(UNIT_VALUE);
     for (const item of program.items) {
-      if (item.kind === 'FunctionDecl') continue; // already hoisted
+      if (
+        item.kind === 'FunctionDecl' ||
+        item.kind === 'StructDecl' ||
+        item.kind === 'TraitDecl' ||
+        item.kind === 'ImplDecl' ||
+        item.kind === 'TypeAliasDecl' ||
+        item.kind === 'EnumDecl'
+      ) {
+        continue; // already hoisted or compile-time declarations
+      }
       const outcome = this.executeStatement(item as Stmt, env);
       if (isPanic(outcome)) return outcome;
       lastOutcome = outcome;

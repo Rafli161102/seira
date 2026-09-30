@@ -50,28 +50,29 @@ The following syntactic rules and symbols are locked:
 
 Every subsystem is labeled with its current architectural status:
 
-### A. Implemented Subsystems (0.0.6-s Data & Control Foundation)
-- **Lexer & Tokens** [IMPLEMENTED]: Tokenization of identifiers, keywords (`fn`, `let`, `mut`, `with`, `and`, `or`, `not`, `if`, `else`, `match`, `return`, `type`, `struct`, `trait`, `while`, `for`, `in`, `loop`, `break`, `continue`), locked symbols (`=`, `:`, `->`, `=>`, `.`, `|>`, `?`, `?.`, `??`, `!`, `@`, `...`), integer literals (decimal, hex, binary, uint suffix `u`), float literals, string literals, char literals, and comments (`//`, `/* */`). Banned operators (`++`, `--`, `&&`, `||`, `null`, `===`, `!==`, `::`) rejected with helpful hints.
-- **Parser & AST** [IMPLEMENTED]: Full Pratt precedence climbing parser for expressions, bare bindings, statement bindings, expression-body functions, block functions, structs, enums, type aliases, structured control flow (`while`, `for ... in`, `loop`, `break`, `continue`), pattern matching `match`, collection literals (`List`, `Tuple`, `Map`, `Set`), indexing, member access, lambdas, and deterministic error recovery with `synchronize()`.
-- **Name Resolution & Scopes** [IMPLEMENTED]: Lexical scope hierarchy (global, module, function, block), predictable lexical shadowing, top-level declaration hoisting, duplicate declaration rejection (`E2002`), unresolved identifier detection (`E2001`), immutable reassignment rejection (`E2003`), and loop control validation (`E2004` for `break`/`continue` outside loop).
-- **Type System & Inference** [IMPLEMENTED]: Static type inference, structural type equality (`areTypesEqual`, `isTypeAssignable`), explicit type annotations and verification (`E3001`), operator operand typing (`E3002`), function call argument count and type validation (`E3003`), function return type checking (`E3004`), strict Boolean requirements for `if` and `while` conditions (`E3005`), tuple positional access validation (`E3006`), iteration target checking (`E3007`), pattern matching exhaustiveness (`E5001`), pattern kind checking (`E5002`), Option/Result foundational semantics, and pipeline expression checking (`|>`).
-- **Tree-Walking Execution Engine** [IMPLEMENTED]: Seira Value Model v0.2 (`Int`, `UInt`, `Float`, `Bool`, `Char`, `String`, `Byte`, `Unit`, `Option`, `Result`, `List`, `Tuple`, `Map`, `Set`, `Function`), lexical closure capture, safe collection indexing, method dispatch for collections, deterministic application entry convention, and dedicated runtime diagnostic panics (`R0xxx`).
-- **Diagnostics Engine** [IMPLEMENTED]: Structured diagnostic reporting across `E1xxx` (Syntax), `E2xxx` (Resolution), `E3xxx` (Type), `E5xxx` (Pattern Matching), `E9xxx` (Milestone/Backend), and `R0xxx` (Runtime Panics) with source pointers, ASCII line snippets, hints, suggestions, and ICE reports.
+### A. Implemented Subsystems (0.0.7-s Type & Generic Foundation)
+- **Lexer & Tokens** [IMPLEMENTED]: Tokenization of identifiers, keywords (`fn`, `let`, `mut`, `with`, `and`, `or`, `not`, `if`, `else`, `match`, `return`, `type`, `struct`, `trait`, `impl`, `while`, `for`, `in`, `loop`, `break`, `continue`), pipe token (`|`), locked symbols (`=`, `:`, `->`, `=>`, `.`, `|>`, `?`, `?.`, `??`, `!`, `@`, `...`), integer literals (decimal, hex, binary, uint suffix `u`), float literals, string literals, char literals, and comments (`//`, `/* */`). Banned operators (`++`, `--`, `&&`, `||`, `null`, `===`, `!==`, `::`) rejected with helpful hints.
+- **Parser & AST** [IMPLEMENTED]: Full Pratt precedence climbing parser for expressions, bare bindings, statement bindings, expression-body functions, block functions, generic parameters (`<T, U: Constraint>`), explicit type arguments (`callee<T>(args)`), structs, enums, type aliases (`type UserId = Int`), union types (`T1 | T2`), function types (`(P1, P2) -> R`), trait declarations (`trait Printable`), trait implementations (`impl Target: Trait`), structured control flow (`while`, `for ... in`, `loop`, `break`, `continue`), pattern matching `match`, collection literals (`List`, `Tuple`, `Map`, `Set`), indexing, member access, lambdas, and deterministic error recovery with `synchronize()`.
+- **Name Resolution & Scopes** [IMPLEMENTED]: Lexical scope hierarchy (global, module, function, block, generic parameter scope), predictable lexical shadowing, top-level declaration hoisting (including traits and functions), trait implementation coherence checking (duplicate impl rejection `E4005`), unresolved identifier detection (`E2001`), generic parameter value usage rejection (`E2001`), duplicate declaration rejection (`E2002`), immutable reassignment rejection (`E2003`), and loop control validation (`E2004` for `break`/`continue` outside loop).
+- **Type System & Generic Analysis** [IMPLEMENTED]: Static type inference, structural type equality (`areTypesEqual`, `isTypeAssignable`), generic parameters and substitution (`substituteType`), bidirectional unification and generic argument inference (`unifyTypes`), explicit type argument checking (`E4001`), generic inference failure detection (`E4002`), trait constraints validation at call sites (`E4003`), trait implementation completeness checking (`E4004`), trait method signature contract validation (`E4006`), transparent type alias equivalence (`UserId ≡ Int`), static union type checking and safe variant operation validation, function type compatibility, lambda contextual typing, Option/Result generic semantics, and pipeline generic typing (`|>`).
+- **Tree-Walking Execution Engine** [IMPLEMENTED]: Seira Value Model v0.2 (`Int`, `UInt`, `Float`, `Bool`, `Char`, `String`, `Byte`, `Unit`, `Option`, `Result`, `List`, `Tuple`, `Map`, `Set`, `Function`), lexical closure capture, safe collection indexing, method dispatch for collections, static trait dispatch, deterministic application entry convention, and dedicated runtime diagnostic panics (`R0xxx`).
+- **Diagnostics Engine** [IMPLEMENTED]: Structured diagnostic reporting across `E1xxx` (Syntax), `E2xxx` (Resolution), `E3xxx` (Type), `E4xxx` (Trait & Generics), `E5xxx` (Pattern Matching), `E9xxx` (Milestone/Backend), and `R0xxx` (Runtime Panics) with source pointers, ASCII line snippets, hints, suggestions, and ICE reports.
 - **Compiler Driver & CLI** [IMPLEMENTED]: `CompilerDriver` orchestrating stages end-to-end, CLI commands `version`, `info`, `check <file.sra>`, and `run <file.sra>`.
 
-### B. Architectural Skeletons (0.0.6-s Baseline)
+### B. Architectural Skeletons (0.0.7-s Baseline)
 - **HIR Lowering** [ARCHITECTURAL]: Stub for High-Level IR representation.
 - **MIR Lowering** [ARCHITECTURAL]: Stub for Mid-Level IR representation.
 - **Backend Emitter** [ARCHITECTURAL]: Stub for native and WASM codegen.
 - **Runtime Resource Engine** [ARCHITECTURAL]: LIFO resource cleanup stub (`open_resource`, `with` blocks as mock compatibility foundation).
 
-### C. Planned / Deferred Features (0.0.7-s through Alpha)
-- Full borrow checker and ownership tracking (Planned: 0.0.7-s / 0.0.11-d).
+### C. Planned / Deferred Features (0.0.8-s through Alpha)
+- Full borrow checker and ownership tracking (Planned: 0.0.8-s / 0.0.11-d).
 - Full effect inference and handler typing (Planned: 0.0.8-s / 0.0.11-d).
-- Trait bounds solver and monomorphization (Planned: 0.0.9-s / 0.0.11-d).
+- Backend monomorphization and native generic code generation (Planned: 0.0.11-d).
 - High-level and mid-level intermediate representations (HIR/MIR lowering) (Planned: 0.0.11-d).
 - Native LLVM and WebAssembly code generation (Reserved: 0.1.0-alpha).
 - Structured concurrency and async runtime (Reserved: 0.1.0-alpha).
+- Dynamic trait objects (`dyn Trait`), vtables, runtime dynamic dispatch, associated types, and specialization are explicitly out of scope for early milestones.
 
 ### D. Reserved Long-Term Features (Post-1.0 Exploration)
 - Advanced compile-time reflection [RESERVED].

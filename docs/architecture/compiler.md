@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Specification | Seira 0.0.4-s Compiler & Language Foundation Architecture |
-| Target Milestone | 0.0.4-s (Seed Series) |
+| Specification | Seira 0.0.7-s Type & Generic Foundation Architecture |
+| Target Milestone | 0.0.7-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
@@ -69,8 +69,8 @@ compiler/
 | `ast/` | **IMPLEMENTED** | 0.0.3-s | Source-aware AST preserving exact spans on all declarations, statements, expressions, and patterns |
 | `diagnostics/` | **IMPLEMENTED** | 0.0.3-s | Structured diagnostic bags with `E1xxx`–`E9xxx` error families, source snippet formatting, code pointers, suggestions, and ICE crash reporting |
 | `driver/` | **IMPLEMENTED** | 0.0.3-s | `CompilerDriver`, `CompilerContext` session lifecycle, `CompilerConfig`, milestone diagnostics |
-| `resolver/` | **IMPLEMENTED** | 0.0.4-s | Lexical scope hierarchy (global, module, function, block), predictable shadowing, declaration hoisting, duplicate detection (`E2002`), unresolved reference detection (`E2001`), immutable reassignment rejection (`E2003`) |
-| `typecheck/` | **IMPLEMENTED** | 0.0.4-s | Static type inference, structural type equality, explicit type annotation checking (`E3001`), operator typing (`E3002`), function calls & returns (`E3003`, `E3004`), strict Boolean requirements (`E3005`), Option/Result foundations, and pipeline validation |
+| `resolver/` | **IMPLEMENTED** | 0.0.7-s | Lexical scope hierarchy (global, module, function, block, generic parameter scope), predictable shadowing, declaration hoisting (including traits), duplicate detection (`E2002`), duplicate trait impl detection (`E4005`), unresolved reference detection (`E2001`), generic parameter value usage rejection (`E2001`), immutable reassignment rejection (`E2003`), loop control validation (`E2004`) |
+| `typecheck/` | **IMPLEMENTED** | 0.0.7-s | Static type inference, generic types and functions, generic argument inference (`unifyTypes`), type constraints, explicit type argument checking (`E4001`), generic inference failure detection (`E4002`), trait constraints validation (`E4003`), trait implementation completeness checking (`E4004`), trait method signature contract validation (`E4006`), transparent type alias equivalence (`UserId ≡ Int`), static union type checking, function types, contextual lambda typing, Option/Result generic semantics, and pipeline generic typing |
 | `hir/` | **ARCHITECTURAL SKELETON** | Planned (0.0.11-d) | Contracts for `HIRProgram`, `HIRModule`, `HIRFunction`, `HIRBlock` |
 | `mir/` | **ARCHITECTURAL SKELETON** | Planned (0.0.11-d) | Contracts for `MIRModule`, `BasicBlock`, `MIROperation`, `MIRResourceOp` |
 | `backend/` | **ARCHITECTURAL SKELETON** | Reserved (0.1.0-alpha) | Contracts for `BackendEmitter`, `BackendOptions`, `BackendResult` |
@@ -181,7 +181,24 @@ JavaScript-style truthiness is strictly forbidden.
 Pipelines transform expressions into function calls:
 - `data |> f` validates that `f` accepts `data` as its first parameter.
 - `data |> f(x, y)` validates that `f` accepts `[data, x, y]`.
+- Generic functions in pipelines infer type parameters from the piped value.
 - Emits `E3003` if target parameter count or types do not match.
+
+### 5.9 Generic Types & Functions
+- Type declarations accept generic parameters: `type Box<T> { value: T }`. Generic parameters exist exclusively in type context and duplicate parameters are rejected (`E4001`).
+- Generic functions: `fn identity<T>(value: T) -> T`. Generic parameters are lexically scoped to the function.
+- Generic argument inference: arguments infer generic parameters via structural unification (`unifyTypes`). Uninferred parameters emit `E4002`.
+- Explicit type arguments: `identity<Int>(10)` validated with safe parser lookahead.
+
+### 5.10 Type Aliases & Union Types
+- Type aliases: `type UserId = Int` establishes transparent structural equivalence (`UserId ≡ Int`). Does not introduce nominal newtypes.
+- Union types: `type ID = Int | String` maintains a finite set of variants. Operations must be statically valid across all variants (`E3002`).
+
+### 5.11 Trait Foundation & Static Resolution
+- Trait declarations: `trait Printable { fn print() }` defines compile-time contracts.
+- Trait implementations: `impl User: Printable { fn print() { ... } }` verified statically for completeness (`E4004`) and signature matching (`E4006`). Duplicate implementations are rejected (`E4005`).
+- Trait constraints: `<T: Printable>` validated at call sites statically (`E4003`).
+- Static trait resolution: methods resolve statically at compile time; zero runtime dynamic dispatch, vtables, or `dyn Trait`.
 
 ---
 
@@ -190,16 +207,28 @@ Pipelines transform expressions into function calls:
 ### 6.1 Diagnostic Code Families
 - **E1xxx**: Lexical and Syntactic errors.
 - **E2xxx**: Name Resolution & Scoping errors:
-  - `E2001`: Unresolved identifier reference.
+  - `E2001`: Unresolved identifier reference (or generic parameter used as runtime value).
   - `E2002`: Duplicate binding in the same scope.
   - `E2003`: Invalid assignment target (immutable reassignment).
+  - `E2004`: Loop control statement (`break`/`continue`) outside loop.
 - **E3xxx**: Type System & Semantic errors:
   - `E3001`: Type mismatch.
-  - `E3002`: Invalid operand type for operator.
+  - `E3002`: Invalid operand type for operator (including invalid union operations).
   - `E3003`: Invalid function call arguments / pipeline target.
   - `E3004`: Function return type mismatch.
   - `E3005`: Invalid condition type in `if` expression.
+  - `E3006`: Tuple index out of bounds or invalid member access.
+  - `E3007`: Target of `for` loop is not an iterable collection.
+- **E4xxx**: Trait and Generic errors:
+  - `E4001`: Generic argument mismatch or duplicate generic parameter.
+  - `E4002`: Generic inference failure.
+  - `E4003`: Trait constraint not satisfied.
+  - `E4004`: Trait not found or missing required trait method.
+  - `E4005`: Duplicate trait implementation.
+  - `E4006`: Trait method signature mismatch.
+- **E5xxx**: Pattern matching errors (`E5001` non-exhaustive match, `E5002` invalid pattern kind).
 - **E9xxx**: Backend / Build errors (`E9001` reserved milestone error).
+- **R0xxx**: Dedicated Runtime Panics (division by zero, unsupported op, internal state, recursion limit, UInt underflow).
 
 ---
 
@@ -208,7 +237,7 @@ Pipelines transform expressions into function calls:
 The following subsystems are intentionally deferred to future milestones and preserve strict boundaries:
 - **High-Level IR (HIR)**: AST-to-HIR lowering is deferred (Planned: 0.0.11-d).
 - **Mid-Level IR (MIR)**: SSA, control flow graphs, and optimization are deferred (Planned: 0.0.11-d).
-- **Borrow Checker & Ownership**: Full borrow checking is deferred (Planned: 0.0.7-s / 0.0.11-d).
-- **Full Effect System**: Statically verified algebraic effect propagation is deferred (Planned: 0.0.6-s / 0.0.11-d).
-- **Trait System & Generic Specialization**: Trait bounds solver and monomorphization are deferred (Planned: 0.0.8-s / 0.0.11-d).
+- **Borrow Checker & Ownership**: Full borrow checking is deferred (Planned: Phase 2).
+- **Full Effect System**: Statically verified algebraic effect propagation is deferred (Planned: Phase 2).
+- **Advanced Trait Features & Monomorphization**: Dynamic trait objects (`dyn Trait`), vtables, associated types, specialization, and backend monomorphization are deferred.
 - **Backend Codegen**: LLVM IR, WebAssembly, and native binary code generation are deferred (Reserved: 0.1.0-alpha).

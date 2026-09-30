@@ -1,8 +1,8 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.6-s](https://img.shields.io/badge/Release-0.0.6--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Data & Control Foundation](https://img.shields.io/badge/Status-Data%20%26%20Control%20Foundation-orange.svg)](#project-status)
+[![Release: 0.0.7-s](https://img.shields.io/badge/Release-0.0.7--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: Type & Generic Foundation](https://img.shields.io/badge/Status-Type%20%26%20Generic%20Foundation-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Seed stage.
 
@@ -14,10 +14,10 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.6-s) — Data & Control Foundation**  
+> **Current Status: Seed (0.0.7-s) — Type & Generic Foundation**  
 > Seira is currently an early-stage experimental programming language project. The repository is establishing its compiler architecture, language foundation, tooling boundaries, and engineering infrastructure.  
 > **Seira is NOT production-ready, and Alpha is not yet released.**  
-> In the current 0.0.6-s release, Seira establishes executable data and control foundations: structured control flow (`if`/`else` as expressions, `while`, `for`, `loop`, `break`, `continue`), pattern matching (`match` with literals, wildcards, bindings, `Option`, and `Result`), collection values (`List`, `Tuple`, `Map`, `Set`) with safe indexing, first-class lambdas, closures, higher-order functions, and pipeline composition. Direct native code generation and WebAssembly emission will be implemented in subsequent phases.
+> In the current 0.0.7-s release, Seira establishes reusable static abstractions: generic types (`type Box<T>`), generic functions (`fn identity<T>`), generic parameter and argument inference, explicit type arguments, type constraints (`<T: Trait>`), type aliases (`type UserId = Int`), union types (`type ID = Int | String`), first-class function types (`(Int) -> Int`), higher-order generic functions, contextual lambda typing, trait foundation (`trait Printable`, `impl Type: Trait`), static trait constraints, static trait resolution, and the active `E4xxx` diagnostic family. Tree-walking execution evaluates validated generic and trait-based programs without runtime dynamic dispatch, vtables, or monomorphization.
 
 ---
 
@@ -94,7 +94,50 @@ fn run_pipeline() {
 }
 ```
 
-*(Note: In 0.0.6-s, code is validated by the front-end compiler pipeline and executable via the tree-walking engine with `seira run`. `main` is an application entry convention used by the execution layer; top-level scripts execute directly without `main`).*
+### 4. Generics, Type Aliases, Unions, and Traits
+```sra
+// Type Alias & Union Type
+type UserId = Int
+type Identifier = UserId | String
+
+// Generic Type Declaration
+type Box<T> {
+    value: T
+}
+
+// Trait Definition & Implementation
+trait Printable {
+    fn print()
+}
+
+type User {
+    id: Int
+}
+
+impl User: Printable {
+    fn print() {
+        println(self.id)
+    }
+}
+
+// Generic Function with Trait Constraint
+fn print_item<T: Printable>(item: T) {
+    item.print()
+}
+
+// Higher-order generic function & inference
+fn identity<T>(value: T) -> T {
+    value
+}
+
+fn main() {
+    num = identity(42)
+    user = User { id: 1 }
+    print_item(user)
+}
+```
+
+*(Note: In 0.0.7-s, code is validated by the front-end compiler pipeline and executable via the tree-walking engine with `seira run`. `main` is an application entry convention used by the execution layer; top-level scripts execute directly without `main`).*
 
 ---
 
@@ -104,7 +147,7 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 
 | Category | Definition | Subsystems / Features |
 | :--- | :--- | :--- |
-| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Static type inference, collection typing, and checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`)<br>• Structured control flow (`if`/`else` values, `while`, `for`, `loop`, `break`, `continue`)<br>• Pattern matching (`match` with literals, wildcards, bindings, Option, Result, and static exhaustiveness validation)<br>• Seira Collections (`List`, `Tuple`, `Map`, `Set`) with safe indexing and structural value equality<br>• First-class lambdas, lexical closures, and higher-order functions<br>• Tree-walking execution engine & Seira Value Model (`runtime/execution/`) with dedicated runtime diagnostics (`R0xxx`), deterministic single-entry convention, and UInt underflow panic (`R0005`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira check`, `seira run`) |
+| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Name resolution & lexical scoping (`compiler/resolver/`)<br>• Static type inference, collection typing, generic types, generic functions, type aliases, union types, function types, trait declarations, trait implementations, trait constraints, and static trait resolution (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`) with active `E1xxx`–`E5xxx` error families<br>• Structured control flow (`if`/`else` values, `while`, `for`, `loop`, `break`, `continue`)<br>• Pattern matching (`match` with literals, wildcards, bindings, Option, Result, and static exhaustiveness validation)<br>• Seira Collections (`List`, `Tuple`, `Map`, `Set`) with safe indexing and structural value equality<br>• First-class lambdas, lexical closures, higher-order generic functions, and pipeline composition<br>• Tree-walking execution engine & Seira Value Model (`runtime/execution/`) with dedicated runtime diagnostics (`R0xxx`), deterministic single-entry convention, and UInt underflow panic (`R0005`)<br>• Manifest validation (`Seira.toml`) and official CLI (`seira check`, `seira run`) |
 | **Architecturally Prepared** | Formal contracts, interfaces, and boundary types defined | • High-Level Intermediate Representation (`compiler/hir/`)<br>• Mid-Level Intermediate Representation (`compiler/mir/`)<br>• Backend emission interfaces (`compiler/backend/`)<br>• Runtime session and service boundaries (`runtime/context.ts`, `services/`) |
 | **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics (basic host I/O primitives `println`/`print` executable; full effect enforcement in Phase 2)<br>• Scoped resource ownership model (`with` blocks, deterministic cleanup — `with` and `open_resource` exist as mock compatibility stubs; production ownership in Phase 2)<br>• Memory model, borrow checking, and zero-overhead abstractions<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts (`std/core`, `std/collections`, `std/io`, etc.) |
 | **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Ahead-of-time compilation (`seira build`)<br>• Package manager registry and dependency resolution |
@@ -117,7 +160,8 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.4-s` — Language Foundation**: Name resolution, lexical scoping, basic static type system, structural type equality, pipeline validation.
 - **`0.0.5-s` — Execution Foundation**: Tree-walking evaluator, Seira Value Model v0.1, dedicated runtime panic namespace (`R0xxx`), deterministic application entry convention, UInt underflow protection (`R0005`), and `seira run` CLI command.
 - **`0.0.6-s` — Data & Control Foundation**: Structured control flow (`if`, `while`, `for`, `loop`, `break`, `continue`), pattern matching (`match` with static exhaustiveness), collections (`List`, `Tuple`, `Map`, `Set`), safe indexing, first-class lambdas, closures, higher-order functions, and pipeline integration.
-- **`0.0.7-s` — NOT STARTED**: Scheduled next in the Seed series.
+- **`0.0.7-s` — Type & Generic Foundation**: Generic types, generic functions, generic parameter and argument inference, explicit type arguments, type constraints, type aliases (`type UserId = Int`), union types (`type ID = Int | String`), first-class function types (`(Int) -> Int`), higher-order generic functions, contextual lambda typing, trait foundation (`trait Printable`, `impl Type: Trait`), static trait constraints, static trait resolution, and active `E4xxx` diagnostic family.
+- **`0.0.8-s` — NOT STARTED**: Scheduled next in the Seed series.
 
 ---
 
@@ -168,7 +212,8 @@ PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [CURRENT PHASE]
   ├── 0.0.4-s: Language Foundation (Complete)
   ├── 0.0.5-s: Execution Foundation (Complete)
   ├── 0.0.6-s: Data & Control Foundation (Complete)
-  └── 0.0.7-s → 0.0.10-s: (Not Started)
+  ├── 0.0.7-s: Type & Generic Foundation (Complete)
+  └── 0.0.8-s → 0.0.10-s: (Not Started)
 
 PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)
   └── Toolchain maturation, intermediate representations, and effect checking.
@@ -223,7 +268,7 @@ npm ci
 ```bash
 # Check version
 ./bin/seira --version
-# Output: Seira 0.0.6-s
+# Output: Seira 0.0.7-s
 
 # Inspect environment and project
 ./bin/seira info
