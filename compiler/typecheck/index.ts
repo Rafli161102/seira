@@ -123,6 +123,37 @@ export interface TypecheckResult {
   readonly nodeTypes: Map<ASTNode, Type>;
 }
 
+const BUILTIN_OPERATIONS = new Set<string>([
+  'map',
+  'filter',
+  'take',
+  'skip',
+  'enumerate',
+  'zip',
+  'fold',
+  'reduce',
+  'iter',
+  'collect',
+  'unwrap',
+  'expect',
+  'unwrap_or',
+  'unwrap_or_else',
+  'map_err',
+  'and_then',
+  'or_else',
+  'is_some',
+  'is_none',
+  'is_ok',
+  'is_err',
+  'trim',
+  'replace',
+  'split',
+  'contains',
+  'chars',
+  'bytes',
+  'reverse',
+]);
+
 export class TypeChecker {
   private readonly diagnostics: DiagnosticBag;
   private readonly nodeTypes = new Map<ASTNode, Type>();
@@ -1487,6 +1518,677 @@ export class TypeChecker {
     return UNKNOWN_TYPE;
   }
 
+  private checkBuiltinOperation(
+    name: string,
+    targetType: Type,
+    args: Expr[],
+    callSpan: Span,
+    fullSpan: Span
+  ): Type | null {
+    switch (name) {
+      case 'map': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'map' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const expectedFn = createFunctionType([targetType.inner], UNKNOWN_TYPE);
+          const fnType = this.checkExpression(args[0], expectedFn);
+          if (fnType.kind === 'Function') {
+            if (
+              fnType.params.length > 0 &&
+              !isTypeAssignable(fnType.params[0], targetType.inner) &&
+              !isUnknown(fnType.params[0]) &&
+              !isUnknown(targetType.inner)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Function parameter type '${formatType(fnType.params[0])}' is incompatible with Option value type '${formatType(targetType.inner)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+            return createOptionType(fnType.returnType);
+          }
+          return createOptionType(UNKNOWN_TYPE);
+        } else if (targetType.kind === 'Result') {
+          const expectedFn = createFunctionType([targetType.ok], UNKNOWN_TYPE);
+          const fnType = this.checkExpression(args[0], expectedFn);
+          if (fnType.kind === 'Function') {
+            if (
+              fnType.params.length > 0 &&
+              !isTypeAssignable(fnType.params[0], targetType.ok) &&
+              !isUnknown(fnType.params[0]) &&
+              !isUnknown(targetType.ok)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Function parameter type '${formatType(fnType.params[0])}' is incompatible with Result Ok type '${formatType(targetType.ok)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+            return createResultType(fnType.returnType, targetType.err);
+          }
+          return createResultType(UNKNOWN_TYPE, targetType.err);
+        } else if (targetType.kind === 'List') {
+          const expectedFn = createFunctionType([targetType.element], UNKNOWN_TYPE);
+          const fnType = this.checkExpression(args[0], expectedFn);
+          if (fnType.kind === 'Function') {
+            if (
+              fnType.params.length > 0 &&
+              !isTypeAssignable(fnType.params[0], targetType.element) &&
+              !isUnknown(fnType.params[0]) &&
+              !isUnknown(targetType.element)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Function parameter type '${formatType(fnType.params[0])}' is incompatible with List element type '${formatType(targetType.element)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+            return { kind: 'List', element: fnType.returnType };
+          }
+          return { kind: 'List', element: UNKNOWN_TYPE };
+        } else if (targetType.kind === 'Custom' && targetType.name === 'Iterator') {
+          this.checkExpression(args[0]);
+          return { kind: 'Custom', name: 'Iterator' };
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'map' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          if (args.length > 0) this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'unwrap_or': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'unwrap_or' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fallbackType = this.checkExpression(args[0], targetType.inner);
+          if (
+            !isTypeAssignable(targetType.inner, fallbackType) &&
+            !isUnknown(fallbackType) &&
+            !isUnknown(targetType.inner)
+          ) {
+            this.diagnostics.reportError(
+              'E3003',
+              `Fallback type '${formatType(fallbackType)}' is incompatible with Option value type '${formatType(targetType.inner)}'.`,
+              args[0].span,
+              this.currentFile
+            );
+          }
+          return isUnknown(targetType.inner) ? fallbackType : targetType.inner;
+        } else if (targetType.kind === 'Result') {
+          const fallbackType = this.checkExpression(args[0], targetType.ok);
+          if (
+            !isTypeAssignable(targetType.ok, fallbackType) &&
+            !isUnknown(fallbackType) &&
+            !isUnknown(targetType.ok)
+          ) {
+            this.diagnostics.reportError(
+              'E3003',
+              `Fallback type '${formatType(fallbackType)}' is incompatible with Result Ok type '${formatType(targetType.ok)}'.`,
+              args[0].span,
+              this.currentFile
+            );
+          }
+          return isUnknown(targetType.ok) ? fallbackType : targetType.ok;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'unwrap_or' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'unwrap_or_else': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'unwrap_or_else' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fnType = this.checkExpression(args[0], createFunctionType([], targetType.inner));
+          if (fnType.kind === 'Function') {
+            if (
+              !isTypeAssignable(targetType.inner, fnType.returnType) &&
+              !isUnknown(fnType.returnType) &&
+              !isUnknown(targetType.inner)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Fallback closure return type '${formatType(fnType.returnType)}' is incompatible with Option value type '${formatType(targetType.inner)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return isUnknown(targetType.inner) && fnType.kind === 'Function' ? fnType.returnType : targetType.inner;
+        } else if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(args[0], createFunctionType([targetType.err], targetType.ok));
+          if (fnType.kind === 'Function') {
+            if (
+              !isTypeAssignable(targetType.ok, fnType.returnType) &&
+              !isUnknown(fnType.returnType) &&
+              !isUnknown(targetType.ok)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Fallback closure return type '${formatType(fnType.returnType)}' is incompatible with Result Ok type '${formatType(targetType.ok)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return isUnknown(targetType.ok) && fnType.kind === 'Function' ? fnType.returnType : targetType.ok;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'unwrap_or_else' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'map_err': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'map_err' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(args[0], createFunctionType([targetType.err], UNKNOWN_TYPE));
+          if (fnType.kind === 'Function') {
+            return createResultType(targetType.ok, fnType.returnType);
+          }
+          return createResultType(targetType.ok, UNKNOWN_TYPE);
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'map_err' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'and_then': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'and_then' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fnType = this.checkExpression(
+            args[0],
+            createFunctionType([targetType.inner], createOptionType(UNKNOWN_TYPE))
+          );
+          if (fnType.kind === 'Function') {
+            if (fnType.returnType.kind === 'Option') {
+              return fnType.returnType;
+            } else if (!isUnknown(fnType.returnType)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'and_then' closure must return Option, but returns '${formatType(fnType.returnType)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return createOptionType(UNKNOWN_TYPE);
+        } else if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(
+            args[0],
+            createFunctionType([targetType.ok], createResultType(UNKNOWN_TYPE, targetType.err))
+          );
+          if (fnType.kind === 'Function') {
+            if (fnType.returnType.kind === 'Result') {
+              return fnType.returnType;
+            } else if (!isUnknown(fnType.returnType)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'and_then' closure must return Result, but returns '${formatType(fnType.returnType)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return createResultType(UNKNOWN_TYPE, targetType.err);
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'and_then' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'or_else': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'or_else' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fnType = this.checkExpression(args[0], createFunctionType([], targetType));
+          if (fnType.kind === 'Function') {
+            if (!isTypeAssignable(targetType, fnType.returnType) && !isUnknown(fnType.returnType)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'or_else' closure return type '${formatType(fnType.returnType)}' is incompatible with '${formatType(targetType)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return targetType;
+        } else if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(
+            args[0],
+            createFunctionType([targetType.err], createResultType(targetType.ok, UNKNOWN_TYPE))
+          );
+          if (fnType.kind === 'Function') {
+            if (fnType.returnType.kind === 'Result') {
+              return fnType.returnType;
+            }
+          }
+          return targetType;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'or_else' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'trim': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'trim' requires a String receiver, but got '${formatType(targetType)}'.`,
+            fullSpan,
+            this.currentFile
+          );
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'trim' takes 0 arguments, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+        }
+        return STRING_TYPE;
+      }
+
+      case 'replace': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'replace' requires a String receiver, but got '${formatType(targetType)}'.`,
+            fullSpan,
+            this.currentFile
+          );
+        }
+        if (args.length !== 2) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'replace' takes 2 arguments, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+        }
+        for (let i = 0; i < args.length; i++) {
+          const aType = this.checkExpression(args[i], STRING_TYPE);
+          if (!isString(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'replace' argument ${i + 1} must be String, but got '${formatType(aType)}'.`,
+              args[i].span,
+              this.currentFile
+            );
+          }
+        }
+        return STRING_TYPE;
+      }
+
+      case 'split': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'split' requires a String receiver, but got '${formatType(targetType)}'.`,
+            fullSpan,
+            this.currentFile
+          );
+        }
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'split' takes 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+        }
+        if (args.length > 0) {
+          const aType = this.checkExpression(args[0], STRING_TYPE);
+          if (!isString(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'split' separator must be String, but got '${formatType(aType)}'.`,
+              args[0].span,
+              this.currentFile
+            );
+          }
+        }
+        return { kind: 'List', element: STRING_TYPE };
+      }
+
+      case 'contains': {
+        if (isString(targetType)) {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], STRING_TYPE);
+            if (!isString(aType) && !isUnknown(aType)) {
+              this.diagnostics.reportError('E3003', `'contains' argument must be String, but got '${formatType(aType)}'.`, args[0].span, this.currentFile);
+            }
+          }
+          return BOOL_TYPE;
+        } else if (targetType.kind === 'List') {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], targetType.element);
+            if (!isTypeAssignable(targetType.element, aType) && !isUnknown(aType) && !isUnknown(targetType.element)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'contains' argument type '${formatType(aType)}' is incompatible with List element type '${formatType(targetType.element)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return BOOL_TYPE;
+        } else if (targetType.kind === 'Set') {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], targetType.element);
+            if (!isTypeAssignable(targetType.element, aType) && !isUnknown(aType) && !isUnknown(targetType.element)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'contains' argument type '${formatType(aType)}' is incompatible with Set element type '${formatType(targetType.element)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return BOOL_TYPE;
+        } else if (targetType.kind === 'Map') {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], targetType.key);
+            if (!isTypeAssignable(targetType.key, aType) && !isUnknown(aType) && !isUnknown(targetType.key)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'contains' argument type '${formatType(aType)}' is incompatible with Map key type '${formatType(targetType.key)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return BOOL_TYPE;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'contains' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          for (const a of args) this.checkExpression(a);
+          return BOOL_TYPE;
+        }
+      }
+
+      case 'unwrap': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'unwrap' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        if (!isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'unwrap' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        return UNKNOWN_TYPE;
+      }
+
+      case 'expect': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'expect' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) {
+          const aType = this.checkExpression(args[0], STRING_TYPE);
+          if (!isString(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError('E3003', `'expect' argument must be String, but got '${formatType(aType)}'.`, args[0].span, this.currentFile);
+          }
+        }
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        if (!isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'expect' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        return UNKNOWN_TYPE;
+      }
+
+      case 'is_some':
+      case 'is_none': {
+        if (targetType.kind !== 'Option' && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'${name}' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'${name}' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return BOOL_TYPE;
+      }
+
+      case 'is_ok':
+      case 'is_err': {
+        if (targetType.kind !== 'Result' && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'${name}' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'${name}' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return BOOL_TYPE;
+      }
+
+      case 'filter': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'filter' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (targetType.kind === 'List') {
+          if (args.length > 0) this.checkExpression(args[0], createFunctionType([targetType.element], BOOL_TYPE));
+          return targetType;
+        } else if (targetType.kind === 'Custom' && targetType.name === 'Iterator') {
+          if (args.length > 0) this.checkExpression(args[0]);
+          return targetType;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError('E3003', `'filter' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+          }
+          if (args.length > 0) this.checkExpression(args[0]);
+          return targetType;
+        }
+      }
+
+      case 'take':
+      case 'skip': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'${name}' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) {
+          const aType = this.checkExpression(args[0], INT_TYPE);
+          if (!isInt(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError('E3003', `'${name}' argument must be Int, but got '${formatType(aType)}'.`, args[0].span, this.currentFile);
+          }
+        }
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'enumerate': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'enumerate' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'zip': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'zip' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) this.checkExpression(args[0]);
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'fold': {
+        if (args.length < 2) {
+          this.diagnostics.reportError('E3003', `'fold' takes 2 arguments (initial, folder), but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        const initType = args.length > 0 ? this.checkExpression(args[0]) : UNKNOWN_TYPE;
+        if (args.length > 1) this.checkExpression(args[1]);
+        return initType;
+      }
+
+      case 'reduce': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'reduce' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) this.checkExpression(args[0]);
+        return createOptionType(UNKNOWN_TYPE);
+      }
+
+      case 'iter': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'iter' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'collect': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'collect' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'List', element: UNKNOWN_TYPE };
+      }
+
+      case 'chars': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'chars' requires a String receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'chars' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'List', element: CHAR_TYPE };
+      }
+
+      case 'bytes': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'bytes' requires a String receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'bytes' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'List', element: BYTE_TYPE };
+      }
+
+      case 'reverse': {
+        if (targetType.kind === 'List') {
+          if (args.length !== 0) {
+            this.diagnostics.reportError('E3003', `'reverse' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          return targetType;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError('E3003', `'reverse' requires a List receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+          }
+          return targetType;
+        }
+      }
+
+      default:
+        return null;
+    }
+  }
+
   private checkCall(call: CallExpr, expectedType?: Type): Type {
     let calleeType: Type = UNKNOWN_TYPE;
     let calleeName = 'anonymous';
@@ -1553,73 +2255,30 @@ export class TypeChecker {
         const inner = elemType.kind === 'List' ? elemType.element : elemType;
         return { kind: 'Set', element: inner };
       }
-      if (calleeName === 'iter') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return { kind: 'Custom', name: 'Iterator' };
-      }
-      if (calleeName === 'collect') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return { kind: 'List', element: UNKNOWN_TYPE };
-      }
-      if (calleeName === 'filter' || calleeName === 'map' || calleeName === 'take' || calleeName === 'skip') {
-        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
-        for (let i = 1; i < call.args.length; i++) this.checkExpression(call.args[i]);
-        return targetType;
-      }
-      if (calleeName === 'enumerate' || calleeName === 'zip') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return { kind: 'Custom', name: 'Iterator' };
-      }
-      if (calleeName === 'fold') {
-        if (call.args.length > 0) this.checkExpression(call.args[0]);
-        const initType = call.args.length > 1 ? this.checkExpression(call.args[1]) : UNKNOWN_TYPE;
-        if (call.args.length > 2) this.checkExpression(call.args[2]);
-        return initType;
-      }
-      if (calleeName === 'reduce') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return createOptionType(UNKNOWN_TYPE);
-      }
-      if (calleeName === 'is_some' || calleeName === 'is_none' || calleeName === 'is_ok' || calleeName === 'is_err') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return BOOL_TYPE;
-      }
-      if (calleeName === 'unwrap') {
-        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
-        if (targetType.kind === 'Option') return targetType.inner;
-        if (targetType.kind === 'Result') return targetType.ok;
-        return UNKNOWN_TYPE;
-      }
-      if (calleeName === 'expect') {
-        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
-        if (call.args.length > 1) this.checkExpression(call.args[1]);
-        if (targetType.kind === 'Option') return targetType.inner;
-        if (targetType.kind === 'Result') return targetType.ok;
-        return UNKNOWN_TYPE;
-      }
-      if (calleeName === 'unwrap_or' || calleeName === 'unwrap_or_else') {
-        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
-        for (let i = 1; i < call.args.length; i++) this.checkExpression(call.args[i]);
-        if (targetType.kind === 'Option') return targetType.inner;
-        if (targetType.kind === 'Result') return targetType.ok;
-        return UNKNOWN_TYPE;
-      }
-      if (calleeName === 'map_err' || calleeName === 'and_then' || calleeName === 'or_else') {
-        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
-        for (let i = 1; i < call.args.length; i++) this.checkExpression(call.args[i]);
-        return targetType;
-      }
-      if (calleeName === 'trim' || calleeName === 'replace') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return STRING_TYPE;
-      }
-      if (calleeName === 'split') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return { kind: 'List', element: STRING_TYPE };
-      }
-      if (calleeName === 'contains') {
-        for (const arg of call.args) this.checkExpression(arg);
-        return BOOL_TYPE;
+
+      if (BUILTIN_OPERATIONS.has(calleeName)) {
+        if (call.args.length > 0) {
+          const targetType = this.checkExpression(call.args[0]);
+          return (
+            this.checkBuiltinOperation(
+              calleeName,
+              targetType,
+              call.args.slice(1),
+              call.span,
+              call.span
+            ) ?? UNKNOWN_TYPE
+          );
+        } else {
+          return (
+            this.checkBuiltinOperation(
+              calleeName,
+              UNKNOWN_TYPE,
+              [],
+              call.span,
+              call.span
+            ) ?? UNKNOWN_TYPE
+          );
+        }
       }
 
       const sym = this.currentResolverResult?.resolvedSymbols.get(id);
@@ -1652,6 +2311,22 @@ export class TypeChecker {
         calleeType = createFunctionType(paramTypes, returnType, fnDecl.isEffectful, genericParamTypes);
         sym.type = calleeType;
       }
+    } else if (call.callee.kind === 'MemberExpr') {
+      const mem = call.callee as MemberExpr;
+      if (BUILTIN_OPERATIONS.has(mem.property)) {
+        const targetType = this.checkExpression(mem.object);
+        const builtinRes = this.checkBuiltinOperation(
+          mem.property,
+          targetType,
+          call.args,
+          call.span,
+          call.span
+        );
+        if (builtinRes !== null) {
+          return builtinRes;
+        }
+      }
+      calleeType = this.checkExpression(call.callee);
     } else {
       calleeType = this.checkExpression(call.callee);
     }
@@ -1833,28 +2508,17 @@ export class TypeChecker {
         const id = call.callee as Identifier;
         calleeName = id.name;
 
-        // Prelude combinator pipeline fast-path
-        if (calleeName === 'iter') return { kind: 'Custom', name: 'Iterator' };
-        if (calleeName === 'collect') return { kind: 'List', element: UNKNOWN_TYPE };
-        if (calleeName === 'filter' || calleeName === 'map' || calleeName === 'take' || calleeName === 'skip') {
-          for (const a of call.args) this.checkExpression(a);
-          return valType;
-        }
-        if (calleeName === 'enumerate' || calleeName === 'zip') {
-          for (const a of call.args) this.checkExpression(a);
-          return { kind: 'Custom', name: 'Iterator' };
-        }
-        if (calleeName === 'fold') {
-          return call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
-        }
-        if (calleeName === 'reduce') return createOptionType(UNKNOWN_TYPE);
-        if (calleeName === 'unwrap' || calleeName === 'expect') {
-          if (valType.kind === 'Option') return valType.inner;
-          if (valType.kind === 'Result') return valType.ok;
-          return UNKNOWN_TYPE;
-        }
-        if (calleeName === 'is_some' || calleeName === 'is_none' || calleeName === 'is_ok' || calleeName === 'is_err') {
-          return BOOL_TYPE;
+        if (BUILTIN_OPERATIONS.has(calleeName)) {
+          const builtinRes = this.checkBuiltinOperation(
+            calleeName,
+            valType,
+            call.args,
+            call.span,
+            pipe.span
+          );
+          if (builtinRes !== null) {
+            return builtinRes;
+          }
         }
 
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);
@@ -1910,17 +2574,17 @@ export class TypeChecker {
         const id = pipe.right as Identifier;
         calleeName = id.name;
 
-        // Prelude combinator pipeline fast-path
-        if (calleeName === 'iter') return { kind: 'Custom', name: 'Iterator' };
-        if (calleeName === 'collect') return { kind: 'List', element: UNKNOWN_TYPE };
-        if (calleeName === 'enumerate') return { kind: 'Custom', name: 'Iterator' };
-        if (calleeName === 'unwrap') {
-          if (valType.kind === 'Option') return valType.inner;
-          if (valType.kind === 'Result') return valType.ok;
-          return UNKNOWN_TYPE;
-        }
-        if (calleeName === 'is_some' || calleeName === 'is_none' || calleeName === 'is_ok' || calleeName === 'is_err') {
-          return BOOL_TYPE;
+        if (BUILTIN_OPERATIONS.has(calleeName)) {
+          const builtinRes = this.checkBuiltinOperation(
+            calleeName,
+            valType,
+            [],
+            pipe.right.span,
+            pipe.span
+          );
+          if (builtinRes !== null) {
+            return builtinRes;
+          }
         }
 
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);

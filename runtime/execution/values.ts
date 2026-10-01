@@ -244,7 +244,8 @@ export function rtBool(value: boolean): BoolRuntimeValue {
 }
 
 export function rtChar(value: string): CharRuntimeValue {
-  return { tag: 'Char', value: value[0] ?? '\0' };
+  const cp = value.codePointAt(0);
+  return { tag: 'Char', value: cp !== undefined ? String.fromCodePoint(cp) : '\0' };
 }
 
 export function rtString(value: string): StringRuntimeValue {

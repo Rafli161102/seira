@@ -1829,7 +1829,7 @@ export class Evaluator {
         const str = (target as StringRuntimeValue).value;
         switch (methodName) {
           case 'length':
-            return normalOutcome(rtInt(BigInt(str.length)));
+            return normalOutcome(rtInt(BigInt(Array.from(str).length)));
           case 'is_empty':
             return normalOutcome(rtBool(str.length === 0));
           case 'contains': {
@@ -2131,7 +2131,7 @@ export class Evaluator {
         return normalOutcome(rtInt(BigInt((target as MapRuntimeValue).entries.length)));
       }
       if (target.tag === 'String') {
-        return normalOutcome(rtInt(BigInt((target as StringRuntimeValue).value.length)));
+        return normalOutcome(rtInt(BigInt(Array.from((target as StringRuntimeValue).value).length)));
       }
       if (target.tag === 'Writer') {
         return normalOutcome(rtInt(BigInt((target as WriterRuntimeValue).length())));
@@ -2375,8 +2375,9 @@ export class Evaluator {
       const str = (targetVal as StringRuntimeValue).value;
       if (indexVal.tag === 'Int' || indexVal.tag === 'UInt') {
         const idx = Number((indexVal as IntRuntimeValue | UIntRuntimeValue).value);
-        if (idx >= 0 && idx < str.length) {
-          return normalOutcome(rtSome(rtChar(str[idx])));
+        const chars = Array.from(str);
+        if (idx >= 0 && idx < chars.length) {
+          return normalOutcome(rtSome(rtChar(chars[idx])));
         }
         return normalOutcome(rtNone);
       }
@@ -2498,108 +2499,106 @@ export class Evaluator {
 
       case 'collect': {
         const target = args[0];
-        if (!target) return normalOutcome(rtList([]));
+        if (!target) return panicOutcome(invalidStateError('collect requires an argument', span, this.ctx.config.fileName));
         if (target.tag === 'Iterator') return normalOutcome(collectIterator(target as IteratorRuntimeValue));
         if (target.tag === 'List') return normalOutcome(target);
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`collect on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'filter': {
         const target = args[0];
-        if (!target) return normalOutcome(rtNone);
-        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
-        const methodRes = this.callMethod(it, 'filter', args.slice(1), span);
+        if (!target) return panicOutcome(invalidStateError('filter requires an argument', span, this.ctx.config.fileName));
+        const methodRes = this.callMethod(target, 'filter', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`filter on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'map': {
         const target = args[0];
-        if (!target) return normalOutcome(rtNone);
-        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
-        const methodRes = this.callMethod(it, 'map', args.slice(1), span);
+        if (!target) return panicOutcome(invalidStateError('map requires an argument', span, this.ctx.config.fileName));
+        const methodRes = this.callMethod(target, 'map', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`map on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'take': {
         const target = args[0];
-        if (!target) return normalOutcome(rtNone);
+        if (!target) return panicOutcome(invalidStateError('take requires an argument', span, this.ctx.config.fileName));
         const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
         const methodRes = this.callMethod(it, 'take', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`take on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'skip': {
         const target = args[0];
-        if (!target) return normalOutcome(rtNone);
+        if (!target) return panicOutcome(invalidStateError('skip requires an argument', span, this.ctx.config.fileName));
         const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
         const methodRes = this.callMethod(it, 'skip', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`skip on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'enumerate': {
         const target = args[0];
-        if (!target) return normalOutcome(rtNone);
+        if (!target) return panicOutcome(invalidStateError('enumerate requires an argument', span, this.ctx.config.fileName));
         const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
         const methodRes = this.callMethod(it, 'enumerate', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`enumerate on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'zip': {
         const a = args[0];
         const b = args[1];
-        if (!a || !b) return normalOutcome(rtNone);
+        if (!a || !b) return panicOutcome(invalidStateError('zip requires two arguments', span, this.ctx.config.fileName));
         const itA = a.tag === 'Iterator' ? a : (a.tag === 'List' ? createListIterator(a as ListRuntimeValue) : a);
         const itB = b.tag === 'Iterator' ? b : (b.tag === 'List' ? createListIterator(b as ListRuntimeValue) : b);
         const methodRes = this.callMethod(itA, 'zip', [itB], span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(a);
+        return panicOutcome(unsupportedOperationError(`zip on ${a.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'fold': {
         const target = args[0];
-        if (!target) return normalOutcome(UNIT_VALUE);
+        if (!target) return panicOutcome(invalidStateError('fold requires an argument', span, this.ctx.config.fileName));
         const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
         const methodRes = this.callMethod(it, 'fold', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(args[1] ?? UNIT_VALUE);
+        return panicOutcome(unsupportedOperationError(`fold on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'reduce': {
         const target = args[0];
-        if (!target) return normalOutcome(rtNone);
+        if (!target) return panicOutcome(invalidStateError('reduce requires an argument', span, this.ctx.config.fileName));
         const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
         const methodRes = this.callMethod(it, 'reduce', args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(rtNone);
+        return panicOutcome(unsupportedOperationError(`reduce on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'is_some': {
         const target = args[0];
-        if (!target) return normalOutcome(rtBool(false));
-        return this.callMethod(target, 'is_some', [], span) ?? normalOutcome(rtBool(false));
+        if (!target) return panicOutcome(invalidStateError('is_some requires an argument', span, this.ctx.config.fileName));
+        return this.callMethod(target, 'is_some', [], span) ?? panicOutcome(unsupportedOperationError(`is_some on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'is_none': {
         const target = args[0];
-        if (!target) return normalOutcome(rtBool(true));
-        return this.callMethod(target, 'is_none', [], span) ?? normalOutcome(rtBool(true));
+        if (!target) return panicOutcome(invalidStateError('is_none requires an argument', span, this.ctx.config.fileName));
+        return this.callMethod(target, 'is_none', [], span) ?? panicOutcome(unsupportedOperationError(`is_none on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'is_ok': {
         const target = args[0];
-        if (!target) return normalOutcome(rtBool(false));
-        return this.callMethod(target, 'is_ok', [], span) ?? normalOutcome(rtBool(false));
+        if (!target) return panicOutcome(invalidStateError('is_ok requires an argument', span, this.ctx.config.fileName));
+        return this.callMethod(target, 'is_ok', [], span) ?? panicOutcome(unsupportedOperationError(`is_ok on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'is_err': {
         const target = args[0];
-        if (!target) return normalOutcome(rtBool(false));
-        return this.callMethod(target, 'is_err', [], span) ?? normalOutcome(rtBool(false));
+        if (!target) return panicOutcome(invalidStateError('is_err requires an argument', span, this.ctx.config.fileName));
+        return this.callMethod(target, 'is_err', [], span) ?? panicOutcome(unsupportedOperationError(`is_err on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       case 'unwrap': {
@@ -2622,12 +2621,14 @@ export class Evaluator {
       case 'trim':
       case 'replace':
       case 'split':
-      case 'contains': {
+      case 'contains':
+      case 'chars':
+      case 'bytes': {
         const target = args[0];
-        if (!target) return normalOutcome(UNIT_VALUE);
+        if (!target) return panicOutcome(invalidStateError(`'${name}' requires an argument`, span, this.ctx.config.fileName));
         const methodRes = this.callMethod(target, name, args.slice(1), span);
         if (methodRes !== null) return methodRes;
-        return normalOutcome(target);
+        return panicOutcome(unsupportedOperationError(`${name} on ${target.tag}`, span, this.ctx.config.fileName));
       }
 
       default:

@@ -383,7 +383,16 @@ export class Lexer {
           break;
       }
     } else {
-      charVal = ch;
+      if (ch.charCodeAt(0) >= 0xD800 && ch.charCodeAt(0) <= 0xDBFF && !this.isAtEnd()) {
+        const next = this.peek();
+        if (next.charCodeAt(0) >= 0xDC00 && next.charCodeAt(0) <= 0xDFFF) {
+          charVal = ch + this.advance();
+        } else {
+          charVal = ch;
+        }
+      } else {
+        charVal = ch;
+      }
     }
 
     if (this.peek() !== "'") {
