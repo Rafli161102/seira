@@ -520,3 +520,233 @@ println(check_sized(ms))
   assert.strictEqual(r.output[3], 'true');
   assert.strictEqual(r.output[4], 'true');
 });
+
+// ============================================================================
+// Category I: Built-in Trait Implementations & Re-Audit Regressions (Pass #2)
+// ============================================================================
+
+test('Category I: TEST A — User-defined struct implementing Reader satisfies contract and generic constraint', () => {
+  const tc = typecheck(`
+struct CustomReader {
+  dummy: Int
+}
+
+impl CustomReader: Reader {
+  fn read(n: Int) -> Option<String> {
+    None
+  }
+}
+
+fn consume_reader<T: Reader>(r: T) -> Bool {
+  true
+}
+
+fn main() {
+  cr: CustomReader = CustomReader;
+  consume_reader(cr);
+}
+`);
+  assert.strictEqual(tc.success, true, tc.errors.join('\n'));
+  assert.strictEqual(tc.errors.length, 0);
+});
+
+test('Category I: TEST B — User-defined struct implementing Writer satisfies contract and generic constraint', () => {
+  const tc = typecheck(`
+struct CustomWriter {
+  dummy: Int
+}
+
+impl CustomWriter: Writer {
+  fn write(data: String) -> Result<Int, String> {
+    Ok(0)
+  }
+}
+
+fn consume_writer<T: Writer>(w: T) -> Bool {
+  true
+}
+
+fn main() {
+  cw: CustomWriter = CustomWriter;
+  consume_writer(cw);
+}
+`);
+  assert.strictEqual(tc.success, true, tc.errors.join('\n'));
+  assert.strictEqual(tc.errors.length, 0);
+});
+
+test('Category I: TEST C — User-defined struct implementing Resource satisfies contract and with statement', () => {
+  const tc = typecheck(`
+struct CustomResource {
+  dummy: Int
+}
+
+impl CustomResource: Resource {
+  fn close() -> Result<Unit, String> {
+    Ok(())
+  }
+  fn is_closed() -> Bool {
+    false
+  }
+}
+
+fn main() {
+  res: CustomResource = CustomResource;
+  with res {
+    println(1);
+  }
+}
+`);
+  assert.strictEqual(tc.success, true, tc.errors.join('\n'));
+  assert.strictEqual(tc.errors.length, 0);
+});
+
+test('Category I: TEST D1 — Builtin trait method contract: missing method emits E4004', () => {
+  const tc = typecheck(`
+struct IncompleteReader {}
+impl IncompleteReader: Reader {}
+fn main() {}
+`);
+  assert.strictEqual(tc.success, false);
+  assert.ok(tc.errors.some((e) => e.startsWith('E4004') && e.includes("does not implement required method 'read'")));
+});
+
+test('Category I: TEST D2 — Builtin trait method contract: signature mismatch emits E4006', () => {
+  const tc = typecheck(`
+struct BadSigReader {}
+impl BadSigReader: Reader {
+  fn read(n: String) -> Int {
+    0
+  }
+}
+fn main() {}
+`);
+  assert.strictEqual(tc.success, false);
+  assert.ok(tc.errors.some((e) => e.startsWith('E4006') && e.includes("Method signature mismatch for 'read'")));
+});
+
+test('Category I: TEST D3 — Builtin trait method contract: extraneous method emits E4004', () => {
+  const tc = typecheck(`
+struct ExtraMethodReader {}
+impl ExtraMethodReader: Reader {
+  fn read(n: Int) -> Option<String> {
+    None
+  }
+  fn extra_method() -> Int {
+    42
+  }
+}
+fn main() {}
+`);
+  assert.strictEqual(tc.success, false);
+  assert.ok(tc.errors.some((e) => e.startsWith('E4004') && e.includes("not declared in trait 'Reader'")));
+});
+
+test('Category I: TEST E — Redeclaring built-in trait in user code emits E2002', () => {
+  const tc = typecheck(`
+trait Reader {
+  fn read(n: Int) -> Option<String>
+}
+fn main() {}
+`);
+  assert.strictEqual(tc.success, false);
+  assert.ok(tc.errors.some((e) => e.startsWith('E2002') && e.includes("Duplicate declaration of trait 'Reader'")));
+});
+
+test('Category I: TEST F — User-defined structs implementing Seekable, Flushable, Sized, and Iterator', () => {
+  const tc = typecheck(`
+struct CustomSeekable {}
+impl CustomSeekable: Seekable {
+  fn seek(offset: Int) -> Result<Int, String> { Ok(offset) }
+  fn position() -> Int { 0 }
+}
+
+struct CustomFlushable {}
+impl CustomFlushable: Flushable {
+  fn flush() -> Result<Unit, String> { Ok(()) }
+}
+
+struct CustomSized {}
+impl CustomSized: Sized {
+  fn length() -> Int { 0 }
+  fn is_empty() -> Bool { true }
+}
+
+struct CustomIterator {}
+impl CustomIterator: Iterator {
+  fn next() -> Option<Int> { None }
+}
+
+fn check_seekable<T: Seekable>(s: T) -> Bool { true }
+fn check_flushable<T: Flushable>(f: T) -> Bool { true }
+fn check_sized<T: Sized>(s: T) -> Bool { true }
+fn check_iterator<T: Iterator>(i: T) -> Bool { true }
+
+fn main() {
+  check_seekable(CustomSeekable);
+  check_flushable(CustomFlushable);
+  check_sized(CustomSized);
+  check_iterator(CustomIterator);
+}
+`);
+  assert.strictEqual(tc.success, true, tc.errors.join('\n'));
+});
+
+test('Category I: TEST H1 — with statement rejects primitive types with E3001', () => {
+  const tcInt = typecheck(`fn main() { with 42 {} }`);
+  assert.strictEqual(tcInt.success, false);
+  assert.ok(tcInt.errors.some((e) => e.startsWith('E3001') && e.includes("'Int'")));
+
+  const tcStr = typecheck(`fn main() { with "hello" {} }`);
+  assert.strictEqual(tcStr.success, false);
+  assert.ok(tcStr.errors.some((e) => e.startsWith('E3001') && e.includes("'String'")));
+
+  const tcBool = typecheck(`fn main() { with true {} }`);
+  assert.strictEqual(tcBool.success, false);
+  assert.ok(tcBool.errors.some((e) => e.startsWith('E3001') && e.includes("'Bool'")));
+});
+
+test('Category I: TEST H2 — with statement rejects un-unwrapped Result<File, E> with E3001 and hint', () => {
+  const tc = typecheck(`
+fn main() {
+  with f = open_file("log.txt", "w") {
+    println(1)
+  }
+}
+`);
+  assert.strictEqual(tc.success, false);
+  assert.ok(tc.errors.some((e) => e.startsWith('E3001') && e.includes("Result") && e.includes("Unwrap the Result first")));
+});
+
+test('Category I: TEST H3 — MemoryReader operates on Unicode scalar boundaries without splitting surrogates', () => {
+  const r = run(`
+mr = MemoryReader("A😀𐐷界é")
+println(mr.length())
+println(mr.read(1).unwrap())
+println(mr.read(1).unwrap())
+println(mr.read(1).unwrap())
+println(mr.read(1).unwrap())
+println(mr.read(1).unwrap())
+println(mr.read(1).is_none())
+`);
+  assert.strictEqual(r.success, true, r.diagnostics.format());
+  assert.strictEqual(r.output[0], '5');
+  assert.strictEqual(r.output[1], 'A');
+  assert.strictEqual(r.output[2], '😀');
+  assert.strictEqual(r.output[3], '𐐷');
+  assert.strictEqual(r.output[4], '界');
+  assert.strictEqual(r.output[5], 'é');
+  assert.strictEqual(r.output[6], 'true');
+});
+
+test('Category I: TEST H4 — Member method lookup failure on known built-in type emits E3003', () => {
+  const tc = typecheck(`
+fn main() {
+  mw = MemoryWriter()
+  mw.seek(1)
+}
+`);
+  assert.strictEqual(tc.success, false);
+  assert.ok(tc.errors.some((e) => e.startsWith('E3003') && e.includes("Method or property 'seek' does not exist on type 'MemoryWriter'")));
+});
+

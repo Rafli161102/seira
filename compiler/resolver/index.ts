@@ -64,8 +64,10 @@ import type {
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
 import type { SeiraModule } from '../module/module.ts';
 import { Scope, type ScopeKind, type SymbolInfo } from './scope.ts';
+import { getBuiltinTraitDecls } from './builtin_traits.ts';
 
 export * from './scope.ts';
+export * from './builtin_traits.ts';
 
 export interface ResolverOptions {
   readonly availableModules?: Map<string, SeiraModule>;
@@ -140,29 +142,14 @@ export class Resolver {
       });
     }
 
-    // Standard built-in traits
-    const builtinTraits = [
-      'Eq',
-      'Ord',
-      'Hash',
-      'Display',
-      'Debug',
-      'Clone',
-      'Default',
-      'Iterator',
-      'Reader',
-      'Writer',
-      'Seekable',
-      'Flushable',
-      'Sized',
-      'Resource',
-    ];
-    for (const traitName of builtinTraits) {
+    // Standard built-in traits (authoritative definitions with declNode)
+    for (const [traitName, traitDecl] of getBuiltinTraitDecls()) {
       this.globalScope.define({
         name: traitName,
         kind: 'trait',
         span: dummySpan,
         isMut: false,
+        declNode: traitDecl,
       });
     }
 

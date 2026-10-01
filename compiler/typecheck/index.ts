@@ -73,7 +73,7 @@ import type {
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
 import type { SeiraModule } from '../module/module.ts';
-import { Resolver, type ResolverResult, type SymbolInfo } from '../resolver/index.ts';
+import { Resolver, type ResolverResult, type SymbolInfo, getBuiltinTraitDecls } from '../resolver/index.ts';
 import {
   areTypesEqual,
   BOOL_TYPE,
@@ -205,6 +205,11 @@ export class TypeChecker {
     this.typeAliases.clear();
     this.currentGenericParams = undefined;
     this.aliasExpansionStack.clear();
+
+    // Pre-populate canonical built-in traits
+    for (const [name, traitDecl] of getBuiltinTraitDecls()) {
+      this.traits.set(name, traitDecl);
+    }
 
     // Populate imported traits and type aliases from resolver global scope
     if (resolverResult) {
@@ -2969,6 +2974,8 @@ export class TypeChecker {
         return BYTE_TYPE;
       case 'Unit':
         return UNIT_TYPE;
+      case 'Unknown':
+        return UNKNOWN_TYPE;
       case 'Function': {
         const params = annotation.functionParams
           ? annotation.functionParams.map((p) => this.resolveTypeAnnotation(p))

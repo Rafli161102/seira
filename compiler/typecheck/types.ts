@@ -223,6 +223,14 @@ export function areTypesEqual(a: Type, b: Type): boolean {
   if (a.kind === 'Primitive' && a.name === 'Unknown') return true;
   if (b.kind === 'Primitive' && b.name === 'Unknown') return true;
 
+  // Unit and 0-element tuple () are equivalent representations of the unit value/type
+  if (
+    (a.kind === 'Primitive' && a.name === 'Unit' && b.kind === 'Tuple' && b.elements.length === 0) ||
+    (b.kind === 'Primitive' && b.name === 'Unit' && a.kind === 'Tuple' && a.elements.length === 0)
+  ) {
+    return true;
+  }
+
   if (a.kind === 'TypeAlias') return areTypesEqual(a.target, b);
   if (b.kind === 'TypeAlias') return areTypesEqual(a, b.target);
 
@@ -283,6 +291,14 @@ export function isTypeAssignable(target: Type, source: Type): boolean {
   if (target.kind === 'Primitive' && target.name === 'Unknown') return true;
   if (source.kind === 'Primitive' && source.name === 'Unknown') return true;
 
+  // Unit and 0-element tuple () are equivalent representations of the unit value/type
+  if (
+    (target.kind === 'Primitive' && target.name === 'Unit' && source.kind === 'Tuple' && source.elements.length === 0) ||
+    (source.kind === 'Primitive' && source.name === 'Unit' && target.kind === 'Tuple' && target.elements.length === 0)
+  ) {
+    return true;
+  }
+
   if (target.kind === 'TypeAlias') return isTypeAssignable(target.target, source);
   if (source.kind === 'TypeAlias') return isTypeAssignable(target, source.target);
 
@@ -294,6 +310,16 @@ export function isTypeAssignable(target: Type, source: Type): boolean {
   // Union targets accept any of their constituent variant types
   if (target.kind === 'Union') {
     return target.types.some((variant) => isTypeAssignable(variant, source));
+  }
+
+  // Option type assignability
+  if (target.kind === 'Option' && source.kind === 'Option') {
+    return isTypeAssignable(target.inner, source.inner);
+  }
+
+  // Result type assignability
+  if (target.kind === 'Result' && source.kind === 'Result') {
+    return isTypeAssignable(target.ok, source.ok) && isTypeAssignable(target.err, source.err);
   }
 
   // Function type assignability
