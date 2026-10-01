@@ -31,7 +31,7 @@ tests/
 │   └── runtime.test.ts
 ├── conformance/      # Locked Seira language grammar and conformance rules
 │   └── syntax.test.ts
-└── fixtures/         # Static .sra source files for automated regression testing
+└── fixtures/         # Static .sr source files for automated regression testing
     ├── valid/            # Simple, function, and pipeline valid fixtures
     ├── invalid/          # Syntax violations and banned operator fixtures
     ├── diagnostics/      # Diagnostic emission test fixtures

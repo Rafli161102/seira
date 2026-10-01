@@ -43,6 +43,9 @@ export const RuntimeTag = {
   Writer: 'Writer',
   Resource: 'Resource',
   NativeMethod: 'NativeMethod',
+  Bytes: 'Bytes',
+  Path: 'Path',
+  File: 'File',
 } as const;
 
 export type RuntimeTag = (typeof RuntimeTag)[keyof typeof RuntimeTag];
@@ -195,6 +198,37 @@ export interface NativeMethodRuntimeValue {
   readonly methodName: string;
 }
 
+/** Runtime raw byte buffer value. */
+export interface BytesRuntimeValue {
+  readonly tag: 'Bytes';
+  readonly bytes: Uint8Array;
+}
+
+/** Runtime filesystem path abstraction. */
+export interface PathRuntimeValue {
+  readonly tag: 'Path';
+  readonly value: string;
+}
+
+/** Runtime file resource supporting Reader, Writer, Seekable, Flushable capabilities. */
+export interface FileRuntimeValue {
+  readonly tag: 'File';
+  readonly path: string;
+  readonly mode: string;
+  isClosed(): boolean;
+  close(): ResultRuntimeValue;
+  read(n?: number): ResultRuntimeValue;
+  readAll(): ResultRuntimeValue;
+  readBytes(n?: number): ResultRuntimeValue;
+  write(data: string | Uint8Array): ResultRuntimeValue;
+  seek(offset: number, whence?: number): ResultRuntimeValue;
+  flush(): ResultRuntimeValue;
+  position(): ResultRuntimeValue;
+  rewind(): ResultRuntimeValue;
+  length(): ResultRuntimeValue;
+  isEmpty(): ResultRuntimeValue;
+}
+
 export type RuntimeValue =
   | UnitRuntimeValue
   | IntRuntimeValue
@@ -217,7 +251,10 @@ export type RuntimeValue =
   | ReaderRuntimeValue
   | WriterRuntimeValue
   | ResourceRuntimeValue
-  | NativeMethodRuntimeValue;
+  | NativeMethodRuntimeValue
+  | BytesRuntimeValue
+  | PathRuntimeValue
+  | FileRuntimeValue;
 
 // ─── Constructors ─────────────────────────────────────────────────────────────
 
@@ -473,31 +510,35 @@ export function reduceIterator(
 // ─── Memory I/O Constructors ──────────────────────────────────────────────────
 
 export function createMemoryReader(content: string): ReaderRuntimeValue {
+  // Convert to Unicode scalar array so that positional operations (read, seek, length)
+  // operate on code points rather than UTF-16 code units. This ensures multi-byte characters
+  // (e.g. emoji, CJK supplementary) are never split across reads.
+  const scalars = [...content];
   let pos = 0;
   return {
     tag: 'Reader',
     kind: 'memory',
     read(n?: number): OptionRuntimeValue {
-      if (pos >= content.length) return rtNone;
+      if (pos >= scalars.length) return rtNone;
       const count = n !== undefined && n >= 0 ? n : 1;
-      const slice = content.slice(pos, pos + count);
+      const slice = scalars.slice(pos, pos + count).join('');
       pos += count;
       return rtSome(rtString(slice));
     },
     readAll(): string {
-      if (pos >= content.length) return '';
-      const slice = content.slice(pos);
-      pos = content.length;
-      return slice;
+      if (pos >= scalars.length) return '';
+      const result = scalars.slice(pos).join('');
+      pos = scalars.length;
+      return result;
     },
     isEof(): boolean {
-      return pos >= content.length;
+      return pos >= scalars.length;
     },
     seek(newPos: number): void {
-      pos = Math.max(0, Math.min(newPos, content.length));
+      pos = Math.max(0, Math.min(newPos, scalars.length));
     },
     length(): number {
-      return content.length;
+      return scalars.length;
     },
     position(): number {
       return pos;
@@ -506,7 +547,7 @@ export function createMemoryReader(content: string): ReaderRuntimeValue {
       pos = 0;
     },
     isEmpty(): boolean {
-      return pos >= content.length;
+      return pos >= scalars.length;
     },
   };
 }
@@ -549,43 +590,45 @@ export interface MemoryStreamRuntimeValue {
 }
 
 export function createMemoryStream(initial: string = ''): MemoryStreamRuntimeValue {
-  let buffer = initial;
+  // Convert to Unicode scalar array so positional reads operate on code points.
+  let scalars: string[] = [...initial];
   let readPos = 0;
   return {
     tag: 'Reader',
     kind: 'memory',
     read(n?: number): OptionRuntimeValue {
-      if (readPos >= buffer.length) return rtNone;
+      if (readPos >= scalars.length) return rtNone;
       const count = n !== undefined && n >= 0 ? n : 1;
-      const slice = buffer.slice(readPos, readPos + count);
+      const slice = scalars.slice(readPos, readPos + count).join('');
       readPos += count;
       return rtSome(rtString(slice));
     },
     readAll(): string {
-      if (readPos >= buffer.length) return '';
-      const slice = buffer.slice(readPos);
-      readPos = buffer.length;
-      return slice;
+      if (readPos >= scalars.length) return '';
+      const result = scalars.slice(readPos).join('');
+      readPos = scalars.length;
+      return result;
     },
     isEof(): boolean {
-      return readPos >= buffer.length;
+      return readPos >= scalars.length;
     },
     seek(newPos: number): void {
-      readPos = Math.max(0, Math.min(newPos, buffer.length));
+      readPos = Math.max(0, Math.min(newPos, scalars.length));
     },
     write(data: string): ResultRuntimeValue {
-      buffer += data;
-      return rtOk(rtInt(BigInt(data.length)));
+      const dataScalars = [...data];
+      scalars.push(...dataScalars);
+      return rtOk(rtInt(BigInt(dataScalars.length)));
     },
     getContent(): string {
-      return buffer;
+      return scalars.join('');
     },
     clear(): void {
-      buffer = '';
+      scalars = [];
       readPos = 0;
     },
     length(): number {
-      return buffer.length;
+      return scalars.length;
     },
     position(): number {
       return readPos;
@@ -594,7 +637,7 @@ export function createMemoryStream(initial: string = ''): MemoryStreamRuntimeVal
       readPos = 0;
     },
     isEmpty(): boolean {
-      return readPos >= buffer.length;
+      return readPos >= scalars.length;
     },
   };
 }
@@ -619,6 +662,205 @@ export function createResource(
       return rtOk(UNIT_VALUE);
     },
   };
+}
+
+// ─── Path & File Constructors ──────────────────────────────────────────────────
+
+export function normalizePath(p: string): string {
+  let s = p.replace(/\\/g, '/');
+  const isAbs = s.startsWith('/');
+  const rawParts = s.split('/');
+  const stack: string[] = [];
+  for (const part of rawParts) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (stack.length > 0 && stack[stack.length - 1] !== '..') {
+        stack.pop();
+      } else if (!isAbs) {
+        stack.push('..');
+      }
+    } else {
+      stack.push(part);
+    }
+  }
+  let res = stack.join('/');
+  if (isAbs) res = '/' + res;
+  if (res.length === 0) return isAbs ? '/' : '.';
+  return res;
+}
+
+export function rtPath(value: string): PathRuntimeValue {
+  return {
+    tag: 'Path',
+    value: normalizePath(value),
+  };
+}
+
+export function rtBytes(bytes: Uint8Array | number[]): BytesRuntimeValue {
+  return {
+    tag: 'Bytes',
+    bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
+  };
+}
+
+export const VIRTUAL_FILES: Map<string, Uint8Array> = new Map();
+
+export function resetVirtualFiles(): void {
+  VIRTUAL_FILES.clear();
+}
+
+export function createFile(
+  pathStr: string,
+  mode: string = 'r',
+  initialContent?: string | Uint8Array
+): FileRuntimeValue {
+  const normPath = normalizePath(pathStr);
+  const normMode = mode.toLowerCase();
+
+  if (initialContent !== undefined) {
+    const b = typeof initialContent === 'string'
+      ? new TextEncoder().encode(initialContent)
+      : initialContent;
+    VIRTUAL_FILES.set(normPath, b);
+  }
+
+  let closed = false;
+  let pos = 0;
+
+  if (normMode === 'w') {
+    VIRTUAL_FILES.set(normPath, new Uint8Array(0));
+    pos = 0;
+  } else if (normMode === 'a') {
+    const existing = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
+    pos = existing.length;
+  } else if (normMode === 'r' || normMode === 'r+') {
+    pos = 0;
+  }
+
+  return {
+    tag: 'File',
+    path: normPath,
+    mode: normMode,
+    isClosed(): boolean {
+      return closed;
+    },
+    close(): ResultRuntimeValue {
+      closed = true;
+      return rtOk(UNIT_VALUE);
+    },
+    read(n?: number): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      const data = VIRTUAL_FILES.get(normPath);
+      if (!data || pos >= data.length) {
+        return rtOk(rtNone);
+      }
+      const count = n !== undefined && n >= 0 ? n : (data.length - pos);
+      const slice = data.slice(pos, pos + count);
+      pos += slice.length;
+      const dec = new TextDecoder('utf-8', { fatal: false }).decode(slice);
+      return rtOk(rtSome(rtString(dec)));
+    },
+    readAll(): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      const data = VIRTUAL_FILES.get(normPath);
+      if (!data || pos >= data.length) {
+        return rtOk(rtString(''));
+      }
+      const slice = data.slice(pos);
+      pos = data.length;
+      const dec = new TextDecoder('utf-8', { fatal: false }).decode(slice);
+      return rtOk(rtString(dec));
+    },
+    readBytes(n?: number): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      const data = VIRTUAL_FILES.get(normPath);
+      if (!data || pos >= data.length) {
+        return rtOk(rtNone);
+      }
+      const count = n !== undefined && n >= 0 ? n : (data.length - pos);
+      const slice = data.slice(pos, pos + count);
+      pos += slice.length;
+      return rtOk(rtSome(rtBytes(slice)));
+    },
+    write(data: string | Uint8Array): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      if (normMode === 'r') return rtErr(rtString("PermissionDenied: File is opened in read-only mode"));
+      const bytesToWrite = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+      const current = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
+
+      let updated: Uint8Array;
+      if (normMode === 'a') {
+        updated = new Uint8Array(current.length + bytesToWrite.length);
+        updated.set(current, 0);
+        updated.set(bytesToWrite, current.length);
+        pos = updated.length;
+      } else {
+        const requiredLen = Math.max(current.length, pos + bytesToWrite.length);
+        updated = new Uint8Array(requiredLen);
+        updated.set(current, 0);
+        updated.set(bytesToWrite, pos);
+        pos += bytesToWrite.length;
+      }
+      VIRTUAL_FILES.set(normPath, updated);
+      return rtOk(rtInt(BigInt(bytesToWrite.length)));
+    },
+    seek(offset: number, whence: number = 0): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      const current = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
+      let targetPos: number;
+      if (whence === 0) { // SEEK_SET
+        targetPos = offset;
+      } else if (whence === 1) { // SEEK_CUR
+        targetPos = pos + offset;
+      } else if (whence === 2) { // SEEK_END
+        targetPos = current.length + offset;
+      } else {
+        return rtErr(rtString(`InvalidSeek: Invalid whence parameter '${whence}'`));
+      }
+      if (targetPos < 0) {
+        return rtErr(rtString("InvalidSeek: Negative seek position"));
+      }
+      pos = targetPos;
+      return rtOk(rtInt(BigInt(pos)));
+    },
+    position(): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      return rtOk(rtInt(BigInt(pos)));
+    },
+    rewind(): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      pos = 0;
+      return rtOk(UNIT_VALUE);
+    },
+    flush(): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      return rtOk(UNIT_VALUE);
+    },
+    length(): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      const current = VIRTUAL_FILES.get(normPath);
+      return rtOk(rtInt(BigInt(current ? current.length : 0)));
+    },
+    isEmpty(): ResultRuntimeValue {
+      if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
+      const current = VIRTUAL_FILES.get(normPath);
+      return rtOk(rtBool(!current || current.length === 0));
+    },
+  };
+}
+
+export function openFile(pathStr: string, mode: string = 'r'): ResultRuntimeValue {
+  const normPath = normalizePath(pathStr);
+  const normMode = mode.toLowerCase();
+  if (normMode === 'r' || normMode === 'r+') {
+    if (!VIRTUAL_FILES.has(normPath)) {
+      return rtErr(rtString(`NotFound: File '${pathStr}' does not exist`));
+    }
+  }
+  return rtOk(createFile(normPath, normMode));
 }
 
 // ─── Value Formatting ─────────────────────────────────────────────────────────
@@ -674,6 +916,12 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return `<resource ${v.name}>`;
     case 'NativeMethod':
       return `<method ${v.methodName}>`;
+    case 'Bytes':
+      return `Bytes([${Array.from(v.bytes).map((b) => `${b}b`).join(', ')}])`;
+    case 'Path':
+      return `Path("${v.value}")`;
+    case 'File':
+      return `<file ${v.path}>`;
   }
 }
 
@@ -742,6 +990,18 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       return a.name === (b as BuiltinRuntimeValue).name;
     case 'Module':
       return a.name === (b as ModuleRuntimeValue).name;
+    case 'Bytes': {
+      const bBytes = b as BytesRuntimeValue;
+      if (a.bytes.length !== bBytes.bytes.length) return false;
+      for (let i = 0; i < a.bytes.length; i++) {
+        if (a.bytes[i] !== bBytes.bytes[i]) return false;
+      }
+      return true;
+    }
+    case 'Path':
+      return a.value === (b as PathRuntimeValue).value;
+    case 'File':
+      return a === b;
     case 'Iterator':
     case 'Reader':
     case 'Writer':

@@ -1,8 +1,8 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.9-s](https://img.shields.io/badge/Release-0.0.9--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Standard Library & Core Contract Foundation](https://img.shields.io/badge/Status-Standard%20Library%20%26%20Core%20Contract%20Foundation-orange.svg)](#project-status)
+[![Release: 0.0.10-s](https://img.shields.io/badge/Release-0.0.10--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: I/O & Resource Boundary Foundation](https://img.shields.io/badge/Status-I%2FO%20%26%20Resource%20Boundary%20Foundation-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Seed stage.
 
@@ -14,20 +14,18 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.9-s) — Standard Library & Core Contract Foundation**  
+> **Current Status: Seed (0.0.10-s) — I/O & Resource Boundary Foundation v1.0**  
 > Seira is currently an early-stage experimental programming language project establishing its compiler architecture, language foundation, tooling boundaries, and engineering infrastructure.  
 > **Seira is NOT production-ready, and Alpha is not yet released.**  
-> In the current 0.0.9-s release, Seira establishes the official contracts between the Language Core, Compiler/Runtime boundary, and Standard Library (`std`):
-> - **Boundary Architecture**: Strict separation of Language Core, Compiler Intrinsics, Runtime Execution, Standard Library, and External Packages.
-> - **Prelude**: An intentionally small Prelude containing fundamental value types (`Option`, `Result`, `Some`, `None`, `Ok`, `Err`), basic output primitives (`print`, `println`), memory I/O primitives (`MemoryReader`, `MemoryWriter`, `MemoryStream`), resource management (`open_resource`), and core iteration combinators. Heavy/system capabilities (HTTP, Database, Process, Crypto) remain strictly outside the Prelude.
-> - **Option & Result Contracts**: First-class `Option<T>` and `Result<T, E>` with functional combinators (`is_some`, `is_none`, `is_ok`, `is_err`, `unwrap`, `expect`, `unwrap_or`, `unwrap_or_else`, `map`, `map_err`, `and_then`, `or_else`), operator integration (`?` propagation and lazy `??` fallback), and complete avoidance of `null`, `undefined`, or JavaScript exception leakage.
-> - **Core Traits**: Statically checked, deterministic traits: `Eq`, `Ord`, `Hash`, `Display`, `Debug`, `Clone`, `Default`, `Iterator`, `Reader`, `Writer`.
-> - **Collections**: Generic, immutable-by-default `List`, `Map`, `Set`, and `Tuple` with safe indexing returning `Option<T>`, structural value equality (independent of JavaScript object identity), and foundational methods (`length`, `is_empty`, `contains`, `first`, `last`, `push`, `insert`, `remove`, `keys`, `values`).
-> - **Iterator**: Lazy, composable, pipeline-friendly traversal computation with foundational combinators (`next`, `map`, `filter`, `take`, `skip`, `enumerate`, `zip`, `fold`, `reduce`, `collect`), full pipeline integration (`collection |> iter |> filter |> map |> collect`), and no hidden parallelism.
-> - **Reader / Writer & Memory I/O**: Target-independent `Reader` and `Writer` abstractions with deterministic in-memory implementations (`MemoryReader`, `MemoryWriter`, `MemoryStream`) enabling hermetic testing without OS or network side effects.
-> - **Resource Foundation**: `with res = open_resource(...) { ... }` lifecycle management with strict LIFO cleanup order and error context preservation.
-> - **String Foundation**: Immutable UTF-8 `String` with foundation APIs (`length`, `is_empty`, `contains`, `starts_with`, `ends_with`, `trim`, `split`, `replace`, `chars`, `bytes`).
-> - **Standard Library Modules**: Native `std` package containing `std.core`, `std.option`, `std.result`, `std.collections`, `std.iter`, and `std.io`.
+> In the current 0.0.10-s release, Seira establishes the official I/O, Capability, and Resource boundaries:
+> - **Capability Architecture**: Capabilities are composable, not universal (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`).
+> - **Byte/Text Boundary**: Strict boundary between raw binary data (`Byte`, `Bytes`) and text (`Char`, `String`). Conversions are explicit (`encode` / `decode`); implicit coercion is strictly prohibited.
+> - **Encoding Foundation**: Supported standard encodings (UTF-8 default, ASCII, UTF-16, UTF-32) returning deterministic `Result` types. Invalid byte sequences produce structured errors, never panics or corruption.
+> - **Path Abstraction**: First-class, immutable, normalized `Path` type distinct from `String` with composable operations (`join`, `parent`, `file_name`, `extension`, `is_absolute`, `normalize`).
+> - **File I/O Foundation**: Deterministic, safe `File` lifecycle (open → use → close). Operations on closed files or mode violations produce deterministic `Result` errors (`AlreadyClosed`, `PermissionDenied`, `NotFound`, `InvalidSeek`).
+> - **Deterministic Resource Management**: First-class `with` statement with guaranteed deterministic cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
+> - **Memory I/O Refinement**: Target-independent `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic execution without OS/network side effects.
+
 
 ---
 
@@ -57,7 +55,7 @@ The outside world is an Effect.»
 The following examples demonstrate syntax and semantic features supported and validated by the current `0.0.6-s` implementation:
 
 ### 1. Hello World
-```sra
+```sr
 // Canonical function and output
 fn main() {
     println("Hello, Seira!")
@@ -65,7 +63,7 @@ fn main() {
 ```
 
 ### 2. Functional Pipelines, Option Fallback, and Lambdas
-```sra
+```sr
 fn double(x: Int) -> Int {
     x * 2
 }
@@ -83,7 +81,7 @@ fn compute_score(input: Option<Int>) -> Int {
 ```
 
 ### 3. Collections, Safe Indexing, Pattern Matching, and Loops
-```sra
+```sr
 fn describe_first(items: List<Int>) -> String {
     match items[0] {
         Some(first) => if first > 0 { "positive" } else { "non-positive" }
@@ -105,7 +103,7 @@ fn run_pipeline() {
 ```
 
 ### 4. Generics, Type Aliases, Unions, and Traits
-```sra
+```sr
 // Type Alias & Union Type
 type UserId = Int
 type Identifier = UserId | String

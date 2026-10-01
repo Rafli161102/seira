@@ -86,7 +86,7 @@ seira/
 ├── std/          # Standard library specifications and implementation
 ├── tools/        # CLI, package manifest tooling, developer utilities
 ├── tests/        # Automated tests (unit, integration, conformance)
-├── examples/     # Code examples written in Seira (.sra)
+├── examples/     # Code examples written in Seira (.sr)
 └── docs/         # Architecture, language, and process documentation
 ```
 

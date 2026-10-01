@@ -6,7 +6,7 @@ import { compileSource } from '../../compiler/index.ts';
 
 test('Fixtures: valid fixtures compile cleanly', () => {
   const validDir = path.resolve('tests/fixtures/valid');
-  const files = fs.readdirSync(validDir).filter((f) => f.endsWith('.sra'));
+  const files = fs.readdirSync(validDir).filter((f) => f.endsWith('.sr') || f.endsWith('.sra'));
 
   assert.ok(files.length > 0, 'Should find valid fixture files');
   for (const file of files) {
@@ -25,7 +25,7 @@ test('Fixtures: valid fixtures compile cleanly', () => {
 
 test('Fixtures: programs compile cleanly', () => {
   const progDir = path.resolve('tests/fixtures/programs');
-  const files = fs.readdirSync(progDir).filter((f) => f.endsWith('.sra'));
+  const files = fs.readdirSync(progDir).filter((f) => f.endsWith('.sr') || f.endsWith('.sra'));
 
   assert.ok(files.length > 0, 'Should find program fixture files');
   for (const file of files) {
@@ -44,7 +44,7 @@ test('Fixtures: programs compile cleanly', () => {
 
 test('Fixtures: invalid fixtures report compilation errors', () => {
   const invalidDir = path.resolve('tests/fixtures/invalid');
-  const files = fs.readdirSync(invalidDir).filter((f) => f.endsWith('.sra'));
+  const files = fs.readdirSync(invalidDir).filter((f) => f.endsWith('.sr') || f.endsWith('.sra'));
 
   assert.ok(files.length > 0, 'Should find invalid fixture files');
   for (const file of files) {
@@ -66,7 +66,7 @@ test('Fixtures: invalid fixtures report compilation errors', () => {
 
 test('Fixtures: diagnostic fixtures report formatted errors with line pointers', () => {
   const diagDir = path.resolve('tests/fixtures/diagnostics');
-  const files = fs.readdirSync(diagDir).filter((f) => f.endsWith('.sra'));
+  const files = fs.readdirSync(diagDir).filter((f) => f.endsWith('.sr') || f.endsWith('.sra'));
 
   assert.ok(files.length > 0, 'Should find diagnostic fixture files');
   for (const file of files) {
@@ -82,7 +82,7 @@ test('Fixtures: diagnostic fixtures report formatted errors with line pointers',
 
 test('Fixtures: valid fixtures compile cleanly through semantic Typecheck stage', () => {
   const validDir = path.resolve('tests/fixtures/valid');
-  const files = fs.readdirSync(validDir).filter((f) => f.endsWith('.sra'));
+  const files = fs.readdirSync(validDir).filter((f) => f.endsWith('.sr') || f.endsWith('.sra'));
 
   assert.ok(files.length > 0, 'Should find valid fixture files');
   for (const file of files) {

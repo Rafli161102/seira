@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import test from 'node:test';
 import { main } from '../../tools/cli/index.ts';
 
-test('CLI: --version and version output Seira 0.0.9-s', () => {
+test('CLI: --version and version output Seira 0.0.10-s', () => {
   const originalLog = console.log;
   let logged = '';
   console.log = (msg) => {
@@ -12,12 +12,12 @@ test('CLI: --version and version output Seira 0.0.9-s', () => {
   try {
     const code1 = main(['--version']);
     assert.strictEqual(code1, 0);
-    assert.ok(logged.includes('Seira 0.0.9-s'));
+    assert.ok(logged.includes('Seira 0.0.10-s'));
 
     logged = '';
     const code2 = main(['version']);
     assert.strictEqual(code2, 0);
-    assert.ok(logged.includes('Seira 0.0.9-s'));
+    assert.ok(logged.includes('Seira 0.0.10-s'));
   } finally {
     console.log = originalLog;
   }
@@ -49,10 +49,10 @@ test('CLI: check command succeeds on example and fails on missing file', () => {
   console.error = () => {};
 
   try {
-    const passCode = main(['check', 'examples/hello_world.sra']);
+    const passCode = main(['check', 'examples/hello_world.sr']);
     assert.strictEqual(passCode, 0);
 
-    const failCode = main(['check', 'examples/does_not_exist.sra']);
+    const failCode = main(['check', 'examples/does_not_exist.sr']);
     assert.strictEqual(failCode, 1);
   } finally {
     console.log = originalLog;
@@ -60,7 +60,7 @@ test('CLI: check command succeeds on example and fails on missing file', () => {
   }
 });
 
-test('CLI: run command executes hello_world.sra successfully', () => {
+test('CLI: run command executes hello_world.sr successfully', () => {
   const originalLog = console.log;
   const originalError = console.error;
   let logged = '';
@@ -68,7 +68,7 @@ test('CLI: run command executes hello_world.sra successfully', () => {
   console.error = () => {};
 
   try {
-    const code = main(['run', 'examples/hello_world.sra']);
+    const code = main(['run', 'examples/hello_world.sr']);
     assert.strictEqual(code, 0, `Expected exit 0, got 1`);
     assert.ok(
       logged.includes('Hello, Seira!'),
@@ -87,7 +87,7 @@ test('CLI: run command validates before execution — invalid file fails', () =>
   console.error = () => {};
 
   try {
-    const code = main(['run', 'examples/does_not_exist.sra']);
+    const code = main(['run', 'examples/does_not_exist.sr']);
     assert.strictEqual(code, 1);
   } finally {
     console.log = originalLog;
@@ -102,8 +102,8 @@ test('CLI: run command fails with type error, not crash', () => {
   console.error = () => {};
 
   try {
-    // This file has a type error. run should fail at validation, not during execution.
-    const code = main(['run', 'tests/fixtures/invalid/type_mismatch.sra']);
+    // This file has a syntax/type error. run should fail at validation, not during execution.
+    const code = main(['run', 'tests/fixtures/invalid/banned_operators.sr']);
     assert.strictEqual(code, 1);
   } finally {
     console.log = originalLog;
@@ -121,7 +121,7 @@ test('CLI: reserved commands return clear notification', () => {
   try {
     const code = main(['build']);
     assert.strictEqual(code, 0);
-    assert.ok(logged.includes('This command is not implemented in Seira 0.0.9-s.'));
+    assert.ok(logged.includes('This command is not implemented in Seira 0.0.10-s.'));
     assert.ok(logged.includes('0.1.0-alpha'));
   } finally {
     console.log = originalLog;

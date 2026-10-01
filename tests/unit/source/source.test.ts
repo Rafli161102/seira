@@ -65,10 +65,10 @@ test('Source: LineMap maps offsets to lines and columns correctly', () => {
 
 test('Source: SourceFile provides snippet extraction and span lookup', () => {
   const text = 'let value = 100;\nprint(value);';
-  const file = new SourceFile(1, 'src/main.sra', text);
+  const file = new SourceFile(1, 'src/main.sr', text);
 
   assert.strictEqual(file.id, 1);
-  assert.strictEqual(file.path, 'src/main.sra');
+  assert.strictEqual(file.path, 'src/main.sr');
 
   const span = createSpan(4, 9, 1); // 'value'
   assert.strictEqual(file.getSnippet(span), 'value');
@@ -81,12 +81,12 @@ test('Source: SourceFile provides snippet extraction and span lookup', () => {
 
 test('Source: SourceManager manages scoped files without global state', () => {
   const sm1 = new SourceManager();
-  const file1 = sm1.addFile('main.sra', 'fn main() {}');
-  const file2 = sm1.addFile('lib.sra', 'fn add(a, b) -> a + b');
+  const file1 = sm1.addFile('main.sr', 'fn main() {}');
+  const file2 = sm1.addFile('lib.sr', 'fn add(a, b) -> a + b');
 
   assert.strictEqual(sm1.getAllFiles().length, 2);
-  assert.strictEqual(sm1.getFile(file1.id)?.path, 'main.sra');
-  assert.strictEqual(sm1.getFileByPath('lib.sra')?.id, file2.id);
+  assert.strictEqual(sm1.getFile(file1.id)?.path, 'main.sr');
+  assert.strictEqual(sm1.getFileByPath('lib.sr')?.id, file2.id);
 
   // Separate manager instance has independent state
   const sm2 = new SourceManager();
@@ -95,6 +95,6 @@ test('Source: SourceManager manages scoped files without global state', () => {
   // Span resolution
   const resolved = sm1.resolveSpan(createSpan(0, 7, file1.id));
   assert.ok(resolved);
-  assert.strictEqual(resolved?.file.path, 'main.sra');
+  assert.strictEqual(resolved?.file.path, 'main.sr');
   assert.strictEqual(resolved?.snippet, 'fn main');
 });

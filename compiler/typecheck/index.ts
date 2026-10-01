@@ -117,6 +117,11 @@ import type {
 
 export * from './types.ts';
 
+export const PATH_TYPE: Type = { kind: 'Custom', name: 'Path' };
+export const BYTES_TYPE: Type = { kind: 'Custom', name: 'Bytes' };
+export const FILE_TYPE: Type = { kind: 'Custom', name: 'File' };
+export const RESOURCE_TYPE: Type = { kind: 'Custom', name: 'Resource' };
+
 export interface TypecheckResult {
   readonly success: boolean;
   readonly diagnostics: DiagnosticBag;
@@ -152,6 +157,8 @@ const BUILTIN_OPERATIONS = new Set<string>([
   'chars',
   'bytes',
   'reverse',
+  'encode',
+  'decode',
 ]);
 
 export class TypeChecker {
@@ -438,12 +445,61 @@ export class TypeChecker {
       return typeName === 'Iterator';
     }
     if (constraintName === 'Reader') {
-      return ['Reader', 'MemoryReader', 'MemoryStream'].includes(typeName);
+      return ['Reader', 'MemoryReader', 'MemoryStream', 'File'].includes(typeName);
     }
     if (constraintName === 'Writer') {
-      return ['Writer', 'MemoryWriter', 'MemoryStream'].includes(typeName);
+      return ['Writer', 'MemoryWriter', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Seekable') {
+      return ['Seekable', 'MemoryReader', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Flushable') {
+      return ['Flushable', 'MemoryWriter', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Sized') {
+      return (
+        ['Sized', 'MemoryReader', 'MemoryWriter', 'MemoryStream', 'Bytes', 'File', 'String', 'List', 'Map', 'Set'].includes(typeName) ||
+        type.kind === 'List' ||
+        type.kind === 'Map' ||
+        type.kind === 'Set'
+      );
+    }
+    if (constraintName === 'Resource') {
+      return ['Resource', 'File'].includes(typeName);
     }
 
+    return false;
+  }
+
+  /**
+   * Returns true if the type is a known built-in Seira type for which invalid method
+   * calls should emit E3003. Tuple is excluded because it already emits E3002 for
+   * invalid index access, and user-defined Custom types are excluded because they may
+   * have user-provided impl blocks that the typechecker doesn't fully track.
+   */
+  private isKnownBuiltinType(type: Type): boolean {
+    if (type.kind === 'Primitive') return true;
+    if (type.kind === 'List') return true;
+    if (type.kind === 'Map') return true;
+    if (type.kind === 'Set') return true;
+    if (type.kind === 'Option') return true;
+    if (type.kind === 'Result') return true;
+    // Tuple excluded: its member access already validates with E3002.
+    if (type.kind === 'Custom') {
+      const BUILTIN_CUSTOM_TYPES = new Set([
+        'Iterator',
+        'MemoryReader',
+        'MemoryWriter',
+        'MemoryStream',
+        'Reader',
+        'Writer',
+        'Path',
+        'Bytes',
+        'File',
+        'Resource',
+      ]);
+      return BUILTIN_CUSTOM_TYPES.has(type.name);
+    }
     return false;
   }
 
@@ -702,6 +758,33 @@ export class TypeChecker {
 
   private checkWithStmt(stmt: WithStmt): void {
     const resType = this.checkExpression(stmt.resource);
+
+    // P1-2: Validate that the resource expression is a Resource-compatible type.
+    // The 'with' statement manages resource lifecycle and requires a value that
+    // implements the Resource trait (currently: File or Resource).
+    if (!isUnknown(resType)) {
+      const isResource = this.typeSatisfiesConstraint(resType, 'Resource');
+      if (!isResource) {
+        if (resType.kind === 'Result') {
+          this.diagnostics.reportError(
+            'E3001',
+            `'with' requires a resource value, but found '${formatType(resType)}'. Unwrap the Result first (e.g. using '?' or '.unwrap()').`,
+            stmt.resource.span,
+            this.currentFile,
+            `The 'with' statement expects a value implementing the Resource trait (e.g. File, Resource), not a Result wrapper.`
+          );
+        } else {
+          this.diagnostics.reportError(
+            'E3001',
+            `'with' requires a resource value, but found '${formatType(resType)}'.`,
+            stmt.resource.span,
+            this.currentFile,
+            `The 'with' statement expects a value implementing the Resource trait (e.g. File, Resource).`
+          );
+        }
+      }
+    }
+
     const sym = this.currentResolverResult?.declaredSymbols.get(stmt);
     if (sym) {
       sym.type = resType;
@@ -1203,6 +1286,8 @@ export class TypeChecker {
             resultType = createFunctionType([], { kind: 'List', element: CHAR_TYPE });
           } else if (mem.property === 'bytes') {
             resultType = createFunctionType([], { kind: 'List', element: BYTE_TYPE });
+          } else if (mem.property === 'encode') {
+            resultType = createFunctionType([], createResultType(BYTES_TYPE, STRING_TYPE));
           } else {
             resultType = UNKNOWN_TYPE;
           }
@@ -1239,7 +1324,7 @@ export class TypeChecker {
             default:
               resultType = UNKNOWN_TYPE;
           }
-        } else if (objType.kind === 'Custom' && (objType.name === 'Reader' || objType.name === 'MemoryReader' || objType.name === 'MemoryStream')) {
+        } else if (objType.kind === 'Custom' && objType.name === 'MemoryReader') {
           switch (mem.property) {
             case 'read':
               resultType = createFunctionType([INT_TYPE], createOptionType(STRING_TYPE));
@@ -1251,10 +1336,30 @@ export class TypeChecker {
               resultType = createFunctionType([], BOOL_TYPE);
               break;
             case 'seek':
-              resultType = createFunctionType([INT_TYPE], UNIT_TYPE);
+              resultType = createFunctionType([INT_TYPE], createResultType(INT_TYPE, STRING_TYPE));
               break;
+            case 'position':
+              resultType = createFunctionType([], INT_TYPE);
+              break;
+            case 'reset':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'MemoryWriter') {
+          switch (mem.property) {
             case 'write':
               resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'flush':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
               break;
             case 'get_content':
               resultType = createFunctionType([], STRING_TYPE);
@@ -1268,19 +1373,34 @@ export class TypeChecker {
             case 'is_empty':
               resultType = createFunctionType([], BOOL_TYPE);
               break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && (objType.name === 'MemoryStream' || objType.name === 'Reader' || objType.name === 'Writer')) {
+          switch (mem.property) {
+            case 'read':
+              resultType = createFunctionType([INT_TYPE], createOptionType(STRING_TYPE));
+              break;
+            case 'read_all':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'is_eof':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'flush':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'seek':
+              resultType = createFunctionType([INT_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
             case 'position':
               resultType = createFunctionType([], INT_TYPE);
               break;
             case 'reset':
               resultType = createFunctionType([], UNIT_TYPE);
-              break;
-            default:
-              resultType = UNKNOWN_TYPE;
-          }
-        } else if (objType.kind === 'Custom' && (objType.name === 'Writer' || objType.name === 'MemoryWriter')) {
-          switch (mem.property) {
-            case 'write':
-              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
               break;
             case 'get_content':
               resultType = createFunctionType([], STRING_TYPE);
@@ -1290,6 +1410,99 @@ export class TypeChecker {
               break;
             case 'length':
               resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Path') {
+          switch (mem.property) {
+            case 'to_string':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'join':
+              resultType = createFunctionType([STRING_TYPE], PATH_TYPE);
+              break;
+            case 'parent':
+              resultType = createFunctionType([], createOptionType(PATH_TYPE));
+              break;
+            case 'file_name':
+              resultType = createFunctionType([], createOptionType(STRING_TYPE));
+              break;
+            case 'extension':
+              resultType = createFunctionType([], createOptionType(STRING_TYPE));
+              break;
+            case 'is_absolute':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'normalize':
+              resultType = createFunctionType([], PATH_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Bytes') {
+          switch (mem.property) {
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'get':
+              resultType = createFunctionType([INT_TYPE], createOptionType(BYTE_TYPE));
+              break;
+            case 'to_list':
+              resultType = createFunctionType([], createListType(BYTE_TYPE));
+              break;
+            case 'slice':
+              resultType = createFunctionType([INT_TYPE, INT_TYPE], BYTES_TYPE);
+              break;
+            case 'decode':
+              resultType = createFunctionType([], createResultType(STRING_TYPE, STRING_TYPE));
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'File') {
+          switch (mem.property) {
+            case 'read':
+              resultType = createFunctionType([INT_TYPE], createResultType(createOptionType(STRING_TYPE), STRING_TYPE));
+              break;
+            case 'read_all':
+              resultType = createFunctionType([], createResultType(STRING_TYPE, STRING_TYPE));
+              break;
+            case 'read_bytes':
+              resultType = createFunctionType([INT_TYPE], createResultType(createOptionType(BYTES_TYPE), STRING_TYPE));
+              break;
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'seek':
+              resultType = createFunctionType([INT_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'position':
+              resultType = createFunctionType([], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'rewind':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'flush':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'close':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'is_closed':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'length':
+              resultType = createFunctionType([], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], createResultType(BOOL_TYPE, STRING_TYPE));
               break;
             default:
               resultType = UNKNOWN_TYPE;
@@ -1301,6 +1514,9 @@ export class TypeChecker {
               break;
             case 'is_closed':
               resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'name':
+              resultType = createFunctionType([], STRING_TYPE);
               break;
             default:
               resultType = UNKNOWN_TYPE;
@@ -2184,6 +2400,32 @@ export class TypeChecker {
         }
       }
 
+      case 'encode': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'encode' requires a String receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length > 1) {
+          this.diagnostics.reportError('E3003', `'encode' takes 0 or 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length === 1) {
+          this.checkExpression(args[0], STRING_TYPE);
+        }
+        return createResultType(BYTES_TYPE, STRING_TYPE);
+      }
+
+      case 'decode': {
+        if ((targetType.kind !== 'Custom' || targetType.name !== 'Bytes') && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'decode' requires a Bytes receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length > 1) {
+          this.diagnostics.reportError('E3003', `'decode' takes 0 or 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length === 1) {
+          this.checkExpression(args[0], STRING_TYPE);
+        }
+        return createResultType(STRING_TYPE, STRING_TYPE);
+      }
+
       default:
         return null;
     }
@@ -2249,6 +2491,26 @@ export class TypeChecker {
       if (calleeName === 'MemoryStream') {
         for (const arg of call.args) this.checkExpression(arg);
         return { kind: 'Custom', name: 'MemoryStream' };
+      }
+      if (calleeName === 'open_file') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createResultType(FILE_TYPE, STRING_TYPE);
+      }
+      if (calleeName === 'Path') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return PATH_TYPE;
+      }
+      if (calleeName === 'Bytes') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return BYTES_TYPE;
+      }
+      if (calleeName === 'encode') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createResultType(BYTES_TYPE, STRING_TYPE);
+      }
+      if (calleeName === 'decode') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createResultType(STRING_TYPE, STRING_TYPE);
       }
       if (calleeName === 'Set') {
         const elemType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
@@ -2326,7 +2588,40 @@ export class TypeChecker {
           return builtinRes;
         }
       }
+      if (mem.property === 'read') {
+        const objType = this.checkExpression(mem.object);
+        if (call.args.length > 1) {
+          this.diagnostics.reportError('E3003', `'read' expects 0 or 1 argument, but got ${call.args.length}.`, call.span, this.currentFile);
+        }
+        if (call.args.length === 1) {
+          this.checkExpression(call.args[0], INT_TYPE);
+        }
+        if (objType.kind === 'Custom' && objType.name === 'File') {
+          return createResultType(createOptionType(STRING_TYPE), STRING_TYPE);
+        }
+        return createOptionType(STRING_TYPE);
+      }
+      if (mem.property === 'length') {
+        const objType = this.checkExpression(mem.object);
+        if (objType.kind === 'Custom' && objType.name === 'File') {
+          return createResultType(INT_TYPE, STRING_TYPE);
+        }
+        return INT_TYPE;
+      }
       calleeType = this.checkExpression(call.callee);
+      // P1-4: Emit E3003 if method/property does not exist on a known built-in type.
+      // UNKNOWN_TYPE from a MemberExpr on a known built-in object indicates method lookup failure.
+      if (isUnknown(calleeType)) {
+        const objType = this.nodeTypes.get(mem.object);
+        if (objType && !isUnknown(objType) && this.isKnownBuiltinType(objType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Method or property '${mem.property}' does not exist on type '${formatType(objType)}'.`,
+            call.span,
+            this.currentFile
+          );
+        }
+      }
     } else {
       calleeType = this.checkExpression(call.callee);
     }

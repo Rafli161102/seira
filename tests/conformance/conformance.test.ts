@@ -85,7 +85,7 @@ const SEED_CONFORMANCE_CASES: ConformanceCase[] = [
 
 test('Conformance: Seed language syntax test cases', () => {
   for (const tc of SEED_CONFORMANCE_CASES) {
-    const res = compileSource(tc.source, `${tc.id}.sra`);
+    const res = compileSource(tc.source, `${tc.id}.sr`);
     if (tc.shouldSucceed) {
       assert.strictEqual(
         res.success,

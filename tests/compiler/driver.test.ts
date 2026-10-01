@@ -12,7 +12,7 @@ import {
 
 test('Driver: executes pipeline through Parse stage by default', () => {
   const driver = new CompilerDriver();
-  const res = driver.compile('fn add(a: Int, b: Int) -> Int { return a + b; }', 'math.sra');
+  const res = driver.compile('fn add(a: Int, b: Int) -> Int { return a + b; }', 'math.sr');
 
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.stage, CompilerStage.Parse);
@@ -23,7 +23,7 @@ test('Driver: executes pipeline through Parse stage by default', () => {
 
 test('Driver: honors stopAfter = Lex stage', () => {
   const driver = new CompilerDriver();
-  const res = driver.compile('let x = 10;', 'test.sra', { stopAfter: CompilerStage.Lex });
+  const res = driver.compile('let x = 10;', 'test.sr', { stopAfter: CompilerStage.Lex });
 
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.stage, CompilerStage.Lex);
@@ -33,7 +33,7 @@ test('Driver: honors stopAfter = Lex stage', () => {
 
 test('Driver: runs through skeleton stages cleanly with milestone notifications', () => {
   const driver = new CompilerDriver();
-  const res = driver.compile('fn main() {}', 'app.sra', { stopAfter: CompilerStage.HIR });
+  const res = driver.compile('fn main() {}', 'app.sr', { stopAfter: CompilerStage.HIR });
 
   assert.strictEqual(res.success, true);
   assert.strictEqual(res.stage, CompilerStage.HIR);
@@ -45,7 +45,7 @@ test('Driver: executes pipeline through Resolver and Typecheck stages cleanly', 
   const driver = new CompilerDriver();
   const res = driver.compile(
     'fn add(a: Int, b: Int) -> Int { a + b } fn main() { res = add(10, 20); }',
-    'math.sra',
+    'math.sr',
     { stopAfter: CompilerStage.Typecheck }
   );
 
@@ -59,7 +59,7 @@ test('Driver: halts and reports errors when semantic validation fails', () => {
   const driver = new CompilerDriver();
   const res = driver.compile(
     'fn main() { age: Int = "hello"; }',
-    'invalid_type.sra',
+    'invalid_type.sr',
     { stopAfter: CompilerStage.Typecheck }
   );
 
@@ -73,7 +73,7 @@ test('Context: manages session lifecycle strictly', () => {
   assert.strictEqual(ctx.getState(), SessionState.Configured);
   assert.strictEqual(ctx.config.profile, 'release');
 
-  ctx.loadSource('main.sra', 'fn main() {}');
+  ctx.loadSource('main.sr', 'fn main() {}');
   assert.strictEqual(ctx.getState(), SessionState.SourceLoaded);
 
   ctx.beginCompilation();
@@ -84,16 +84,16 @@ test('Context: manages session lifecycle strictly', () => {
 
   // Loading source into a finished session throws an ICE
   assert.throws(
-    () => ctx.loadSource('extra.sra', 'let y = 20;'),
+    () => ctx.loadSource('extra.sr', 'let y = 20;'),
     (err: unknown) => isInternalCompilerError(err)
   );
 });
 
 test('ICE: InternalCompilerError generates formatted crash report', () => {
-  const ice = new InternalCompilerError('Unexpected AST node invariant failure', 'Typecheck', undefined, 'main.sra');
+  const ice = new InternalCompilerError('Unexpected AST node invariant failure', 'Typecheck', undefined, 'main.sr');
   assert.strictEqual(ice.name, 'InternalCompilerError');
   assert.strictEqual(ice.phase, 'Typecheck');
-  assert.strictEqual(ice.file, 'main.sra');
+  assert.strictEqual(ice.file, 'main.sr');
 
   const report = ice.formatCrashReport();
   assert.ok(report.includes('internal compiler error'));

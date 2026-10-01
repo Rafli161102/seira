@@ -107,7 +107,11 @@ export class Resolver {
   private registerBuiltins(): void {
     const dummySpan: Span = { start: 0, end: 0, line: 1, column: 1 };
 
-    // Standard built-in types
+    // Standard built-in types (concrete, non-trait names only).
+    // Traits (Iterator, Reader, Writer, Resource, Seekable, Flushable, Sized) are registered
+    // separately below as kind:'trait' so that `impl Trait for Type` blocks resolve correctly.
+    // Callable constructors (MemoryReader, MemoryWriter, MemoryStream) are registered as
+    // kind:'builtin' below so they are usable as both type annotations and call expressions.
     const builtinTypes = [
       'Int',
       'UInt',
@@ -123,13 +127,9 @@ export class Resolver {
       'Tuple',
       'Map',
       'Set',
-      'Iterator',
-      'Reader',
-      'Writer',
-      'MemoryReader',
-      'MemoryWriter',
-      'MemoryStream',
-      'Resource',
+      'Path',
+      'Bytes',
+      'File',
     ];
     for (const typeName of builtinTypes) {
       this.globalScope.define({
@@ -152,16 +152,18 @@ export class Resolver {
       'Iterator',
       'Reader',
       'Writer',
+      'Seekable',
+      'Flushable',
+      'Sized',
+      'Resource',
     ];
     for (const traitName of builtinTraits) {
-      if (!this.globalScope.lookupLocal(traitName)) {
-        this.globalScope.define({
-          name: traitName,
-          kind: 'trait',
-          span: dummySpan,
-          isMut: false,
-        });
-      }
+      this.globalScope.define({
+        name: traitName,
+        kind: 'trait',
+        span: dummySpan,
+        isMut: false,
+      });
     }
 
     // Built-in functions & utilities
@@ -173,6 +175,11 @@ export class Resolver {
       'Ok',
       'Err',
       'open_resource',
+      'open_file',
+      'Path',
+      'Bytes',
+      'encode',
+      'decode',
       'MemoryReader',
       'MemoryWriter',
       'MemoryStream',

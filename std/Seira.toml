@@ -1,6 +1,6 @@
 [package]
 name = "std"
-version = "0.0.9-s"
+version = "0.0.10-s"
 edition = "2026"
 description = "Seira Standard Library & Core Contract Foundation"
 

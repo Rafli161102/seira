@@ -29,9 +29,9 @@ Explain the design in depth:
 - Compiler pipeline impact (Lexer, Parser, Resolver, Typechecker, HIR/MIR, Backend).
 - Runtime or memory model impact.
 - Standard library impact.
-- Concrete code examples written in idiomatic Seira (`.sra`).
+- Concrete code examples written in idiomatic Seira (`.sr`).
 
-```sra
+```sr
 // Example demonstrating the proposed feature
 ```
 

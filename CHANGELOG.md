@@ -11,6 +11,18 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
 
+## [0.0.10-s] - 2026-10-01
+
+### Added
+- **I/O & Resource Boundary Foundation v1.0**:
+  - Implemented composable capability architecture: `Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`.
+  - Established strict Byte/Text boundary: `Byte`, `Bytes`, `Char`, `String` distinct types; conversion requires explicit `encode` / `decode`; implicit byte<->text coercion is strictly prohibited.
+  - Implemented encoding foundation: standard UTF-8 (default), ASCII, UTF-16LE/BE, UTF-32LE/BE support with deterministic `Result` types and structured error reporting (`InvalidEncoding`, `UnexpectedEof`, `UnsupportedEncoding`).
+  - Added first-class immutable, normalized `Path` type distinct from `String` with composable operations (`join`, `parent`, `file_name`, `extension`, `is_absolute`, `normalize`).
+  - Added safe, deterministic `File` I/O foundation: lifecycle `open` -> `use` -> `close`; operations on closed files or mode violations return deterministic `Result.Err` (`AlreadyClosed`, `PermissionDenied`, `NotFound`, `InvalidSeek`).
+  - Integrated deterministic `with` statement resource management: guaranteed cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
+  - Refined memory I/O: capability-separated `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic testing without OS or network side effects.
+
 ## [0.0.9-s] - 2026-10-01
 
 ### Added

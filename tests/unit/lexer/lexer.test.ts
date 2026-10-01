@@ -120,40 +120,40 @@ test('Lexer: tokenizes boolean keywords and rejects && / ||', () => {
 
   // Rejection of banned '&&'
   const bagAnd = new DiagnosticBag();
-  new Lexer('a && b', 'test.sra', bagAnd).tokenize();
+  new Lexer('a && b', 'test.sr', bagAnd).tokenize();
   assert.strictEqual(bagAnd.hasErrors(), true);
   assert.strictEqual(bagAnd.getDiagnostics()[0].code, 'E1005');
 
   // Rejection of banned '||'
   const bagOr = new DiagnosticBag();
-  new Lexer('a || b', 'test.sra', bagOr).tokenize();
+  new Lexer('a || b', 'test.sr', bagOr).tokenize();
   assert.strictEqual(bagOr.hasErrors(), true);
   assert.strictEqual(bagOr.getDiagnostics()[0].code, 'E1004');
 });
 
 test('Lexer: rejects banned operators ++, --, ===, !==, ::, null', () => {
   const bagInc = new DiagnosticBag();
-  new Lexer('counter++', 'test.sra', bagInc).tokenize();
+  new Lexer('counter++', 'test.sr', bagInc).tokenize();
   assert.strictEqual(bagInc.getDiagnostics()[0].code, 'E1002');
 
   const bagDec = new DiagnosticBag();
-  new Lexer('counter--', 'test.sra', bagDec).tokenize();
+  new Lexer('counter--', 'test.sr', bagDec).tokenize();
   assert.strictEqual(bagDec.getDiagnostics()[0].code, 'E1003');
 
   const bagStrictEq = new DiagnosticBag();
-  new Lexer('a === b', 'test.sra', bagStrictEq).tokenize();
+  new Lexer('a === b', 'test.sr', bagStrictEq).tokenize();
   assert.strictEqual(bagStrictEq.getDiagnostics()[0].code, 'E1009');
 
   const bagStrictNeq = new DiagnosticBag();
-  new Lexer('a !== b', 'test.sra', bagStrictNeq).tokenize();
+  new Lexer('a !== b', 'test.sr', bagStrictNeq).tokenize();
   assert.strictEqual(bagStrictNeq.getDiagnostics()[0].code, 'E1009');
 
   const bagScope = new DiagnosticBag();
-  new Lexer('std::io', 'test.sra', bagScope).tokenize();
+  new Lexer('std::io', 'test.sr', bagScope).tokenize();
   assert.strictEqual(bagScope.getDiagnostics()[0].code, 'E1010');
 
   const bagNull = new DiagnosticBag();
-  new Lexer('let x = null', 'test.sra', bagNull).tokenize();
+  new Lexer('let x = null', 'test.sr', bagNull).tokenize();
   assert.strictEqual(bagNull.getDiagnostics()[0].code, 'E1007');
 });
 
@@ -201,12 +201,12 @@ test('Lexer: tokenizes string and character literals with escape sequences', () 
 
 test('Lexer: rejects empty or multi-character char literals', () => {
   const bagEmpty = new DiagnosticBag();
-  new Lexer("''", 'test.sra', bagEmpty).tokenize();
+  new Lexer("''", 'test.sr', bagEmpty).tokenize();
   assert.strictEqual(bagEmpty.hasErrors(), true);
   assert.strictEqual(bagEmpty.getDiagnostics()[0].code, 'E1008');
 
   const bagMulti = new DiagnosticBag();
-  new Lexer("'ab'", 'test.sra', bagMulti).tokenize();
+  new Lexer("'ab'", 'test.sr', bagMulti).tokenize();
   assert.strictEqual(bagMulti.hasErrors(), true);
   assert.strictEqual(bagMulti.getDiagnostics()[0].code, 'E1008');
 });

@@ -110,9 +110,9 @@ test('Runtime Panic: invokes panic hook and throws descriptive error', () => {
 
   assert.throws(
     () => {
-      panic({ message: 'Kernel out of memory', file: 'kernel.sra', line: 10, column: 1 });
+      panic({ message: 'Kernel out of memory', file: 'kernel.sr', line: 10, column: 1 });
     },
-    /Seira Panic at kernel\.sra:10:1: Kernel out of memory/
+    /Seira Panic at kernel\.sr:10:1: Kernel out of memory/
   );
 
   assert.strictEqual(capturedMessage, 'Kernel out of memory');

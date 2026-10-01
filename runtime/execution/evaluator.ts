@@ -96,6 +96,10 @@ import {
   type RuntimeOutcome,
 } from './outcomes.ts';
 import {
+  encodeText,
+  decodeBytes,
+} from './encoding.ts';
+import {
   collectIterator,
   createEnumerateIterator,
   createFilterIterator,
@@ -112,10 +116,13 @@ import {
   createZipIterator,
   foldIterator,
   formatRuntimeValue,
+  normalizePath,
+  openFile,
   reduceIterator,
   rtBool,
   rtBuiltin,
   rtByte,
+  rtBytes,
   rtChar,
   rtErr,
   rtFloat,
@@ -129,6 +136,7 @@ import {
   rtNativeMethod,
   rtNone,
   rtOk,
+  rtPath,
   rtSet,
   rtSome,
   rtString,
@@ -139,6 +147,8 @@ import {
   UNIT_VALUE,
   type BoolRuntimeValue,
   type BuiltinRuntimeValue,
+  type BytesRuntimeValue,
+  type FileRuntimeValue,
   type FunctionRuntimeValue,
   type IntRuntimeValue,
   type IteratorRuntimeValue,
@@ -147,6 +157,7 @@ import {
   type ModuleRuntimeValue,
   type NativeMethodRuntimeValue,
   type OptionRuntimeValue,
+  type PathRuntimeValue,
   type ReaderRuntimeValue,
   type ResourceRuntimeValue,
   type ResultRuntimeValue,
@@ -659,11 +670,26 @@ export class Evaluator {
 
     // Resource cleanup boundary (LIFO): release resource
     let cleanupError: string | undefined;
-    if (resVal.tag === 'Resource') {
+    if (resVal.tag === 'File') {
+      const file = resVal as FileRuntimeValue;
+      const closeResult = file.close();
+      if (!closeResult.isOk) {
+        cleanupError = formatRuntimeValue(closeResult.value);
+      }
+    } else if (resVal.tag === 'Resource') {
       const res = resVal as ResourceRuntimeValue;
       const closeResult = res.close();
       if (!closeResult.isOk) {
         cleanupError = formatRuntimeValue(closeResult.value);
+      }
+    } else if (typeof (resVal as any).close === 'function') {
+      try {
+        const closeResult = (resVal as any).close();
+        if (closeResult && closeResult.tag === 'Result' && !closeResult.isOk) {
+          cleanupError = formatRuntimeValue(closeResult.value);
+        }
+      } catch (err: any) {
+        cleanupError = err.message || String(err);
       }
     }
 
@@ -1861,6 +1887,15 @@ export class Evaluator {
             const buf = Buffer.from(str, 'utf-8');
             return normalOutcome(rtList(Array.from(buf).map((b) => rtByte(b))));
           }
+          case 'encode': {
+            const enc = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : 'utf-8';
+            const encRes = encodeText(str, enc);
+            if (encRes.ok) {
+              return normalOutcome(rtOk(rtBytes(encRes.bytes)));
+            } else {
+              return normalOutcome(rtErr(rtString(encRes.error)));
+            }
+          }
           default:
             return null;
         }
@@ -2033,6 +2068,10 @@ export class Evaluator {
             return normalOutcome(UNIT_VALUE);
           case 'length':
             return normalOutcome(rtInt(BigInt(writer.length())));
+          case 'flush':
+            return normalOutcome(rtOk(UNIT_VALUE));
+          case 'is_empty':
+            return normalOutcome(rtBool(writer.length() === 0));
           default:
             return null;
         }
@@ -2045,6 +2084,145 @@ export class Evaluator {
             return normalOutcome(res.close());
           case 'is_closed':
             return normalOutcome(rtBool(res.isClosed()));
+          case 'name':
+            return normalOutcome(rtString(res.name));
+          default:
+            return null;
+        }
+      }
+
+      case 'Bytes': {
+        const bytes = (target as BytesRuntimeValue).bytes;
+        switch (methodName) {
+          case 'length':
+            return normalOutcome(rtInt(BigInt(bytes.length)));
+          case 'is_empty':
+            return normalOutcome(rtBool(bytes.length === 0));
+          case 'get': {
+            const idx = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : -1;
+            if (idx >= 0 && idx < bytes.length) {
+              return normalOutcome(rtSome(rtByte(bytes[idx])));
+            }
+            return normalOutcome(rtNone);
+          }
+          case 'to_list':
+            return normalOutcome(rtList(Array.from(bytes).map((b) => rtByte(b))));
+          case 'slice': {
+            const start = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : 0;
+            const end = args.length > 1 && (args[1].tag === 'Int' || args[1].tag === 'UInt')
+              ? Number((args[1] as IntRuntimeValue | UIntRuntimeValue).value)
+              : bytes.length;
+            const clampedStart = Math.max(0, Math.min(start, bytes.length));
+            const clampedEnd = Math.max(clampedStart, Math.min(end, bytes.length));
+            return normalOutcome(rtBytes(bytes.slice(clampedStart, clampedEnd)));
+          }
+          case 'decode': {
+            const enc = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : 'utf-8';
+            const decRes = decodeBytes(bytes, enc);
+            if (decRes.ok) {
+              return normalOutcome(rtOk(rtString(decRes.text)));
+            } else {
+              return normalOutcome(rtErr(rtString(decRes.error)));
+            }
+          }
+          default:
+            return null;
+        }
+      }
+
+      case 'Path': {
+        const p = (target as PathRuntimeValue).value;
+        switch (methodName) {
+          case 'to_string':
+            return normalOutcome(rtString(p));
+          case 'join': {
+            const part = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(rtPath(normalizePath(p === '.' ? part : (p.endsWith('/') ? p + part : `${p}/${part}`))));
+          }
+          case 'parent': {
+            if (p === '/' || p === '.') {
+              return normalOutcome(rtNone);
+            }
+            const idx = p.lastIndexOf('/');
+            if (idx === -1) {
+              return normalOutcome(rtNone);
+            }
+            if (idx === 0) {
+              return normalOutcome(rtSome(rtPath('/')));
+            }
+            return normalOutcome(rtSome(rtPath(p.slice(0, idx))));
+          }
+          case 'file_name': {
+            const idx = p.lastIndexOf('/');
+            const name = idx === -1 ? p : p.slice(idx + 1);
+            return name.length > 0 ? normalOutcome(rtSome(rtString(name))) : normalOutcome(rtNone);
+          }
+          case 'extension': {
+            const idx = p.lastIndexOf('/');
+            const name = idx === -1 ? p : p.slice(idx + 1);
+            const dotIdx = name.lastIndexOf('.');
+            if (dotIdx > 0 && dotIdx < name.length - 1) {
+              return normalOutcome(rtSome(rtString(name.slice(dotIdx + 1))));
+            }
+            return normalOutcome(rtNone);
+          }
+          case 'is_absolute':
+            return normalOutcome(rtBool(p.startsWith('/')));
+          case 'normalize':
+            return normalOutcome(rtPath(normalizePath(p)));
+          default:
+            return null;
+        }
+      }
+
+      case 'File': {
+        const file = target as FileRuntimeValue;
+        switch (methodName) {
+          case 'read': {
+            const n = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : undefined;
+            return normalOutcome(file.read(n));
+          }
+          case 'read_all':
+            return normalOutcome(file.readAll());
+          case 'read_bytes': {
+            const n = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : undefined;
+            return normalOutcome(file.readBytes(n));
+          }
+          case 'write': {
+            if (args.length > 0 && args[0].tag === 'Bytes') {
+              return normalOutcome(file.write((args[0] as BytesRuntimeValue).bytes));
+            }
+            const str = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(file.write(str));
+          }
+          case 'seek': {
+            const pos = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : 0;
+            return normalOutcome(file.seek(pos));
+          }
+          case 'position':
+            return normalOutcome(file.position());
+          case 'rewind':
+            return normalOutcome(file.rewind());
+          case 'flush':
+            return normalOutcome(file.flush());
+          case 'close':
+            return normalOutcome(file.close());
+          case 'is_closed':
+            return normalOutcome(rtBool(file.isClosed()));
+          case 'length':
+            return normalOutcome(file.length());
+          case 'is_empty':
+            return normalOutcome(file.isEmpty());
           default:
             return null;
         }
@@ -2473,6 +2651,75 @@ export class Evaluator {
       case 'MemoryStream': {
         const initial = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
         return normalOutcome(createMemoryStream(initial));
+      }
+
+      case 'open_file': {
+        if (args.length === 0) {
+          return normalOutcome(rtErr(rtString("InvalidArgument: open_file requires a path")));
+        }
+        let filePath = '';
+        if (args[0].tag === 'Path') {
+          filePath = (args[0] as PathRuntimeValue).value;
+        } else if (args[0].tag === 'String') {
+          filePath = (args[0] as StringRuntimeValue).value;
+        } else {
+          return normalOutcome(rtErr(rtString("InvalidArgument: Expected Path or String for file path")));
+        }
+        const mode = args.length > 1 && args[1].tag === 'String' ? (args[1] as StringRuntimeValue).value : 'r';
+        return normalOutcome(openFile(filePath, mode));
+      }
+
+      case 'Path': {
+        const p = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+        return normalOutcome(rtPath(p));
+      }
+
+      case 'Bytes': {
+        if (args.length === 0) {
+          return normalOutcome(rtBytes(new Uint8Array(0)));
+        }
+        const first = args[0];
+        if (first.tag === 'Bytes') {
+          return normalOutcome(first);
+        }
+        if (first.tag === 'List') {
+          const list = first as ListRuntimeValue;
+          const nums: number[] = [];
+          for (const elem of list.elements) {
+            if (elem.tag === 'Byte' || elem.tag === 'Int' || elem.tag === 'UInt') {
+              nums.push(Number((elem as any).value) & 0xff);
+            }
+          }
+          return normalOutcome(rtBytes(new Uint8Array(nums)));
+        }
+        return normalOutcome(rtBytes(new Uint8Array(0)));
+      }
+
+      case 'encode': {
+        const text = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+        const enc = args.length > 1 && args[1].tag === 'String' ? (args[1] as StringRuntimeValue).value : 'utf-8';
+        const encRes = encodeText(text, enc);
+        if (encRes.ok) {
+          return normalOutcome(rtOk(rtBytes(encRes.bytes)));
+        } else {
+          return normalOutcome(rtErr(rtString(encRes.error)));
+        }
+      }
+
+      case 'decode': {
+        let bytes: Uint8Array = new Uint8Array(0);
+        if (args.length > 0 && args[0].tag === 'Bytes') {
+          bytes = (args[0] as BytesRuntimeValue).bytes;
+        } else {
+          return normalOutcome(rtErr(rtString("InvalidArgument: decode requires Bytes")));
+        }
+        const enc = args.length > 1 && args[1].tag === 'String' ? (args[1] as StringRuntimeValue).value : 'utf-8';
+        const decRes = decodeBytes(bytes, enc);
+        if (decRes.ok) {
+          return normalOutcome(rtOk(rtString(decRes.text)));
+        } else {
+          return normalOutcome(rtErr(rtString(decRes.error)));
+        }
       }
 
       case 'Set': {

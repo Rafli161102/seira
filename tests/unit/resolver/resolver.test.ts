@@ -10,7 +10,7 @@ function resolveSource(src: string) {
   const parser = new Parser(tokens);
   const ast = parser.parse();
   const resolver = new Resolver();
-  const res = resolver.resolve(ast, 'test.sra');
+  const res = resolver.resolve(ast, 'test.sr');
   return { ast, res, diagnostics: res.diagnostics };
 }
 

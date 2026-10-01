@@ -28,7 +28,7 @@ If you discover a security vulnerability or potential exploit within Seira:
 
 ### What to Include:
 - A clear description of the vulnerability.
-- Steps to reproduce or a minimal reproducible code snippet (`.sra` or build command).
+- Steps to reproduce or a minimal reproducible code snippet (`.sr` or build command).
 - Impact assessment (e.g., denial of service, memory corruption, arbitrary code execution during compilation).
 - Potential mitigations, if known.
 

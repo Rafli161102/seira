@@ -16,10 +16,10 @@ The Seira repository is structured into strictly decoupled top-level directories
 seira/
 ├── compiler/          # Compiler subsystems, driver, AST, IRs, and diagnostics
 ├── runtime/           # Execution support layer, memory model, and host adapters
-├── std/               # Standard library written in Seira (.sra)
+├── std/               # Standard library written in Seira (.sr)
 ├── tools/             # Developer tooling, CLI dispatcher, and manifest tooling
 ├── tests/             # Unit, integration, conformance, and fixture test suites
-├── examples/          # Canonical example programs (.sra)
+├── examples/          # Canonical example programs (.sr)
 ├── docs/              # Specifications, architecture, language manual, RFCs
 └── .github/           # CI/CD workflows and repository templates
 ```
@@ -33,7 +33,7 @@ seira/
 | `std/` | Standard library contracts and language modules (`core`, `collections`, `text`, etc.) | **Architectural Foundation** |
 | `tools/` | Command-line interface (`seira`), project bootstrap (`init`, `new`), manifest parsing | **Active (0.0.2-s)** |
 | `tests/` | Automated test infrastructure, regression verification, and conformance suites | **Active (0.0.2-s)** |
-| `examples/` | Demonstrative `.sra` source files validating locked language axioms | **Active (0.0.1-s)** |
+| `examples/` | Demonstrative `.sr` source files validating locked language axioms | **Active (0.0.1-s)** |
 | `docs/` | Authoritative language documentation, architecture guides, and RFC system | **Active (0.0.2-s)** |
 
 ---

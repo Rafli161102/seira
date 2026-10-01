@@ -10,7 +10,7 @@ test('Diagnostics: records errors and warnings accurately', () => {
   assert.strictEqual(bag.hasErrors(), false);
   assert.strictEqual(bag.getDiagnostics().length, 1);
 
-  bag.reportError('E3001', 'Type mismatch', { start: 10, end: 15, line: 2, column: 5 }, 'main.sra', 'Cast explicitly', 'x as Int', 'types must match');
+  bag.reportError('E3001', 'Type mismatch', { start: 10, end: 15, line: 2, column: 5 }, 'main.sr', 'Cast explicitly', 'x as Int', 'types must match');
   assert.strictEqual(bag.hasErrors(), true);
   assert.strictEqual(bag.getDiagnostics().length, 2);
 });
@@ -22,7 +22,7 @@ test('Diagnostics: formats diagnostic with code pointer, line snippet, help and 
     message: 'Unexpected token',
     severity: 'error' as const,
     primarySpan: { start: 14, end: 17, line: 2, column: 3 },
-    file: 'example.sra',
+    file: 'example.sr',
     help: 'Check statement termination',
     suggestion: 'add a semicolon',
     note: 'parsing halted at line 2',
@@ -30,7 +30,7 @@ test('Diagnostics: formats diagnostic with code pointer, line snippet, help and 
 
   const formatted = formatDiagnostic(diag, source);
   assert.ok(formatted.includes('error[E1010]: Unexpected token'));
-  assert.ok(formatted.includes('--> example.sra:2:3'));
+  assert.ok(formatted.includes('--> example.sr:2:3'));
   assert.ok(formatted.includes('2 |   bad syntax here'));
   assert.ok(formatted.includes('^^^'));
   assert.ok(formatted.includes('help: Check statement termination'));
