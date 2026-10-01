@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Subsystem | `tests/` |
-| Specification | Seira 0.0.2-s Testing Architecture |
-| Target Milestone | 0.0.2-s (Seed Series) |
+| Specification | Seira 0.0.10-s Testing Architecture |
+| Target Milestone | 0.0.10-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
@@ -59,10 +59,20 @@ npm test
 
 | Test Suite | Tests | Status | Milestone |
 |---|---|---|---|
-| `tests/unit/` | 15 tests | **Active** | 0.0.2-s |
-| `tests/integration/` | 4 tests | **Active** | 0.0.2-s |
-| `tests/compiler/` | 9 tests | **Active** | 0.0.2-s |
-| `tests/diagnostics/` | 2 tests | **Active** | 0.0.1-s |
-| `tests/runtime/` | 8 tests | **Active** | 0.0.1-s |
-| `tests/conformance/` | 5 tests | **Active** | 0.0.1-s |
-| **Total Suite** | **43 tests** | **100% Passing** | **0.0.2-s** |
+| `tests/unit/source/` | 5 tests | **Active** | 0.0.2-s |
+| `tests/unit/lexer/` | 9 tests | **Active** | 0.0.3-s / 0.0.8-s / 0.0.10-s |
+| `tests/unit/parser/` | 13 tests | **Active** | 0.0.3-s / 0.0.8-s |
+| `tests/unit/ast/` | 3 tests | **Active** | 0.0.3-s / 0.0.8-s |
+| `tests/unit/manifest/` | 3 tests | **Active** | 0.0.1-s / 0.0.8-s |
+| `tests/unit/cli/` | 6 tests | **Active** | 0.0.8-s |
+| `tests/unit/diagnostics/` | 2 tests | **Active** | 0.0.1-s / 0.0.8-s |
+| `tests/unit/resolver/` | 11 tests | **Active** | 0.0.4-s / 0.0.8-s / 0.0.10-s |
+| `tests/unit/typecheck/` | 48 tests | **Active** | 0.0.4-s / 0.0.7-s / 0.0.8-s / 0.0.10-s |
+| `tests/unit/module/` | 26 tests | **Active** | 0.0.8-s |
+| `tests/unit/execution/` | 106 tests | **Active** | 0.0.5-s / 0.0.6-s / 0.0.7-s / 0.0.8-s |
+| `tests/unit/stdlib/` | 124 tests | **Active** | 0.0.9-s / 0.0.10-s |
+| `tests/compiler/` | 16 tests | **Active** | 0.0.2-s / 0.0.8-s |
+| `tests/integration/` | 7 tests | **Active** | 0.0.2-s / 0.0.8-s / 0.0.10-s |
+| `tests/runtime/` | 8 tests | **Active** | 0.0.1-s / 0.0.5-s |
+| `tests/conformance/` | 1 test | **Active** | 0.0.1-s / 0.0.8-s |
+| **Total Suite** | **388 tests** | **100% Passing** | **0.0.10-s** |

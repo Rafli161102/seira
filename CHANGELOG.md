@@ -23,6 +23,35 @@ and this project adheres to the Seira Staged Versioning Model:
   - Integrated deterministic `with` statement resource management: guaranteed cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
   - Refined memory I/O: capability-separated `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic testing without OS or network side effects.
 
+### Fixed
+- **Canonical Built-in Trait Registry (P1-1)**:
+  - Unified built-in trait definitions in `compiler/resolver/builtin_traits.ts`, attaching canonical `TraitDecl` AST nodes to global scope symbols in the Resolver and pre-populating `TypeChecker.this.traits`.
+  - Fixed user-defined implementations of standard traits (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`, `Iterator`).
+  - Preserved contract validation: missing required methods (`E4004`), signature mismatches (`E4006`), and extraneous methods (`E4004`).
+  - Protected all 14 built-in traits against user shadowing (`E2002`).
+- **Static Resource Validation for `with` (P1-2)**:
+  - Enforced static resource constraint validation in `TypeChecker`, rejecting primitive values (`Int`, `String`, `Bool`), options, and un-unwrapped `Result<File, E>` wrappers with actionable diagnostics (`E3001`).
+- **Unicode Scalar Boundary Handling (P1-3)**:
+  - Ensured `MemoryReader` and `MemoryStream` slice strings along Unicode scalar code points instead of UTF-16 code units, preventing surrogate pair corruption on emoji and non-BMP characters.
+- **Member Method Lookup Diagnostics (P1-4)**:
+  - Emitted `E3003` for invalid method calls on known built-in types while avoiding spurious diagnostics on user-defined structs.
+- **Type Equivalence & Covariance**:
+  - Equated primitive `Unit` and 0-element tuple `()` in `areTypesEqual` and `isTypeAssignable` to support canonical `Result<Unit, String>` returns.
+  - Implemented sound covariance for immutable value containers `Option<T>` and `Result<T, E>`.
+- **CI Workflow**:
+  - Corrected stale smoke-test path in `.github/workflows/ci.yml` from `examples/hello_world.sra` to canonical `examples/hello_world.sr`.
+
+### Testing
+- Added 12 permanent automated regression tests under Category I (`tests/unit/stdlib/io_boundary.test.ts`).
+- Full test suite baseline expanded from 376 to 388 passing tests (0 failures, 0 skipped, 0 cancelled).
+- TypeScript static typecheck verified with 0 errors (`tsc --noEmit`).
+
+### Audit
+- Completed Independent Re-Audit #3 with verdict: **AUDIT PASS WITH NON-BLOCKING FINDINGS**.
+
+### Deferred
+- Runtime evaluator host duck-typing fallback in resource cleanup (`FINDING-P2-01`) deferred to future runtime refactoring.
+
 ## [0.0.9-s] - 2026-10-01
 
 ### Added

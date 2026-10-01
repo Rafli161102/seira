@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Specification | Seira 0.0.2-s Repository Architecture |
-| Target Milestone | 0.0.2-s (Seed Series) |
+| Specification | Seira 0.0.10-s Repository Architecture |
+| Target Milestone | 0.0.10-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
@@ -14,11 +14,11 @@ The Seira repository is structured into strictly decoupled top-level directories
 
 ```text
 seira/
-├── compiler/          # Compiler subsystems, driver, AST, IRs, and diagnostics
-├── runtime/           # Execution support layer, memory model, and host adapters
-├── std/               # Standard library written in Seira (.sr)
-├── tools/             # Developer tooling, CLI dispatcher, and manifest tooling
-├── tests/             # Unit, integration, conformance, and fixture test suites
+├── compiler/          # Compiler subsystems, driver, AST, module system, typechecker, and diagnostics
+├── runtime/           # Execution support layer, Value Model, deterministic with lifecycle, and memory I/O
+├── std/               # Standard library package and core contracts (.sr)
+├── tools/             # Developer tooling, canonical CLI dispatcher (sr), and package manifest tooling
+├── tests/             # Unit, integration, conformance, and fixture test suites (388 tests)
 ├── examples/          # Canonical example programs (.sr)
 ├── docs/              # Specifications, architecture, language manual, RFCs
 └── .github/           # CI/CD workflows and repository templates
@@ -28,13 +28,13 @@ seira/
 
 | Directory | Responsibility | Implementation Status |
 |---|---|---|
-| `compiler/` | Source management, lexing, parsing, diagnostics, IRs, and compiler orchestration | **Active (0.0.2-s)** / Skeletons where noted |
-| `runtime/` | Execution-time services: memory scopes, panic handler, host adapters, effects | **Architectural Foundation** |
-| `std/` | Standard library contracts and language modules (`core`, `collections`, `text`, etc.) | **Architectural Foundation** |
-| `tools/` | Command-line interface (`seira`), project bootstrap (`init`, `new`), manifest parsing | **Active (0.0.2-s)** |
-| `tests/` | Automated test infrastructure, regression verification, and conformance suites | **Active (0.0.2-s)** |
-| `examples/` | Demonstrative `.sr` source files validating locked language axioms | **Active (0.0.1-s)** |
-| `docs/` | Authoritative language documentation, architecture guides, and RFC system | **Active (0.0.2-s)** |
+| `compiler/` | Source management, lexing, parsing, module discovery, typecheck, canonical trait registry, diagnostics | **Active (0.0.10-s)** / Skeletons for HIR/MIR/Backend |
+| `runtime/` | Value model v1.0, tree-walking engine, deterministic `with` lifecycle, File/Memory I/O, panic handler | **Active (0.0.5-s – 0.0.10-s)** |
+| `std/` | Standard library contracts and language modules (`core`, `option`, `result`, `collections`, `iter`, `io`) | **Active (0.0.9-s – 0.0.10-s)** |
+| `tools/` | Command-line interface (`sr`, `seira`), single-file and package modes, manifest & lockfile tooling | **Active (0.0.8-s – 0.0.10-s)** |
+| `tests/` | Automated test infrastructure, regression verification, and conformance suites | **Active (0.0.10-s, 388 tests)** |
+| `examples/` | Demonstrative `.sr` source files validating locked language axioms | **Active (0.0.10-s)** |
+| `docs/` | Authoritative language documentation, architecture guides, and RFC system | **Active (0.0.10-s)** |
 
 ---
 

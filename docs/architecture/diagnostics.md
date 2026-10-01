@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Subsystem | `compiler/diagnostics/` |
-| Specification | Seira 0.0.2-s Diagnostics Architecture |
-| Target Milestone | 0.0.2-s (Seed Series) |
+| Specification | Seira 0.0.10-s Diagnostics Architecture |
+| Target Milestone | 0.0.10-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
@@ -56,9 +56,9 @@ Every diagnostic message includes:
 - `E2004`: `break` or `continue` outside loop statement
 
 #### Type Analysis (`E3xxx`):
-- `E3001`: Type mismatch between expected and actual expression types
+- `E3001`: Type mismatch between expected and actual expression types / invalid resource in `with` statement
 - `E3002`: Operator type incompatibility / invalid operation on union type
-- `E3003`: Function call argument count or type mismatch
+- `E3003`: Function call argument count/type mismatch / method or property does not exist on known built-in type
 - `E3004`: Function return type mismatch
 - `E3005`: Condition expression in `if` or `while` is not strictly `Bool`
 - `E3006`: Tuple index out of range or invalid numeric member access
@@ -68,7 +68,7 @@ Every diagnostic message includes:
 - `E4001`: Duplicate generic parameter / Generic argument count mismatch
 - `E4002`: Generic type inference failure (requires explicit type arguments)
 - `E4003`: Trait constraint not satisfied at call site
-- `E4004`: Trait not found / missing trait method implementation / undeclared method in trait
+- `E4004`: Trait not found / missing required trait method implementation / extraneous method not declared in trait
 - `E4005`: Duplicate trait implementation for the same Type and Trait pair
 - `E4006`: Method signature mismatch in trait implementation
 

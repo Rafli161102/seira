@@ -30,17 +30,19 @@ The Seira runtime is responsible for program execution, memory layout, resource 
 
 ---
 
-## 3. Status in 0.0.7-s (Type & Generic Foundation)
+## 3. Status in 0.0.10-s (I/O & Resource Boundary Foundation)
 
-| Runtime Component | Status in 0.0.7-s | Target Milestone | Description |
+| Runtime Component | Status in 0.0.10-s | Implementation Milestone | Description |
 | :--- | :--- | :--- | :--- |
-| **Seira Value Model v0.2** | **Implemented** | 0.0.6-s / 0.0.7-s | Primitives, Option, Result, List, Tuple, Map, Set, Function closures |
-| **Tree-Walking Evaluator** | **Implemented** | 0.0.5-s / 0.0.7-s | Deterministic AST evaluation engine (`seira run`) |
-| **Static Trait Dispatch** | **Implemented** | 0.0.7-s | Compile-time resolved trait methods executed without runtime vtables |
+| **Seira Value Model v1.0** | **Implemented** | 0.0.5-s – 0.0.10-s | Primitives, Option, Result, List, Tuple, Map, Set, Function closures, Bytes, Byte, Path, File, MemoryReader, MemoryWriter, MemoryStream |
+| **Tree-Walking Evaluator** | **Implemented** | 0.0.5-s – 0.0.10-s | Deterministic AST evaluation engine (`sr run`) with multi-module execution |
+| **Static Trait Dispatch** | **Implemented** | 0.0.7-s / 0.0.10-s | Compile-time resolved trait methods executed without runtime vtables |
 | **Control Flow & Pattern Matching** | **Implemented** | 0.0.6-s | Executable `if`, `while`, `for`, `loop`, `break`, `continue`, `match` |
-| **Runtime Diagnostics (`R0xxx`)** | **Implemented** | 0.0.5-s | Structured panics for division by zero, underflow, stack overflow |
-| **Scope Cleanup Foundation** | **Mock Compatibility Stub** | Phase 2 | Mock `with` and `open_resource` stubs (production RAII in Phase 2) |
-| **Effect Handler Interface** | **Skeleton / Reserved** | Phase 2 | Basic host output `println`/`print` functional; full effects in Phase 2 |
+| **Deterministic Resource Cleanup** | **Implemented** | 0.0.10-s | First-class `with` statement with strict LIFO cleanup across scope exits, returns, and panics |
+| **Memory I/O Execution** | **Implemented** | 0.0.10-s | Fast, hermetic `MemoryReader`, `MemoryWriter`, and `MemoryStream` execution |
+| **Unicode Scalar Semantics** | **Implemented** | 0.0.10-s | Non-splitting scalar evaluation preserving Unicode character and surrogate integrity |
+| **Runtime Diagnostics (`R0xxx`)** | **Implemented** | 0.0.5-s | Structured panics for division by zero (`R0001`), unsupported op (`R0002`), internal error (`R0003`), recursion depth (`R0004`), UInt underflow (`R0005`) |
+| **Effect Handler Interface** | **Skeleton / Reserved** | Phase 2 (0.0.11-d+) | Basic host output `println`/`print` functional; algebraic effects in Phase 2 |
 | **Async Scheduler** | **Skeleton / Reserved** | Alpha Series | Task queues and event loop integration |
 | **Native Allocator** | **Skeleton / Reserved** | Alpha Series | LLVM runtime memory management |
 | **WebAssembly Memory Manager** | **Skeleton / Reserved** | Alpha Series | Wasm page linear memory allocation |

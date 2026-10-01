@@ -39,25 +39,28 @@ npm install
 
 ## 3. Running the Seira CLI
 
-The Seira CLI is located at `bin/seira`:
+The Seira CLI is available via canonical `bin/sr` (and `bin/seira`):
 
 ```bash
 # Verify version
-./bin/seira --version
-# Output: Seira 0.0.1-s
+./bin/sr --version
+# Output: Seira 0.0.10-s
 
 # Inspect environment and active project manifest
-./bin/seira info
+./bin/sr info
 
 # Validate an example Seira file
-./bin/seira check examples/hello_world.sr
+./bin/sr check examples/hello_world.sr
+
+# Execute an example Seira file
+./bin/sr run examples/hello_world.sr
 ```
 
 Optional: You can link the binary to your system PATH using:
 ```bash
 npm link
-# Now you can run `seira` directly from any directory:
-seira --version
+# Now you can run `sr` directly from any directory:
+sr --version
 ```
 
 ---
@@ -72,9 +75,10 @@ npm test
 
 To run a specific test suite:
 ```bash
-node --experimental-strip-types --test tests/lexer/lexer.test.ts
-node --experimental-strip-types --test tests/parser/parser.test.ts
-node --experimental-strip-types --test tests/cli/cli.test.ts
+node --experimental-strip-types --test tests/unit/lexer/lexer.test.ts
+node --experimental-strip-types --test tests/unit/parser/parser.test.ts
+node --experimental-strip-types --test tests/integration/cli.test.ts
+node --experimental-strip-types --test tests/unit/stdlib/io_boundary.test.ts
 ```
 
 ---

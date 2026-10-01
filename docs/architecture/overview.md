@@ -2,8 +2,8 @@
 
 | Field | Value |
 |---|---|
-| Specification | Seira 0.0.4-s Repository Architecture |
-| Target Milestone | 0.0.4-s (Seed Series) |
+| Specification | Seira 0.0.10-s Repository Architecture |
+| Target Milestone | 0.0.10-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
@@ -71,23 +71,24 @@ Detailed architecture documents provide deep-dive specifications for each bounda
 
 ## 4. Status Classification Matrix
 
-| Feature / Subsystem | Status in 0.0.4-s | Target Milestone | Description |
+| Feature / Subsystem | Status in 0.0.10-s | Target Milestone | Description |
 | :--- | :--- | :--- | :--- |
 | **Source Management** | **Implemented** | 0.0.2-s | `SourceManager`, `LineMap`, `Span`, `Position` |
-| **Compiler Driver & Lifecycle** | **Implemented** | 0.0.3-s | `CompilerDriver`, `CompilerContext`, `CompilerConfig` |
-| **Diagnostics & ICE** | **Implemented** | 0.0.3-s | Structured code families and `InternalCompilerError` boundary |
-| **Lexer Foundation** | **Implemented** | 0.0.3-s | Tokenization of keywords, symbols, literals, spans, compound ops |
-| **Parser Foundation** | **Implemented** | 0.0.3-s | Pratt precedence parsing of functions, bindings, expressions |
-| **AST Definitions** | **Implemented** | 0.0.3-s | Structured AST node representations and prepared nodes |
-| **Manifest System** | **Implemented** | 0.0.1-s | `Seira.toml` specification, parser, and validator |
-| **CLI Core** | **Implemented** | 0.0.3-s | `seira --version`, `info`, `check`, `init`, `new` |
-| **Name Resolver** | **Implemented** | 0.0.4-s | Lexical scope hierarchy, predictable shadowing, hoisting, duplicate detection |
-| **Type Checker & Inference** | **Implemented** | 0.0.4-s | Static type inference, structural type equality, explicit type checking, no coercions |
-| **Effect Checker** | **Architectural Skeleton** | Reserved (0.0.6-s) | Effect tracking (`!`) and purity verification |
+| **Compiler Driver & Lifecycle** | **Implemented** | 0.0.3-s / 0.0.8-s | `CompilerDriver`, `CompilerContext`, `CompilerConfig`, single-file and package compilation |
+| **Diagnostics & ICE** | **Implemented** | 0.0.1-s – 0.0.10-s | Structured code families (`E1xxx`–`E6xxx`, `R0xxx`) and `InternalCompilerError` boundary |
+| **Lexer Foundation** | **Implemented** | 0.0.3-s – 0.0.10-s | Tokenization of keywords, symbols, literals, spans, Unicode scalars, compound ops |
+| **Parser Foundation** | **Implemented** | 0.0.3-s / 0.0.8-s | Pratt precedence parsing of functions, bindings, expressions, traits, generics, visibility |
+| **AST Definitions** | **Implemented** | 0.0.3-s / 0.0.8-s | Structured AST node representations preserving source spans and visibility markers |
+| **Module & Package System** | **Implemented** | 0.0.8-s | Filesystem module map, `Seira.toml`, SHA-256 `Seira.lock`, path dependencies, workspaces |
+| **CLI & Toolchain** | **Implemented** | 0.0.1-s – 0.0.10-s | Canonical `sr` command (and `seira` alias): `run`, `check`, `info`, `version`, `init`, `new` |
+| **Name Resolver** | **Implemented** | 0.0.4-s – 0.0.10-s | Lexical scopes, shadowing, cross-module imports, canonical built-in trait registry |
+| **Type Checker & Inference** | **Implemented** | 0.0.4-s – 0.0.10-s | Static type inference, generics, traits, contracts, resource validation, method lookup |
+| **Standard Library Foundation** | **Implemented** | 0.0.9-s / 0.0.10-s | Native `std` package, Prelude, `Option`, `Result`, traits, collections, iterators, I/O boundary |
+| **Runtime Execution Engine** | **Implemented** | 0.0.5-s – 0.0.10-s | Tree-walking evaluator, Seira Value Model v1.0, deterministic `with` lifecycle, File/Memory I/O |
+| **Effect Checker** | **Architectural Skeleton** | Reserved (Phase 2) | Effect tracking (`!`) and algebraic effect handler typing |
 | **HIR / MIR Lowering** | **Architectural Skeleton** | Reserved (0.0.11-d) | High/Mid-level intermediate representations |
 | **LLVM Native Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Machine code emission for x86_64 and AArch64 |
 | **WebAssembly Backend** | **Architectural Skeleton** | Reserved (0.1.0-alpha) | Wasm binary emission and component model |
-| **Runtime Execution Engine** | **Architectural Foundation** | Reserved (0.1.0-alpha) | Value execution, memory allocators, async scheduler |
 
 ---
 
