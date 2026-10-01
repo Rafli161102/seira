@@ -2,39 +2,41 @@
 
 | Field | Value |
 |---|---|
-| Specification | Seira 0.0.7-s Type & Generic Foundation Architecture |
-| Target Milestone | 0.0.7-s (Seed Series) |
+| Specification | Seira 0.0.10-s Compiler Architecture |
+| Target Milestone | 0.0.10-s (Seed Series) |
 | Architecture Status | **Implemented & Locked** |
 
 ---
 
 ## 1. Executive Summary
 
-The Seira 0.0.4-s release establishes the semantic layer of the Seira compiler foundation. Building upon the syntactic foundation established in 0.0.3-s, the compiler connects the full front-end pipeline end-to-end:
+The Seira 0.0.10-s milestone completes the Seed Series front-end compiler pipeline, module system, and standard library I/O boundary. Building upon the syntactic, semantic, module, and contract foundations, the compiler connects the full pipeline end-to-end:
 
 ```text
-Source Text
+Source Text (.sr)
     ↓
 SourceManager & LineMap (SourceId, Spans, Positions)
     ↓
-Lexer (Left-to-Right scanning, Token stream, Source spans)
+Module System (Discovery, PackageGraph, Seira.toml, Seira.lock, Workspace)
+    ↓
+Lexer (Left-to-Right scanning, Token stream, Source spans, Unicode code points)
     ↓
 Tokens (Keywords, Literals, Operators, Delimiters)
     ↓
 Parser (Pratt precedence climbing, Error recovery)
     ↓
-AST (Source-aware strongly typed node hierarchy)
+AST (Source-aware strongly typed node hierarchy, visibility markers)
     ↓
-Name Resolution (Lexical scopes, Symbol binding, Shadowing, Hoisting)
+Name Resolution (Lexical scopes, Symbol binding, Shadowing, Canonical Builtin Traits, Imports, Visibility)
     ↓
-Basic Type Analysis (Deterministic structural types, Static inference, Zero implicit coercions)
+Type Analysis & Validation (Static inference, Structural equality, Generics, Traits, Resource checking, No coercions)
     ↓
-Semantic Validation (Strict Boolean conditionals, Calls, Returns, Mutability, Option/Result, Pipeline)
+Semantic Validation (Strict Boolean conditionals, Calls, Returns, Mutability, Option/Result, Pipeline, with statements)
     ↓
-Compiler Driver & Diagnostics (Structured errors, Source pointers, Code hints)
+Compiler Driver & Diagnostics (Structured errors, Source pointers, Code hints, ICE boundary)
 ```
 
-In accordance with the 0.0.4-s scope rules, the compiler implements real name resolution and static type validation, while preserving clear architectural boundaries for downstream subsystems (`hir`, `mir`, `backend`, full borrow checker, full effect solver).
+In accordance with the 0.0.10-s scope rules, the compiler implements real name resolution, static type validation, module isolation, canonical trait validation, and deterministic resource checking, while preserving clear architectural boundaries for downstream subsystems (`hir`, `mir`, `backend`, full borrow checker, full algebraic effect solver).
 
 ---
 
@@ -65,14 +67,14 @@ compiler/
 | Subsystem | Status | Milestone | Implementation Description |
 |---|---|---|---|
 | `source/` | **IMPLEMENTED** | 0.0.2-s | `SourceManager`, `LineMap` (binary search offset-to-line), `Span` tracking |
-| `lexer/` | **IMPLEMENTED** | 0.0.3-s | Left-to-right lexical scanner with full token model, literals, compound operators, and banned token rejection |
-| `parser/` | **IMPLEMENTED** | 0.0.8-s | Pratt precedence climbing parser, `pub` modifier, `use`, `import`, aliases, dotted type paths, error recovery |
-| `ast/` | **IMPLEMENTED** | 0.0.8-s | Source-aware AST preserving exact spans on all nodes, `UseDecl`, and `isPublic` visibility markers |
+| `lexer/` | **IMPLEMENTED** | 0.0.3-s – 0.0.10-s | Left-to-right lexical scanner with full token model, literals, compound operators, banned token rejection, and Unicode scalar code point support |
+| `parser/` | **IMPLEMENTED** | 0.0.3-s / 0.0.8-s | Pratt precedence climbing parser, `pub` modifier, `use`, `import`, aliases, dotted type paths, error recovery |
+| `ast/` | **IMPLEMENTED** | 0.0.3-s / 0.0.8-s | Source-aware AST preserving exact spans on all nodes, `UseDecl`, and `isPublic` visibility markers |
 | `module/` | **IMPLEMENTED** | 0.0.8-s | Filesystem-as-module-map, deterministic module discovery, `Seira.toml` parser, SHA-256 `Seira.lock`, `ModuleGraph`, `PackageGraph`, `WorkspaceLoader`, cycle detection (`E6008`, `E6012`) |
-| `diagnostics/` | **IMPLEMENTED** | 0.0.8-s | Structured diagnostic bags with `E1xxx`–`E9xxx` error families, including `E6xxx` (Module & Package) |
-| `driver/` | **IMPLEMENTED** | 0.0.8-s | `CompilerDriver`, single-file compilation, and multi-module package compilation (`compilePackage`) |
-| `resolver/` | **IMPLEMENTED** | 0.0.8-s | Lexical scope hierarchy, cross-module symbol resolution, module-level import (`import`), symbol use (`use`), aliases (`as`), public re-exports (`pub use`), declaration visibility checking (`E6005`, `E6015`), and module-scope mutability prohibition (`E2003`) |
-| `typecheck/` | **IMPLEMENTED** | 0.0.8-s | Static type inference, cross-module generic types and functions, cross-module trait implementations and constraints, type aliases, union types, function types, contextual lambda typing, Option/Result generic semantics, and pipeline generic typing |
+| `diagnostics/` | **IMPLEMENTED** | 0.0.1-s – 0.0.10-s | Structured diagnostic bags with `E1xxx`–`E9xxx` error families and runtime panics `R0xxx` |
+| `driver/` | **IMPLEMENTED** | 0.0.3-s / 0.0.8-s | `CompilerDriver`, single-file compilation, and multi-module package compilation (`compilePackage`) |
+| `resolver/` | **IMPLEMENTED** | 0.0.4-s – 0.0.10-s | Lexical scope hierarchy, cross-module symbol resolution, module import, aliases, visibility, and canonical built-in trait registry (`BUILTIN_TRAIT_MAP`) |
+| `typecheck/` | **IMPLEMENTED** | 0.0.4-s – 0.0.10-s | Static type inference, generics, trait contracts, resource validation for `with` statements, known built-in method lookup diagnostics, Unit/() equivalence, and Option/Result covariance |
 | `hir/` | **ARCHITECTURAL SKELETON** | Planned (0.0.11-d) | Contracts for `HIRProgram`, `HIRModule`, `HIRFunction`, `HIRBlock` |
 | `mir/` | **ARCHITECTURAL SKELETON** | Planned (0.0.11-d) | Contracts for `MIRModule`, `BasicBlock`, `MIROperation`, `MIRResourceOp` |
 | `backend/` | **ARCHITECTURAL SKELETON** | Reserved (0.1.0-alpha) | Contracts for `BackendEmitter`, `BackendOptions`, `BackendResult` |
@@ -94,7 +96,7 @@ The resolver implements a strict lexical scope hierarchy:
 
 ### 4.3 Predictable Lexical Shadowing
 An inner lexical scope may declare a variable with the same name as an outer scope variable without error:
-```seira
+```sr
 x = 10;
 if true {
     x = 20; // Shadows outer x within block scope
@@ -106,7 +108,7 @@ Shadowing introduces a distinct symbol in the inner scope; it does NOT mutate th
 
 ### 4.4 Duplicate Declaration Rejection (E2002)
 Declaring the same name twice in the *same* lexical scope is prohibited:
-```seira
+```sr
 let val = 10;
 let val = 20; // error[E2002]: Duplicate binding 'val' in the same scope.
 ```
@@ -115,7 +117,7 @@ let val = 20; // error[E2002]: Duplicate binding 'val' in the same scope.
 Seira bindings are immutable by default:
 - `mut x = value`: Declares a mutable variable. Reassignment `x = new_value` is permitted if type-compatible.
 - `x = value`: Declares an immutable variable. Reassignment `x = new_value` in the same scope produces `E2003`:
-```seira
+```sr
 count = 0;
 count = 1; // error[E2003]: Cannot assign to immutable variable 'count'.
 ```
@@ -141,17 +143,17 @@ Type inference operates deterministically without implicit guessing:
 
 ### 5.3 Explicit Type Annotations & Type Compatibility (E3001)
 Variable declarations may specify an explicit type:
-```seira
+```sr
 age: Int = 23;
 ```
 If the initializer expression cannot be assigned to the declared type, the compiler raises `E3001`:
-```seira
+```sr
 age: Int = "hello"; // error[E3001]: Type mismatch: expected 'Int', but found 'String'.
 ```
 
 ### 5.4 Zero Implicit Coercions
 Seira strictly forbids implicit type coercion. No implicit numeric widening, no numeric-to-string coercion:
-```seira
+```sr
 x = 10 + "hello"; // error[E3002]: Invalid operands for arithmetic operator '+': 'Int' and 'String'.
 y = 10 + 3.14;    // error[E3002]: Invalid operands for arithmetic operator '+': 'Int' and 'Float'.
 ```
@@ -159,7 +161,7 @@ String concatenation using `+` requires both operands to be `String`.
 
 ### 5.5 Strict Boolean Semantics — Zero Truthy / Falsy Coercion (E3005)
 Conditions in `if` expressions and operands to logical operators (`and`, `or`, `not`) MUST evaluate to `Bool`:
-```seira
+```sr
 if 1 { ... }       // error[E3005]: If condition must be of type Bool, but found 'Int'.
 if "hello" { ... } // error[E3005]: If condition must be of type Bool, but found 'String'.
 not 10;            // error[E3002]: Operator 'not' requires a Bool operand, but found 'Int'.

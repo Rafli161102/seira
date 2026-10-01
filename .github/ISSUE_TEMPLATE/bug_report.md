@@ -10,9 +10,9 @@ assignees: ''
 A clear and concise description of the bug.
 
 ## Steps to Reproduce
-1. Command run: `seira ...`
-2. Sample source file: `example.sra`:
-```sra
+1. Command run: `sr ...`
+2. Sample source file: `example.sr`:
+```sr
 // Code snippet causing the issue
 ```
 3. Observed error or incorrect behavior.
@@ -21,7 +21,7 @@ A clear and concise description of the bug.
 A clear and concise description of what you expected to happen.
 
 ## Environment Details
-- Seira Version (`seira --version`):
+- Seira Version (`sr --version`):
 - Node Version (`node -v`):
 - Operating System & Architecture:
 

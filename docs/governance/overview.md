@@ -14,8 +14,8 @@ Version progression in Seira is governed strictly by **technical gates**, never 
 
 ### The Staged Progression Pipeline
 1. **Seed Series (`0.0.1-s` to `0.0.10-s`)**:
-   - Focus: Architecture, CLI, core syntax specification, parser, AST, test harnesses, diagnostic foundations.
-   - Exit Gate: Parser, AST, and symbol table validated; end-to-end AST validation of core language idioms.
+   - Focus: Architecture, CLI, core syntax, parser, AST, diagnostics, execution engine, generics, traits, modules, packages, standard library foundation, and I/O & resource boundary.
+   - Exit Gate: End-to-end front-end compiler pipeline, module/package resolution, tree-walking runtime, Prelude/Std, and I/O & resource boundary v1.0 complete with 100% test pass.
 2. **Development Series (`0.0.11-d` to `0.0.30-d`)**:
    - Focus: Type inference, trait solving, effect verification, HIR/MIR design.
    - Exit Gate: Complete static type analysis and effect checking operational.

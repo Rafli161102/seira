@@ -4,10 +4,10 @@ This directory contains introductory and architecture-level code examples demons
 
 ---
 
-## Seira 0.0.8-s Status: Module & Package Foundation
+## Seira 0.0.10-s Status: I/O & Resource Boundary Foundation
 
 > [!NOTE]
-> In release **0.0.8-s (Module & Package Foundation)**, Seira provides canonical `.sr` source extension support and the `sr` CLI tool.
+> In release **0.0.10-s (I/O & Resource Boundary Foundation v1.0)**, Seira provides canonical `.sr` source extension support (with legacy `.sra` compatibility) and the `sr` CLI tool.
 > Seira operates seamlessly in two modes:
 > 1. **Single-file mode**: execute standalone source scripts directly (`sr run script.sr`) without requiring a package manifest.
 > 2. **Package/Project mode**: compile and execute multi-module projects managed by `Seira.toml` and verified by `Seira.lock`.
@@ -24,7 +24,7 @@ fn square(x: Int) -> Int {
 }
 
 fn main() {
-    println("Hello from Seira 0.0.8-s!")
+    println("Hello from Seira 0.0.10-s!")
     println(square(8))
 }
 ```

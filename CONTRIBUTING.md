@@ -49,29 +49,34 @@ Temporary branches must be deleted upon merging into `develop` or `main`.
 
 ---
 
-## 3. Contribution Workflow
+## 3. Development & Engineering Lifecycle
 
-1. **Find or Open an Issue**: Check existing issues before starting. For major features or changes to locked language semantics, an [RFC](docs/rfcs/README.md) is required first.
-2. **Fork and Branch**:
-   ```bash
-   git checkout develop
-   git pull origin develop
-   git checkout -b feature/your-feature-name
-   ```
-3. **Develop with Tests**:
-   - Write clear, idiomatic code adhering to module boundaries.
-   - Add automated tests under `tests/` for all new behavior.
-   - Run existing tests: `npm test`.
-4. **Commit Hygiene**:
-   - Use conventional commit messages: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
-   - Keep commits focused and atomic.
-5. **Open a Pull Request**:
-   - Target the `develop` branch (or `dev-infra` for CI workflows).
-   - Fill out the [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md).
-   - Ensure all CI checks pass.
-6. **Code Review**:
-   - Address feedback from project maintainers and reviewers.
-   - Maintainers will squash/merge once approvals are granted.
+Seira adheres strictly to a staged technical-gate engineering model:
+
+```text
+Design  ➔  Review  ➔  Lock  ➔  Specification  ➔  Implementation  ➔  Test  ➔  Audit  ➔  Merge / Release
+```
+
+1. **Design & Review**: Features and language changes begin with architectural discussion or an official [RFC](docs/rfcs/README.md).
+2. **Lock & Specification**: Once consensus is achieved, the design is formalized in architecture documents and locked. Implementation must follow locked specifications; speculative or out-of-scope additions are strictly rejected.
+3. **Branch Model**: Work begins on a focused branch off `develop` (`feature/*`, `fix/*`, `docs/*`).
+4. **Implementation & Scope Control**:
+   - Changes must respect module boundaries (`compiler/`, `runtime/`, `std/`, `tools/`).
+   - Scope creep is prohibited: only implement what is specified for the current milestone.
+   - No mock or pretend implementations.
+5. **Testing & Regression Expectations**:
+   - Every semantic change, bug fix, or feature must include automated regression tests under `tests/`.
+   - All tests must pass: `npm test` (zero failures, zero skips, sub-second execution).
+   - Static type checking must be verified: `npm run typecheck` (`tsc --noEmit`).
+   - CLI smoke tests must pass: `./bin/sr --version`, `./bin/sr info`, `./bin/sr check examples/hello_world.sr`.
+6. **Documentation Requirements**:
+   - Documentation must accurately reflect the code as it actually exists.
+   - Never document planned or future features as implemented.
+7. **Independent Re-Audit**: Major milestones undergo independent read-only re-audits before locking. All blocking P1 findings must be genuinely resolved before release.
+8. **Pull Request & CI Verification**:
+   - PR targets `develop` (or `dev-infra` for CI workflows).
+   - The multi-platform CI matrix (`ubuntu-latest`, `macos-latest`, `windows-latest` across Node `22.x` and `24.x`) must pass green.
+   - Maintainers squash/merge approved PRs. Release tags (`vX.Y.Z`) are cut exclusively from `main`.
 
 ---
 

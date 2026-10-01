@@ -10,7 +10,7 @@ Only the latest active release series receives security patches:
 
 | Version Series | Supported |
 | :--- | :--- |
-| `0.0.4-s` (Seed Series) | :white_check_mark: |
+| `0.0.10-s` (Seed Series) | :white_check_mark: |
 | Pre-release / Development | :x: |
 
 ---

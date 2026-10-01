@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Subsystem | `runtime/` |
-| Specification | Seira 0.0.2-s Runtime Boundary Architecture |
-| Target Milestone | 0.0.2-s (Seed Series) |
-| Architecture Status | **Architectural Foundation & Contracts** |
+| Specification | Seira 0.0.10-s Runtime Boundary Architecture |
+| Target Milestone | 0.0.10-s (Seed Series) |
+| Architecture Status | **Implemented (Seed Engine) & Architectural Contracts** |
 
 ---
 
@@ -19,6 +19,7 @@ Compiler Core (compiler/)   ≠   Runtime System (runtime/)
 
 - **The Compiler** does NOT import or execute runtime implementation code during compilation.
 - **The Runtime** does NOT depend on compiler internal structures, AST, or CLI tooling.
+- For the Seed Series, program execution is provided by the tree-walking evaluator in `runtime/execution/`.
 - For native binary targets, runtime services are compiled into target object files or static libraries.
 - For WebAssembly targets, runtime services are supplied through WASI host adapters or JavaScript bindings.
 
@@ -68,10 +69,10 @@ Decouples the runtime from the underlying host platform:
 
 | Component | Status | Milestone | Description |
 |---|---|---|---|
-| `RuntimeContext` | **Architectural Foundation** | 0.0.1-s / 0.0.2-s | Session context holding root scope and effect registry |
-| `MemoryService` | **Architectural Foundation** | 0.0.2-s | Deterministic `ResourceScope` and cleaner contracts |
-| `ResourceManager` | **Architectural Foundation** | 0.0.2-s | Service registry and handle lifecycle interface |
-| `PanicService` | **Architectural Foundation** | 0.0.2-s | Panic payload, hook registration, deterministic unwind |
-| `TaskService` | **Architectural Foundation** | 0.0.2-s | Structured task scheduling contracts |
-| `HostAdapter` | **Architectural Foundation** | 0.0.1-s / 0.0.2-s | POSIX / Node.js monotonic clock and I/O interface |
-| Production Runtime | **Planned** | 0.1.0-alpha | Native C/Rust/LLVM runtime library |
+| `ExecutionEngine` (`runtime/execution/`) | **Implemented** | 0.0.5-s – 0.0.10-s | Tree-walking evaluator, environment frames, single-entry convention |
+| Seira Value Model v1.0 | **Implemented** | 0.0.5-s – 0.0.10-s | Primitives, Option, Result, List, Tuple, Map, Set, Closures, Bytes, Path, File |
+| Deterministic `with` Lifecycle | **Implemented** | 0.0.10-s | First-class `with` statement with guaranteed strict LIFO cleanup across scope exits and panics |
+| Memory & File I/O Runtime | **Implemented** | 0.0.10-s | `MemoryReader`, `MemoryWriter`, `MemoryStream`, `File` operations |
+| Unicode Scalar Evaluation | **Implemented** | 0.0.10-s | Scalar-boundary text evaluation preserving non-BMP surrogate pairs |
+| `RuntimeContext` & Services | **Architectural Foundation** | 0.0.1-s / 0.0.2-s | Session context holding root scope and effect registry contracts |
+| Production Native Runtime | **Planned** | 0.1.0-alpha | Native C/Rust/LLVM runtime library for compiled binaries |

@@ -8,29 +8,42 @@
 
 ---
 
-## 2. Directory Layout & Module Structure
+## 2. Package Structure & Implemented Modules (`std/src/`)
 
 ```
 std/
-├── core/         # Primitives, fundamental traits (Clone, Display)
-├── collections/  # Collections (List, Map, Set)
-├── text/         # String slices, formatting, text utilities
-├── option/       # Option<T> type and monadic combinators
-├── result/       # Result<T, E> error handling
-├── iterator/     # Iterator<Item> and pipeline adapters
-├── math/         # Numeric functions, constants (PI, E)
-├── io/           # Console streams and formatting (println!)
-├── fs/           # Filesystem streams and with resource blocks
-├── net/          # TCP/UDP networking with explicit effects (!)
-├── time/         # Clocks, Instant, Duration, sleep!
-└── sys/          # Host OS abstractions, arguments, exit!
+├── Seira.toml        # Package manifest for std (version 0.0.10-s)
+└── src/
+    ├── lib.sr        # Package root and module re-exports
+    ├── core.sr       # Core contracts and canonical traits (Eq, Ord, Hash, Display, Debug, Clone, Default, Iterator, Reader, Writer, Seekable, Flushable, Sized, Resource)
+    ├── option.sr     # Option<T> type and functional combinators
+    ├── result.sr     # Result<T, E> error handling and combinators
+    ├── collections.sr# Collection contracts (List, Map, Set, Tuple)
+    ├── iter.sr       # Iterator<Item> and pipeline adapters
+    └── io.sr         # I/O capabilities and resource contracts
 ```
+
+### Intentionally Minimal Prelude
+The Seira Prelude provides global access to core value types and operations without explicit imports:
+- **Core Types & Constructors**: `Option`, `Result`, `Some`, `None`, `Ok`, `Err`
+- **Output Primitives**: `print`, `println`
+- **Memory I/O Primitives**: `MemoryReader`, `MemoryWriter`, `MemoryStream`
+- **Resource Management**: `open_resource`, `with` statement
+- **Heavy Subsystems**: Networking, database connectors, and complex OS subsystems remain strictly excluded from the Prelude and require explicit module imports.
 
 ---
 
-## 3. Status in 0.0.1-s (Seed Foundation)
+## 3. Status in 0.0.10-s (Seed Series Completion)
 
-- **0.0.1-s (Seed Foundation)**: Architectural layout and module interface specifications established.
-- **0.0.2-s through 0.0.10-s (Seed Series)**: Definition of core traits and AST/type representations.
-- **Development Series (0.0.11-d+)**: In-memory data structures and compiler-builtin mappings.
-- **Alpha Series (0.1.0-alpha)**: Functional standard library compiled with the Seira native and Wasm toolchains.
+- **0.0.9-s (Standard Library & Core Contract Foundation)**: Native `std` package layout, Prelude, `Option`/`Result` contracts, collection contracts, iterator pipeline adapters, and initial traits.
+- **0.0.10-s (I/O & Resource Boundary Foundation v1.0)**:
+  - Canonical built-in trait registry shared across Resolver and TypeChecker.
+  - Composable capability separation (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`).
+  - Strict Byte/Text boundary (`Byte`, `Bytes`, `Char`, `String`) with explicit encoding/decoding.
+  - Standard encodings (UTF-8, ASCII, UTF-16, UTF-32) returning deterministic `Result` types.
+  - First-class immutable `Path` abstraction.
+  - Deterministic `File` I/O lifecycle (open → use → close) with error reporting (`AlreadyClosed`, `NotFound`, `PermissionDenied`, `InvalidSeek`).
+  - First-class `with` statement resource management with deterministic LIFO cleanup.
+  - Unicode scalar value semantics across string slicing and memory streams.
+- **Development Series (0.0.11-d+)**: Intermediate representation lowering and native in-memory optimizations.
+- **Alpha Series (0.1.0-alpha)**: Compiled native standard library runtime with LLVM and WebAssembly backend targets.

@@ -52,7 +52,7 @@ The outside world is an Effect.»
 
 ## Language Examples
 
-The following examples demonstrate syntax and semantic features supported and validated by the current `0.0.6-s` implementation:
+The following examples demonstrate syntax and semantic features supported and validated by the current `0.0.10-s` implementation:
 
 ### 1. Hello World
 ```sr
@@ -145,7 +145,7 @@ fn main() {
 }
 ```
 
-*(Note: In 0.0.7-s, code is validated by the front-end compiler pipeline and executable via the tree-walking engine with `seira run`. `main` is an application entry convention used by the execution layer; top-level scripts execute directly without `main`).*
+*(Note: In 0.0.10-s, code is validated by the front-end compiler pipeline and executable via the tree-walking engine with `sr run`. `main` is an application entry convention used by the execution layer; top-level scripts execute directly without `main`).*
 
 ---
 
@@ -155,10 +155,10 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 
 | Category | Definition | Subsystems / Features |
 | :--- | :--- | :--- |
-| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix<br>• Pratt precedence parser (`compiler/parser/`) with error recovery<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Module and package subsystem (`compiler/module/`) with filesystem mapping, deterministic discovery, package manifest (`Seira.toml`), SHA-256 lockfile (`Seira.lock`), path dependencies, workspace foundation, and circular dependency prevention<br>• Name resolution & lexical scoping (`compiler/resolver/`) with cross-module symbols, `import`, `use`, aliases, `pub use` re-exports, and `pub` visibility boundaries<br>• Static type inference, collection typing, generic types, generic functions, type aliases, union types, function types, trait declarations, trait implementations, trait constraints, static trait resolution, and cross-module type checking (`compiler/typecheck/`)<br>• Structured diagnostics engine (`compiler/diagnostics/`) with active `E1xxx`–`E6xxx` error families<br>• Structured control flow (`if`/`else` values, `while`, `for`, `loop`, `break`, `continue`)<br>• Pattern matching (`match` with literals, wildcards, bindings, Option, Result, and static exhaustiveness validation)<br>• Seira Collections (`List`, `Tuple`, `Map`, `Set`) with safe indexing and structural value equality<br>• First-class lambdas, lexical closures, higher-order generic functions, and pipeline composition<br>• Tree-walking execution engine & Seira Value Model (`runtime/execution/`) with multi-module execution, dedicated runtime diagnostics (`R0xxx`), deterministic single-entry convention, and UInt underflow panic (`R0005`)<br>• Canonical `sr` CLI tool (`bin/sr`) and `.sr` extension supporting both standalone single-file mode (`sr run script.sr`) and project package mode (`sr run`) |
+| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix, Unicode scalar code points<br>• Pratt precedence parser (`compiler/parser/`) with error recovery and visibility markers<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Module and package subsystem (`compiler/module/`) with filesystem mapping, deterministic discovery, package manifest (`Seira.toml`), SHA-256 lockfile (`Seira.lock`), path dependencies, workspace foundation, and circular dependency prevention<br>• Name resolution & lexical scoping (`compiler/resolver/`) with cross-module symbols, `import`, `use`, aliases, `pub use` re-exports, canonical built-in trait registry (`BUILTIN_TRAIT_MAP`), and `pub` visibility boundaries<br>• Static type inference, collection typing, generic types, generic functions, type aliases, union types, function types, trait declarations, trait implementations, trait constraints, static trait resolution, resource validation for `with`, and cross-module type checking (`compiler/typecheck/`)<br>• Standard Library Foundation (`std/src/`) and Prelude with `Option`, `Result`, traits, collections, and lazy iterator pipelines<br>• I/O & Resource Boundary Foundation (`0.0.10-s`): composable capabilities (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`), strict Byte/Text boundary (`Byte`, `Bytes`, `Char`, `String`), encoding foundation (UTF-8, ASCII, UTF-16, UTF-32), immutable `Path`, safe `File` lifecycle (open → use → close), and capability-separated memory streams (`MemoryReader`, `MemoryWriter`, `MemoryStream`)<br>• Deterministic resource management: first-class `with` statement with guaranteed strict LIFO cleanup across scope exits, returns, and panics<br>• Structured diagnostics engine (`compiler/diagnostics/`) with active `E1xxx`–`E6xxx` error families and runtime panics `R0xxx`<br>• Structured control flow (`if`/`else` values, `while`, `for`, `loop`, `break`, `continue`)<br>• Pattern matching (`match` with literals, wildcards, bindings, Option, Result, and static exhaustiveness validation)<br>• Seira Collections (`List`, `Tuple`, `Map`, `Set`) with safe indexing and structural value equality<br>• First-class lambdas, lexical closures, higher-order generic functions, and pipeline composition<br>• Tree-walking execution engine & Seira Value Model v1.0 (`runtime/execution/`) with multi-module execution, dedicated runtime diagnostics (`R0xxx`), single-entry convention, and UInt underflow panic (`R0005`)<br>• Canonical `sr` CLI tool (`bin/sr`) and `.sr` extension supporting both standalone single-file mode (`sr run script.sr`) and project package mode (`sr run`) |
 | **Architecturally Prepared** | Formal contracts, interfaces, and boundary types defined | • High-Level Intermediate Representation (`compiler/hir/`)<br>• Mid-Level Intermediate Representation (`compiler/mir/`)<br>• Backend emission interfaces (`compiler/backend/`)<br>• Runtime session and service boundaries (`runtime/context.ts`, `services/`) |
-| **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics (basic host I/O primitives `println`/`print` executable; full effect enforcement in Phase 2)<br>• Scoped resource ownership model (`with` blocks, deterministic cleanup — `with` and `open_resource` exist as mock compatibility stubs; production ownership in Phase 2)<br>• Memory model, borrow checking, and zero-overhead abstractions<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts (`std/core`, `std/collections`, `std/io`, etc.) |
-| **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Ahead-of-time compilation (`seira build`)<br>• Package manager registry and dependency resolution |
+| **Specified** | Formally documented in locked architecture specifications | • Full algebraic effect system and effect handler semantics (basic host I/O primitives `println`/`print` executable; full effect enforcement in Phase 2)<br>• Full compile-time borrow checking and ownership system (deterministic scope cleanup active via `with` blocks in 0.0.10-s; static borrow checking in Phase 2)<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts for network, system, and process |
+| **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Ahead-of-time compilation (`sr build`)<br>• Package manager registry and dependency resolution |
 
 ### Completed Milestones
 
@@ -170,7 +170,8 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.6-s` — Data & Control Foundation**: Structured control flow (`if`, `while`, `for`, `loop`, `break`, `continue`), pattern matching (`match` with static exhaustiveness), collections (`List`, `Tuple`, `Map`, `Set`), safe indexing, first-class lambdas, closures, higher-order functions, and pipeline integration.
 - **`0.0.7-s` — Type & Generic Foundation**: Generic types, generic functions, generic parameter and argument inference, explicit type arguments, type constraints, type aliases (`type UserId = Int`), union types (`type ID = Int | String`), first-class function types (`(Int) -> Int`), higher-order generic functions, contextual lambda typing, trait foundation (`trait Printable`, `impl Type: Trait`), static trait constraints, static trait resolution, and active `E4xxx` diagnostic family.
 - **`0.0.8-s` — Module & Package Foundation**: Canonical `.sr` source extension, `sr` CLI launcher, single-file and package modes, filesystem module mapping, `Seira.toml`, SHA-256 `Seira.lock`, `import`, `use`, aliases, `pub` visibility, `pub use` re-exports, cross-module types/generics/traits, circular dependency detection (`E6008`, `E6012`), path dependencies, workspace foundation, and active `E6xxx` diagnostic family.
-- **`0.0.9-s` — NOT STARTED**: Scheduled next in the Seed series.
+- **`0.0.9-s` — Standard Library & Core Contract Foundation**: Native `std` package, minimal global Prelude, `Option<T>` and `Result<T, E>` contracts, foundational traits (`Eq`, `Ord`, `Hash`, `Display`, `Debug`, `Clone`, `Default`, `Iterator`), collection contracts, lazy iterator pipelines, and initial in-memory test doubles.
+- **`0.0.10-s` — I/O & Resource Boundary Foundation v1.0**: Composable capabilities (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`), strict Byte/Text boundary (`Byte`, `Bytes`, `Char`, `String`), encoding foundation (UTF-8, ASCII, UTF-16, UTF-32), immutable `Path`, safe `File` lifecycle (open → use → close), deterministic `with` statement with strict LIFO cleanup, capability-separated memory streams (`MemoryReader`, `MemoryWriter`, `MemoryStream`), canonical built-in trait registry, Unicode scalar semantics, 388 tests, independent audit passed.
 
 ---
 
@@ -220,7 +221,7 @@ Seira adheres to a locked, staged versioning and milestone sequence:
 PHASE 0: DESIGN
   └── Architectural specifications and language axioms.
 
-PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [CURRENT PHASE]
+PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [COMPLETED MILESTONE: 0.0.10-s]
   ├── 0.0.1-s: Seed Foundation (Complete)
   ├── 0.0.2-s: Repository Architecture (Complete)
   ├── 0.0.3-s: Compiler Foundation (Complete)
@@ -229,9 +230,10 @@ PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [CURRENT PHASE]
   ├── 0.0.6-s: Data & Control Foundation (Complete)
   ├── 0.0.7-s: Type & Generic Foundation (Complete)
   ├── 0.0.8-s: Module & Package Foundation (Complete)
-  └── 0.0.9-s → 0.0.10-s: (Not Started)
+  ├── 0.0.9-s: Standard Library Foundation (Complete)
+  └── 0.0.10-s: I/O & Resource Boundary Foundation (Complete)
 
-PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)
+PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [NEXT PHASE]
   └── Toolchain maturation, intermediate representations, and effect checking.
 
 PHASE 3: ALPHA (0.1.0-alpha.x)
@@ -284,7 +286,7 @@ npm ci
 ```bash
 # Check version (canonical sr command)
 ./bin/sr --version
-# Output: Seira 0.0.8-s
+# Output: Seira 0.0.10-s
 
 # Inspect environment and active pipeline stages
 ./bin/sr info
