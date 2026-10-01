@@ -12,7 +12,7 @@ import { SEIRA_VERSION } from './version.ts';
 export function runInfo(): void {
   console.log('Seira Environment & Toolchain Information');
   console.log('========================================');
-  console.log(`Seira Version:         ${SEIRA_VERSION} (Module & Package Foundation)`);
+  console.log(`Seira Version:         ${SEIRA_VERSION} (Standard Library & Core Contract Foundation)`);
   console.log(`Language Axiom:        Everything is a Value. Programs are Transformations.`);
   console.log(`Host Platform:         ${platform()} (${arch()})`);
   console.log(`Host Node.js:          ${process.version}`);
@@ -27,10 +27,11 @@ export function runInfo(): void {
   console.log('  [x] Diagnostics:     Active (0.0.3-s, 0.0.6-s, 0.0.7-s, 0.0.8-s)');
   console.log('  [x] Module Manager:  Active (0.0.8-s)');
   console.log('  [x] Package Manager: Active (0.0.8-s)');
+  console.log('  [x] Standard Library: Active (0.0.9-s)');
   console.log('  [x] Compiler Driver: Active (0.0.3-s, 0.0.8-s)');
-  console.log('  [x] Resolver:        Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s)');
-  console.log('  [x] Typecheck:       Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s)');
-  console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s)');
+  console.log('  [x] Resolver:        Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s)');
+  console.log('  [x] Typecheck:       Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s)');
+  console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s)');
   console.log('  [ ] HIR:             Skeleton (Reserved: 0.0.11-d)');
   console.log('  [ ] MIR:             Skeleton (Reserved: 0.0.11-d)');
   console.log('  [ ] Native Codegen:  Skeleton (Reserved: 0.1.0-alpha)');

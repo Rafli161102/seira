@@ -1,0 +1,10 @@
+// Seira Standard Library: Result Contract
+// Module: std.result
+
+pub fn is_ok<T, E>(res: Result<T, E>) -> Bool => is_ok(res)
+
+pub fn is_err<T, E>(res: Result<T, E>) -> Bool => is_err(res)
+
+pub fn unwrap<T, E>(res: Result<T, E>) -> T => unwrap(res)
+
+pub fn expect<T, E>(res: Result<T, E>, msg: String) -> T => expect(res, msg)

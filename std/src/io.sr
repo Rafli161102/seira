@@ -1,0 +1,16 @@
+// Seira Standard Library: I/O & Memory Streams
+// Module: std.io
+
+pub trait Reader {
+    fn read(r: Reader, n: Int) -> Option<String>
+}
+
+pub trait Writer {
+    fn write(w: Writer, data: String) -> Result<Int, String>
+}
+
+pub fn new_memory_reader(content: String) -> MemoryReader => MemoryReader(content)
+
+pub fn new_memory_writer() -> MemoryWriter => MemoryWriter()
+
+pub fn new_memory_stream(initial: String) -> MemoryStream => MemoryStream(initial)

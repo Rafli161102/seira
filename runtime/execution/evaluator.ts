@@ -96,18 +96,37 @@ import {
   type RuntimeOutcome,
 } from './outcomes.ts';
 import {
+  collectIterator,
+  createEnumerateIterator,
+  createFilterIterator,
+  createListIterator,
+  createMapIterator,
+  createMapIteratorCombinator,
+  createMemoryReader,
+  createMemoryStream,
+  createMemoryWriter,
+  createResource,
+  createSetIterator,
+  createSkipIterator,
+  createTakeIterator,
+  createZipIterator,
+  foldIterator,
   formatRuntimeValue,
+  reduceIterator,
   rtBool,
   rtBuiltin,
+  rtByte,
   rtChar,
   rtErr,
   rtFloat,
   rtFunction,
   rtInt,
+  rtIterator,
   rtLambda,
   rtList,
   rtMap,
   rtModule,
+  rtNativeMethod,
   rtNone,
   rtOk,
   rtSet,
@@ -122,15 +141,21 @@ import {
   type BuiltinRuntimeValue,
   type FunctionRuntimeValue,
   type IntRuntimeValue,
+  type IteratorRuntimeValue,
   type ListRuntimeValue,
   type MapRuntimeValue,
   type ModuleRuntimeValue,
+  type NativeMethodRuntimeValue,
   type OptionRuntimeValue,
+  type ReaderRuntimeValue,
+  type ResourceRuntimeValue,
   type ResultRuntimeValue,
   type RuntimeValue,
   type SetRuntimeValue,
+  type StringRuntimeValue,
   type TupleRuntimeValue,
   type UIntRuntimeValue,
+  type WriterRuntimeValue,
 } from './values.ts';
 
 
@@ -621,16 +646,45 @@ export class Evaluator {
     const resOutcome = this.evaluateExpr(stmt.resource, env);
     if (isPanic(resOutcome)) return resOutcome;
 
+    const resVal = resOutcome.kind === 'Normal' || resOutcome.kind === 'Return'
+      ? resOutcome.value
+      : UNIT_VALUE;
+
     const blockEnv = env.child('with');
     if (stmt.alias) {
-      const resVal = resOutcome.kind === 'Normal' || resOutcome.kind === 'Return'
-        ? resOutcome.value
-        : UNIT_VALUE;
       blockEnv.define(stmt.alias, resVal, false);
     }
 
     const bodyOutcome = this.executeBlock(stmt.body, blockEnv);
-    // Resource cleanup boundary — architecture placeholder for 0.0.5-s
+
+    // Resource cleanup boundary (LIFO): release resource
+    let cleanupError: string | undefined;
+    if (resVal.tag === 'Resource') {
+      const res = resVal as ResourceRuntimeValue;
+      const closeResult = res.close();
+      if (!closeResult.isOk) {
+        cleanupError = formatRuntimeValue(closeResult.value);
+      }
+    }
+
+    if (isPanic(bodyOutcome)) {
+      if (cleanupError) {
+        return panicOutcome({
+          ...bodyOutcome.error,
+          message: `${bodyOutcome.error.message} (Also failed during resource cleanup: ${cleanupError})`,
+        });
+      }
+      return bodyOutcome;
+    }
+
+    if (cleanupError) {
+      return panicOutcome(invalidStateError(
+        `Resource cleanup error: ${cleanupError}`,
+        stmt.span,
+        this.ctx.config.fileName
+      ));
+    }
+
     return bodyOutcome;
   }
 
@@ -1155,7 +1209,7 @@ export class Evaluator {
   // ─── Call Expression ──────────────────────────────────────────────────────
 
   private evaluateCallExpr(expr: CallExpr, env: RuntimeEnvironment): RuntimeOutcome {
-    // If callee is a MemberExpr, check for method calls (e.g. set.contains, set.insert, set.remove, list/set.length())
+    // If callee is a MemberExpr, check for method calls or module exports
     if (expr.callee.kind === 'MemberExpr') {
       const member = expr.callee as MemberExpr;
       const targetOutcome = this.evaluateExpr(member.object, env);
@@ -1170,30 +1224,20 @@ export class Evaluator {
         args.push(argOutcome.value);
       }
 
-      if (target.tag === 'Set') {
-        const setVal = target as SetRuntimeValue;
-        if (member.property === 'contains') {
-          const item = args[0] ?? UNIT_VALUE;
-          const found = setVal.elements.some((elem) => runtimeValuesEqual(elem, item));
-          return normalOutcome(rtBool(found));
+      if (target.tag === 'Module') {
+        const mod = target as ModuleRuntimeValue;
+        const val = mod.exports.get(member.property);
+        if (val) {
+          return this.callFunctionValue(val, args, expr.span);
         }
-        if (member.property === 'insert') {
-          const item = args[0] ?? UNIT_VALUE;
-          return normalOutcome(rtSet([...setVal.elements, item]));
-        }
-        if (member.property === 'remove') {
-          const item = args[0] ?? UNIT_VALUE;
-          const newElems = setVal.elements.filter((elem) => !runtimeValuesEqual(elem, item));
-          return normalOutcome(rtSet(newElems));
-        }
-        if (member.property === 'length') {
-          return normalOutcome(rtInt(BigInt(setVal.elements.length)));
-        }
+        return panicOutcome(invalidStateError(
+          `Module '${mod.name}' has no exported symbol '${member.property}'.`,
+          expr.span, this.ctx.config.fileName
+        ));
       }
 
-      if (target.tag === 'List' && member.property === 'length') {
-        return normalOutcome(rtInt(BigInt((target as ListRuntimeValue).elements.length)));
-      }
+      const methodResult = this.callMethod(target, member.property, args, expr.span, env);
+      if (methodResult !== null) return methodResult;
     }
 
     // If callee is an Identifier, resolve by name (handles built-ins and hoisted functions directly)
@@ -1273,6 +1317,16 @@ export class Evaluator {
 
     if (callee.tag === 'Unit') {
       return normalOutcome(UNIT_VALUE);
+    }
+
+    if (callee.tag === 'NativeMethod') {
+      const nm = callee as NativeMethodRuntimeValue;
+      const res = this.callMethod(nm.target, nm.methodName, args, span);
+      if (res !== null) return res;
+      return panicOutcome(unsupportedOperationError(
+        `Method '${nm.methodName}' on ${nm.target.tag}`,
+        span, this.ctx.config.fileName
+      ));
     }
 
     if (callee.tag !== 'Function') {
@@ -1373,6 +1427,634 @@ export class Evaluator {
     return outcome;
   }
 
+  // ─── Standard Method Dispatch ─────────────────────────────────────────────
+
+  private isKnownMethod(tag: string, property: string): boolean {
+    switch (tag) {
+      case 'Option':
+        return [
+          'is_some',
+          'is_none',
+          'unwrap',
+          'expect',
+          'unwrap_or',
+          'unwrap_or_else',
+          'map',
+          'and_then',
+          'or_else',
+        ].includes(property);
+      case 'Result':
+        return [
+          'is_ok',
+          'is_err',
+          'unwrap',
+          'expect',
+          'unwrap_or',
+          'unwrap_or_else',
+          'map',
+          'map_err',
+          'and_then',
+          'or_else',
+        ].includes(property);
+      case 'List':
+        return [
+          'length',
+          'is_empty',
+          'first',
+          'last',
+          'get',
+          'push',
+          'contains',
+          'iter',
+          'map',
+          'filter',
+          'reverse',
+        ].includes(property);
+      case 'Map':
+        return [
+          'length',
+          'is_empty',
+          'get',
+          'contains',
+          'insert',
+          'remove',
+          'keys',
+          'values',
+          'iter',
+        ].includes(property);
+      case 'Set':
+        return ['length', 'is_empty', 'contains', 'insert', 'remove', 'iter'].includes(property);
+      case 'String':
+        return [
+          'length',
+          'is_empty',
+          'contains',
+          'starts_with',
+          'ends_with',
+          'trim',
+          'split',
+          'replace',
+          'chars',
+          'bytes',
+        ].includes(property);
+      case 'Iterator':
+        return [
+          'next',
+          'map',
+          'filter',
+          'take',
+          'skip',
+          'enumerate',
+          'zip',
+          'fold',
+          'reduce',
+          'collect',
+        ].includes(property);
+      case 'Reader':
+        return ['read', 'read_all', 'is_eof', 'seek', 'write', 'get_content', 'clear', 'length', 'is_empty', 'position', 'reset'].includes(property);
+      case 'Writer':
+        return ['write', 'get_content', 'clear', 'length'].includes(property);
+      case 'Resource':
+        return ['close', 'is_closed'].includes(property);
+      default:
+        return false;
+    }
+  }
+
+  private callMethod(
+    target: RuntimeValue,
+    methodName: string,
+    args: RuntimeValue[],
+    span?: Span,
+    _env?: RuntimeEnvironment
+  ): RuntimeOutcome | null {
+    switch (target.tag) {
+      case 'Option': {
+        const opt = target as OptionRuntimeValue;
+        switch (methodName) {
+          case 'is_some':
+            return normalOutcome(rtBool(opt.isSome));
+          case 'is_none':
+            return normalOutcome(rtBool(!opt.isSome));
+          case 'unwrap': {
+            if (opt.isSome && opt.inner !== undefined) {
+              return normalOutcome(opt.inner);
+            }
+            return panicOutcome(unsupportedOperationError(
+              'Called unwrap on a None value.',
+              span,
+              this.ctx.config.fileName
+            ));
+          }
+          case 'expect': {
+            if (opt.isSome && opt.inner !== undefined) {
+              return normalOutcome(opt.inner);
+            }
+            const msg = args.length > 0 ? formatRuntimeValue(args[0]) : 'called expect on a None value';
+            return panicOutcome(unsupportedOperationError(
+              `${msg}: called expect on a None value`,
+              span,
+              this.ctx.config.fileName
+            ));
+          }
+          case 'unwrap_or': {
+            if (opt.isSome && opt.inner !== undefined) {
+              return normalOutcome(opt.inner);
+            }
+            return normalOutcome(args[0] ?? UNIT_VALUE);
+          }
+          case 'unwrap_or_else': {
+            if (opt.isSome && opt.inner !== undefined) {
+              return normalOutcome(opt.inner);
+            }
+            if (args.length > 0) {
+              return this.callFunctionValue(args[0], [], span);
+            }
+            return normalOutcome(UNIT_VALUE);
+          }
+          case 'map': {
+            if (!opt.isSome || opt.inner === undefined) {
+              return normalOutcome(rtNone);
+            }
+            if (args.length > 0) {
+              const res = this.callFunctionValue(args[0], [opt.inner], span);
+              if (res.kind !== 'Normal') return res;
+              return normalOutcome(rtSome(res.value));
+            }
+            return normalOutcome(rtNone);
+          }
+          case 'and_then': {
+            if (!opt.isSome || opt.inner === undefined) {
+              return normalOutcome(rtNone);
+            }
+            if (args.length > 0) {
+              return this.callFunctionValue(args[0], [opt.inner], span);
+            }
+            return normalOutcome(rtNone);
+          }
+          case 'or_else': {
+            if (opt.isSome) {
+              return normalOutcome(opt);
+            }
+            if (args.length > 0) {
+              return this.callFunctionValue(args[0], [], span);
+            }
+            return normalOutcome(opt);
+          }
+          default:
+            return null;
+        }
+      }
+
+      case 'Result': {
+        const res = target as ResultRuntimeValue;
+        switch (methodName) {
+          case 'is_ok':
+            return normalOutcome(rtBool(res.isOk));
+          case 'is_err':
+            return normalOutcome(rtBool(!res.isOk));
+          case 'unwrap': {
+            if (res.isOk) {
+              return normalOutcome(res.value);
+            }
+            return panicOutcome(unsupportedOperationError(
+              `Called unwrap on an Err value: ${formatRuntimeValue(res.value)}`,
+              span,
+              this.ctx.config.fileName
+            ));
+          }
+          case 'expect': {
+            if (res.isOk) {
+              return normalOutcome(res.value);
+            }
+            const msg = args.length > 0 ? formatRuntimeValue(args[0]) : 'called expect on an Err';
+            return panicOutcome(unsupportedOperationError(
+              `${msg}: ${formatRuntimeValue(res.value)}`,
+              span,
+              this.ctx.config.fileName
+            ));
+          }
+          case 'unwrap_or': {
+            if (res.isOk) {
+              return normalOutcome(res.value);
+            }
+            return normalOutcome(args[0] ?? UNIT_VALUE);
+          }
+          case 'unwrap_or_else': {
+            if (res.isOk) {
+              return normalOutcome(res.value);
+            }
+            if (args.length > 0) {
+              return this.callFunctionValue(args[0], [res.value], span);
+            }
+            return normalOutcome(UNIT_VALUE);
+          }
+          case 'map': {
+            if (!res.isOk) {
+              return normalOutcome(res);
+            }
+            if (args.length > 0) {
+              const mapped = this.callFunctionValue(args[0], [res.value], span);
+              if (mapped.kind !== 'Normal') return mapped;
+              return normalOutcome(rtOk(mapped.value));
+            }
+            return normalOutcome(res);
+          }
+          case 'map_err': {
+            if (res.isOk) {
+              return normalOutcome(res);
+            }
+            if (args.length > 0) {
+              const mapped = this.callFunctionValue(args[0], [res.value], span);
+              if (mapped.kind !== 'Normal') return mapped;
+              return normalOutcome(rtErr(mapped.value));
+            }
+            return normalOutcome(res);
+          }
+          case 'and_then': {
+            if (!res.isOk) {
+              return normalOutcome(res);
+            }
+            if (args.length > 0) {
+              return this.callFunctionValue(args[0], [res.value], span);
+            }
+            return normalOutcome(res);
+          }
+          case 'or_else': {
+            if (res.isOk) {
+              return normalOutcome(res);
+            }
+            if (args.length > 0) {
+              return this.callFunctionValue(args[0], [res.value], span);
+            }
+            return normalOutcome(res);
+          }
+          default:
+            return null;
+        }
+      }
+
+      case 'List': {
+        const list = target as ListRuntimeValue;
+        switch (methodName) {
+          case 'length':
+            return normalOutcome(rtInt(BigInt(list.elements.length)));
+          case 'is_empty':
+            return normalOutcome(rtBool(list.elements.length === 0));
+          case 'first':
+            return normalOutcome(list.elements.length > 0 ? rtSome(list.elements[0]) : rtNone);
+          case 'last':
+            return normalOutcome(list.elements.length > 0 ? rtSome(list.elements[list.elements.length - 1]) : rtNone);
+          case 'get': {
+            if (args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')) {
+              const idx = Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value);
+              if (idx >= 0 && idx < list.elements.length) {
+                return normalOutcome(rtSome(list.elements[idx]));
+              }
+            }
+            return normalOutcome(rtNone);
+          }
+          case 'push': {
+            const item = args[0] ?? UNIT_VALUE;
+            return normalOutcome(rtList([...list.elements, item]));
+          }
+          case 'contains': {
+            const item = args[0] ?? UNIT_VALUE;
+            const found = list.elements.some((e) => runtimeValuesEqual(e, item));
+            return normalOutcome(rtBool(found));
+          }
+          case 'iter':
+            return normalOutcome(createListIterator(list));
+          case 'map': {
+            if (args.length > 0) {
+              const mapped: RuntimeValue[] = [];
+              for (const elem of list.elements) {
+                const res = this.callFunctionValue(args[0], [elem], span);
+                if (res.kind !== 'Normal') return res;
+                mapped.push(res.value);
+              }
+              return normalOutcome(rtList(mapped));
+            }
+            return normalOutcome(list);
+          }
+          case 'filter': {
+            if (args.length > 0) {
+              const filtered: RuntimeValue[] = [];
+              for (const elem of list.elements) {
+                const res = this.callFunctionValue(args[0], [elem], span);
+                if (res.kind !== 'Normal') return res;
+                if (res.value.tag === 'Bool' && (res.value as BoolRuntimeValue).value) {
+                  filtered.push(elem);
+                }
+              }
+              return normalOutcome(rtList(filtered));
+            }
+            return normalOutcome(list);
+          }
+          case 'reverse':
+            return normalOutcome(rtList([...list.elements].reverse()));
+          default:
+            return null;
+        }
+      }
+
+      case 'Map': {
+        const map = target as MapRuntimeValue;
+        switch (methodName) {
+          case 'length':
+            return normalOutcome(rtInt(BigInt(map.entries.length)));
+          case 'is_empty':
+            return normalOutcome(rtBool(map.entries.length === 0));
+          case 'get': {
+            const key = args[0] ?? UNIT_VALUE;
+            const entry = map.entries.find((e) => runtimeValuesEqual(e.key, key));
+            return normalOutcome(entry ? rtSome(entry.value) : rtNone);
+          }
+          case 'contains': {
+            const key = args[0] ?? UNIT_VALUE;
+            const found = map.entries.some((e) => runtimeValuesEqual(e.key, key));
+            return normalOutcome(rtBool(found));
+          }
+          case 'insert': {
+            const key = args[0] ?? UNIT_VALUE;
+            const value = args[1] ?? UNIT_VALUE;
+            const filtered = map.entries.filter((e) => !runtimeValuesEqual(e.key, key));
+            return normalOutcome(rtMap([...filtered, { key, value }]));
+          }
+          case 'remove': {
+            const key = args[0] ?? UNIT_VALUE;
+            const filtered = map.entries.filter((e) => !runtimeValuesEqual(e.key, key));
+            return normalOutcome(rtMap(filtered));
+          }
+          case 'keys':
+            return normalOutcome(rtList(map.entries.map((e) => e.key)));
+          case 'values':
+            return normalOutcome(rtList(map.entries.map((e) => e.value)));
+          case 'iter':
+            return normalOutcome(createMapIterator(map));
+          default:
+            return null;
+        }
+      }
+
+      case 'Set': {
+        const setVal = target as SetRuntimeValue;
+        switch (methodName) {
+          case 'length':
+            return normalOutcome(rtInt(BigInt(setVal.elements.length)));
+          case 'is_empty':
+            return normalOutcome(rtBool(setVal.elements.length === 0));
+          case 'contains': {
+            const item = args[0] ?? UNIT_VALUE;
+            const found = setVal.elements.some((elem) => runtimeValuesEqual(elem, item));
+            return normalOutcome(rtBool(found));
+          }
+          case 'insert': {
+            const item = args[0] ?? UNIT_VALUE;
+            return normalOutcome(rtSet([...setVal.elements, item]));
+          }
+          case 'remove': {
+            const item = args[0] ?? UNIT_VALUE;
+            const newElems = setVal.elements.filter((elem) => !runtimeValuesEqual(elem, item));
+            return normalOutcome(rtSet(newElems));
+          }
+          case 'iter':
+            return normalOutcome(createSetIterator(setVal));
+          default:
+            return null;
+        }
+      }
+
+      case 'String': {
+        const str = (target as StringRuntimeValue).value;
+        switch (methodName) {
+          case 'length':
+            return normalOutcome(rtInt(BigInt(str.length)));
+          case 'is_empty':
+            return normalOutcome(rtBool(str.length === 0));
+          case 'contains': {
+            const sub = args[0] && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(rtBool(str.includes(sub)));
+          }
+          case 'starts_with': {
+            const prefix = args[0] && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(rtBool(str.startsWith(prefix)));
+          }
+          case 'ends_with': {
+            const suffix = args[0] && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(rtBool(str.endsWith(suffix)));
+          }
+          case 'trim':
+            return normalOutcome(rtString(str.trim()));
+          case 'split': {
+            const sep = args[0] && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(rtList(str.split(sep).map((s) => rtString(s))));
+          }
+          case 'replace': {
+            const from = args[0] && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            const to = args[1] && args[1].tag === 'String' ? (args[1] as StringRuntimeValue).value : '';
+            return normalOutcome(rtString(str.split(from).join(to)));
+          }
+          case 'chars':
+            return normalOutcome(rtList(Array.from(str).map((c) => rtChar(c))));
+          case 'bytes': {
+            const buf = Buffer.from(str, 'utf-8');
+            return normalOutcome(rtList(Array.from(buf).map((b) => rtByte(b))));
+          }
+          default:
+            return null;
+        }
+      }
+
+      case 'Iterator': {
+        const iter = target as IteratorRuntimeValue;
+        switch (methodName) {
+          case 'next':
+            return normalOutcome(iter.next());
+          case 'map': {
+            if (args.length === 0) return normalOutcome(iter);
+            const fn = args[0];
+            return normalOutcome(
+              createMapIteratorCombinator(iter, (item) => {
+                const res = this.callFunctionValue(fn, [item], span);
+                return res.kind === 'Normal' ? res.value : UNIT_VALUE;
+              })
+            );
+          }
+          case 'filter': {
+            if (args.length === 0) return normalOutcome(iter);
+            const fn = args[0];
+            return normalOutcome(
+              createFilterIterator(iter, (item) => {
+                const res = this.callFunctionValue(fn, [item], span);
+                return res.kind === 'Normal' && res.value.tag === 'Bool' && (res.value as BoolRuntimeValue).value;
+              })
+            );
+          }
+          case 'take': {
+            const count = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : 0;
+            return normalOutcome(createTakeIterator(iter, count));
+          }
+          case 'skip': {
+            const count = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : 0;
+            return normalOutcome(createSkipIterator(iter, count));
+          }
+          case 'enumerate':
+            return normalOutcome(createEnumerateIterator(iter));
+          case 'zip': {
+            const otherVal = args[0];
+            const other: IteratorRuntimeValue = otherVal && otherVal.tag === 'Iterator'
+              ? (otherVal as IteratorRuntimeValue)
+              : (otherVal && otherVal.tag === 'List'
+                  ? createListIterator(otherVal as ListRuntimeValue)
+                  : (otherVal && otherVal.tag === 'Set'
+                      ? createSetIterator(otherVal as SetRuntimeValue)
+                      : (otherVal && otherVal.tag === 'Map'
+                          ? createMapIterator(otherVal as MapRuntimeValue)
+                          : otherVal as unknown as IteratorRuntimeValue)));
+            return normalOutcome(createZipIterator(iter, other));
+          }
+          case 'fold': {
+            let current = args[0] ?? UNIT_VALUE;
+            const fn = args[1];
+            while (true) {
+              const item = iter.next();
+              if (!item.isSome) break;
+              const step = this.callFunctionValue(fn, [current, item.inner!], span);
+              if (step.kind !== 'Normal') return step;
+              current = step.value;
+            }
+            return normalOutcome(current);
+          }
+          case 'reduce': {
+            const first = iter.next();
+            if (!first.isSome) return normalOutcome(rtNone);
+            let current = first.inner!;
+            const fn = args[0];
+            while (true) {
+              const item = iter.next();
+              if (!item.isSome) break;
+              const step = this.callFunctionValue(fn, [current, item.inner!], span);
+              if (step.kind !== 'Normal') return step;
+              current = step.value;
+            }
+            return normalOutcome(rtSome(current));
+          }
+          case 'collect':
+            return normalOutcome(collectIterator(iter));
+          default:
+            return null;
+        }
+      }
+
+      case 'Reader': {
+        const reader = target as ReaderRuntimeValue;
+        switch (methodName) {
+          case 'read': {
+            const n = args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')
+              ? Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value)
+              : undefined;
+            return normalOutcome(reader.read(n));
+          }
+          case 'read_all':
+            return normalOutcome(rtString(reader.readAll()));
+          case 'is_eof':
+            return normalOutcome(rtBool(reader.isEof()));
+          case 'seek': {
+            if (reader.seek && args.length > 0 && (args[0].tag === 'Int' || args[0].tag === 'UInt')) {
+              reader.seek(Number((args[0] as IntRuntimeValue | UIntRuntimeValue).value));
+            }
+            return normalOutcome(UNIT_VALUE);
+          }
+          case 'write': {
+            if ('write' in reader && typeof (reader as any).write === 'function') {
+              const str = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+              return normalOutcome((reader as any).write(str));
+            }
+            return null;
+          }
+          case 'get_content': {
+            if ('getContent' in reader && typeof (reader as any).getContent === 'function') {
+              return normalOutcome(rtString((reader as any).getContent()));
+            }
+            return null;
+          }
+          case 'clear': {
+            if ('clear' in reader && typeof (reader as any).clear === 'function') {
+              (reader as any).clear();
+              return normalOutcome(UNIT_VALUE);
+            }
+            return null;
+          }
+          case 'length': {
+            if ('length' in reader && typeof (reader as any).length === 'function') {
+              return normalOutcome(rtInt(BigInt((reader as any).length())));
+            }
+            return null;
+          }
+          case 'is_empty': {
+            if (reader.isEmpty) {
+              return normalOutcome(rtBool(reader.isEmpty()));
+            }
+            return normalOutcome(rtBool(reader.isEof()));
+          }
+          case 'position': {
+            if (reader.position) {
+              return normalOutcome(rtInt(BigInt(reader.position())));
+            }
+            return normalOutcome(rtInt(0n));
+          }
+          case 'reset': {
+            if (reader.reset) {
+              reader.reset();
+            }
+            return normalOutcome(UNIT_VALUE);
+          }
+          default:
+            return null;
+        }
+      }
+
+      case 'Writer': {
+        const writer = target as WriterRuntimeValue;
+        switch (methodName) {
+          case 'write': {
+            const str = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+            return normalOutcome(writer.write(str));
+          }
+          case 'get_content':
+            return normalOutcome(rtString(writer.getContent()));
+          case 'clear':
+            writer.clear();
+            return normalOutcome(UNIT_VALUE);
+          case 'length':
+            return normalOutcome(rtInt(BigInt(writer.length())));
+          default:
+            return null;
+        }
+      }
+
+      case 'Resource': {
+        const res = target as ResourceRuntimeValue;
+        switch (methodName) {
+          case 'close':
+            return normalOutcome(res.close());
+          case 'is_closed':
+            return normalOutcome(rtBool(res.isClosed()));
+          default:
+            return null;
+        }
+      }
+
+      default:
+        return null;
+    }
+  }
+
   // ─── Assignment Expression ────────────────────────────────────────────────
 
   private evaluateAssignmentExpr(expr: AssignmentExpr, env: RuntimeEnvironment): RuntimeOutcome {
@@ -1449,7 +2131,13 @@ export class Evaluator {
         return normalOutcome(rtInt(BigInt((target as MapRuntimeValue).entries.length)));
       }
       if (target.tag === 'String') {
-        return normalOutcome(rtInt(BigInt(target.value.length)));
+        return normalOutcome(rtInt(BigInt((target as StringRuntimeValue).value.length)));
+      }
+      if (target.tag === 'Writer') {
+        return normalOutcome(rtInt(BigInt((target as WriterRuntimeValue).length())));
+      }
+      if (target.tag === 'Reader' && 'length' in target && typeof (target as any).length === 'function') {
+        return normalOutcome(rtInt(BigInt((target as any).length())));
       }
     }
 
@@ -1464,6 +2152,10 @@ export class Evaluator {
         `Module '${mod.name}' has no exported symbol '${expr.property}'.`,
         expr.span, this.ctx.config.fileName
       ));
+    }
+
+    if (this.isKnownMethod(target.tag, expr.property)) {
+      return normalOutcome(rtNativeMethod(target, expr.property));
     }
 
     return panicOutcome(unsupportedOperationError(
@@ -1655,6 +2347,21 @@ export class Evaluator {
       ));
     }
 
+    if (targetVal.tag === 'Tuple') {
+      const tuple = targetVal as TupleRuntimeValue;
+      if (indexVal.tag === 'Int' || indexVal.tag === 'UInt') {
+        const idx = Number((indexVal as IntRuntimeValue | UIntRuntimeValue).value);
+        if (idx >= 0 && idx < tuple.elements.length) {
+          return normalOutcome(rtSome(tuple.elements[idx]));
+        }
+        return normalOutcome(rtNone);
+      }
+      return panicOutcome(invalidStateError(
+        `Tuple index must be an integer, got ${indexVal.tag}.`,
+        expr.index.span, this.ctx.config.fileName
+      ));
+    }
+
     if (targetVal.tag === 'Map') {
       const map = targetVal as MapRuntimeValue;
       const entry = map.entries.find((e) => runtimeValuesEqual(e.key, indexVal));
@@ -1662,6 +2369,21 @@ export class Evaluator {
         return normalOutcome(rtSome(entry.value));
       }
       return normalOutcome(rtNone);
+    }
+
+    if (targetVal.tag === 'String') {
+      const str = (targetVal as StringRuntimeValue).value;
+      if (indexVal.tag === 'Int' || indexVal.tag === 'UInt') {
+        const idx = Number((indexVal as IntRuntimeValue | UIntRuntimeValue).value);
+        if (idx >= 0 && idx < str.length) {
+          return normalOutcome(rtSome(rtChar(str[idx])));
+        }
+        return normalOutcome(rtNone);
+      }
+      return panicOutcome(invalidStateError(
+        `String index must be an integer, got ${indexVal.tag}.`,
+        expr.index.span, this.ctx.config.fileName
+      ));
     }
 
     return panicOutcome(invalidStateError(
@@ -1734,7 +2456,178 @@ export class Evaluator {
       }
 
       case 'open_resource': {
-        return normalOutcome(rtInt(1n));
+        const resName = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : 'resource';
+        return normalOutcome(createResource(resName));
+      }
+
+      case 'MemoryReader': {
+        const content = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+        return normalOutcome(createMemoryReader(content));
+      }
+
+      case 'MemoryWriter': {
+        return normalOutcome(createMemoryWriter());
+      }
+
+      case 'MemoryStream': {
+        const initial = args.length > 0 && args[0].tag === 'String' ? (args[0] as StringRuntimeValue).value : '';
+        return normalOutcome(createMemoryStream(initial));
+      }
+
+      case 'Set': {
+        if (args.length === 0) return normalOutcome(rtSet([]));
+        const first = args[0];
+        if (first.tag === 'List') {
+          return normalOutcome(rtSet((first as ListRuntimeValue).elements));
+        }
+        if (first.tag === 'Set') {
+          return normalOutcome(first);
+        }
+        return normalOutcome(rtSet(args));
+      }
+
+      case 'iter': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        if (target.tag === 'Iterator') return normalOutcome(target);
+        if (target.tag === 'List') return normalOutcome(createListIterator(target as ListRuntimeValue));
+        if (target.tag === 'Map') return normalOutcome(createMapIterator(target as MapRuntimeValue));
+        if (target.tag === 'Set') return normalOutcome(createSetIterator(target as SetRuntimeValue));
+        return normalOutcome(target);
+      }
+
+      case 'collect': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtList([]));
+        if (target.tag === 'Iterator') return normalOutcome(collectIterator(target as IteratorRuntimeValue));
+        if (target.tag === 'List') return normalOutcome(target);
+        return normalOutcome(target);
+      }
+
+      case 'filter': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'filter', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(target);
+      }
+
+      case 'map': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'map', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(target);
+      }
+
+      case 'take': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'take', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(target);
+      }
+
+      case 'skip': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'skip', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(target);
+      }
+
+      case 'enumerate': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'enumerate', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(target);
+      }
+
+      case 'zip': {
+        const a = args[0];
+        const b = args[1];
+        if (!a || !b) return normalOutcome(rtNone);
+        const itA = a.tag === 'Iterator' ? a : (a.tag === 'List' ? createListIterator(a as ListRuntimeValue) : a);
+        const itB = b.tag === 'Iterator' ? b : (b.tag === 'List' ? createListIterator(b as ListRuntimeValue) : b);
+        const methodRes = this.callMethod(itA, 'zip', [itB], span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(a);
+      }
+
+      case 'fold': {
+        const target = args[0];
+        if (!target) return normalOutcome(UNIT_VALUE);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'fold', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(args[1] ?? UNIT_VALUE);
+      }
+
+      case 'reduce': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtNone);
+        const it = target.tag === 'Iterator' ? target : (target.tag === 'List' ? createListIterator(target as ListRuntimeValue) : target);
+        const methodRes = this.callMethod(it, 'reduce', args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(rtNone);
+      }
+
+      case 'is_some': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtBool(false));
+        return this.callMethod(target, 'is_some', [], span) ?? normalOutcome(rtBool(false));
+      }
+
+      case 'is_none': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtBool(true));
+        return this.callMethod(target, 'is_none', [], span) ?? normalOutcome(rtBool(true));
+      }
+
+      case 'is_ok': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtBool(false));
+        return this.callMethod(target, 'is_ok', [], span) ?? normalOutcome(rtBool(false));
+      }
+
+      case 'is_err': {
+        const target = args[0];
+        if (!target) return normalOutcome(rtBool(false));
+        return this.callMethod(target, 'is_err', [], span) ?? normalOutcome(rtBool(false));
+      }
+
+      case 'unwrap': {
+        const target = args[0];
+        if (!target) return panicOutcome(invalidStateError('unwrap requires an argument', span, this.ctx.config.fileName));
+        return this.callMethod(target, 'unwrap', [], span) ?? panicOutcome(unsupportedOperationError(`unwrap on ${target.tag}`, span, this.ctx.config.fileName));
+      }
+
+      case 'expect': {
+        const target = args[0];
+        if (!target) return panicOutcome(invalidStateError('expect requires an argument', span, this.ctx.config.fileName));
+        return this.callMethod(target, 'expect', args.slice(1), span) ?? panicOutcome(unsupportedOperationError(`expect on ${target.tag}`, span, this.ctx.config.fileName));
+      }
+
+      case 'unwrap_or':
+      case 'unwrap_or_else':
+      case 'map_err':
+      case 'and_then':
+      case 'or_else':
+      case 'trim':
+      case 'replace':
+      case 'split':
+      case 'contains': {
+        const target = args[0];
+        if (!target) return normalOutcome(UNIT_VALUE);
+        const methodRes = this.callMethod(target, name, args.slice(1), span);
+        if (methodRes !== null) return methodRes;
+        return normalOutcome(target);
       }
 
       default:

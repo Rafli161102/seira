@@ -364,7 +364,56 @@ export class TypeChecker {
     const typeName =
       type.kind === 'Custom' ? type.name : type.kind === 'Primitive' ? type.name : formatType(type);
     const implemented = this.implementations.get(typeName);
-    return implemented ? implemented.has(constraintName) : false;
+    if (implemented && implemented.has(constraintName)) return true;
+
+    // Standard trait satisfaction for built-in types
+    if (constraintName === 'Debug') return true;
+    if (constraintName === 'Clone' || constraintName === 'Eq') {
+      return (
+        ['Int', 'UInt', 'Float', 'Bool', 'Char', 'String', 'Byte', 'Unit', 'List', 'Tuple', 'Map', 'Set', 'Option', 'Result'].includes(typeName) ||
+        type.kind === 'List' ||
+        type.kind === 'Tuple' ||
+        type.kind === 'Map' ||
+        type.kind === 'Set' ||
+        type.kind === 'Option' ||
+        type.kind === 'Result'
+      );
+    }
+    if (constraintName === 'Ord') {
+      return ['Int', 'UInt', 'Float', 'Char', 'String', 'Byte'].includes(typeName);
+    }
+    if (constraintName === 'Hash') {
+      return (
+        ['Int', 'UInt', 'Bool', 'Char', 'String', 'Byte', 'Tuple', 'List', 'Set', 'Map'].includes(typeName) ||
+        type.kind === 'Tuple' ||
+        type.kind === 'List' ||
+        type.kind === 'Set' ||
+        type.kind === 'Map'
+      );
+    }
+    if (constraintName === 'Display') {
+      return ['Int', 'UInt', 'Float', 'Bool', 'Char', 'String', 'Byte', 'Unit'].includes(typeName);
+    }
+    if (constraintName === 'Default') {
+      return (
+        ['Int', 'UInt', 'Float', 'Bool', 'String', 'Unit'].includes(typeName) ||
+        type.kind === 'List' ||
+        type.kind === 'Map' ||
+        type.kind === 'Set' ||
+        type.kind === 'Option'
+      );
+    }
+    if (constraintName === 'Iterator') {
+      return typeName === 'Iterator';
+    }
+    if (constraintName === 'Reader') {
+      return ['Reader', 'MemoryReader', 'MemoryStream'].includes(typeName);
+    }
+    if (constraintName === 'Writer') {
+      return ['Writer', 'MemoryWriter', 'MemoryStream'].includes(typeName);
+    }
+
+    return false;
   }
 
   private checkFunctionDecl(fn: FunctionDecl): void {
@@ -981,23 +1030,249 @@ export class TypeChecker {
             );
             resultType = UNKNOWN_TYPE;
           }
+        } else if (objType.kind === 'Option') {
+          switch (mem.property) {
+            case 'is_some':
+            case 'is_none':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'unwrap':
+              resultType = createFunctionType([], objType.inner);
+              break;
+            case 'expect':
+              resultType = createFunctionType([STRING_TYPE], objType.inner);
+              break;
+            case 'unwrap_or':
+              resultType = createFunctionType([objType.inner], objType.inner);
+              break;
+            case 'unwrap_or_else':
+              resultType = createFunctionType([createFunctionType([], objType.inner)], objType.inner);
+              break;
+            case 'map':
+              resultType = createFunctionType([createFunctionType([objType.inner], UNKNOWN_TYPE)], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'and_then':
+              resultType = createFunctionType([createFunctionType([objType.inner], createOptionType(UNKNOWN_TYPE))], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'or_else':
+              resultType = createFunctionType([createFunctionType([], objType)], objType);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Result') {
+          switch (mem.property) {
+            case 'is_ok':
+            case 'is_err':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'unwrap':
+              resultType = createFunctionType([], objType.ok);
+              break;
+            case 'expect':
+              resultType = createFunctionType([STRING_TYPE], objType.ok);
+              break;
+            case 'unwrap_or':
+              resultType = createFunctionType([objType.ok], objType.ok);
+              break;
+            case 'unwrap_or_else':
+              resultType = createFunctionType([createFunctionType([objType.err], objType.ok)], objType.ok);
+              break;
+            case 'map':
+              resultType = createFunctionType([createFunctionType([objType.ok], UNKNOWN_TYPE)], createResultType(UNKNOWN_TYPE, objType.err));
+              break;
+            case 'map_err':
+              resultType = createFunctionType([createFunctionType([objType.err], UNKNOWN_TYPE)], createResultType(objType.ok, UNKNOWN_TYPE));
+              break;
+            case 'and_then':
+              resultType = createFunctionType([createFunctionType([objType.ok], createResultType(UNKNOWN_TYPE, objType.err))], createResultType(UNKNOWN_TYPE, objType.err));
+              break;
+            case 'or_else':
+              resultType = createFunctionType([createFunctionType([objType.err], createResultType(objType.ok, UNKNOWN_TYPE))], createResultType(objType.ok, UNKNOWN_TYPE));
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
         } else if (objType.kind === 'Set') {
           if (mem.property === 'length') {
             resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
           } else if (mem.property === 'contains') {
             resultType = createFunctionType([objType.element], BOOL_TYPE);
           } else if (mem.property === 'insert') {
             resultType = createFunctionType([objType.element], objType);
           } else if (mem.property === 'remove') {
             resultType = createFunctionType([objType.element], objType);
+          } else if (mem.property === 'iter') {
+            resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
           } else {
             resultType = UNKNOWN_TYPE;
           }
         } else if (objType.kind === 'List') {
           if (mem.property === 'length') {
             resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
+          } else if (mem.property === 'first' || mem.property === 'last') {
+            resultType = createFunctionType([], createOptionType(objType.element));
+          } else if (mem.property === 'get') {
+            resultType = createFunctionType([INT_TYPE], createOptionType(objType.element));
+          } else if (mem.property === 'push') {
+            resultType = createFunctionType([objType.element], objType);
+          } else if (mem.property === 'contains') {
+            resultType = createFunctionType([objType.element], BOOL_TYPE);
+          } else if (mem.property === 'iter') {
+            resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
+          } else if (mem.property === 'map') {
+            resultType = createFunctionType([createFunctionType([objType.element], UNKNOWN_TYPE)], { kind: 'List', element: UNKNOWN_TYPE });
+          } else if (mem.property === 'filter') {
+            resultType = createFunctionType([createFunctionType([objType.element], BOOL_TYPE)], objType);
+          } else if (mem.property === 'reverse') {
+            resultType = createFunctionType([], objType);
           } else {
             resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Map') {
+          if (mem.property === 'length') {
+            resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
+          } else if (mem.property === 'get') {
+            resultType = createFunctionType([objType.key], createOptionType(objType.value));
+          } else if (mem.property === 'contains') {
+            resultType = createFunctionType([objType.key], BOOL_TYPE);
+          } else if (mem.property === 'insert') {
+            resultType = createFunctionType([objType.key, objType.value], objType);
+          } else if (mem.property === 'remove') {
+            resultType = createFunctionType([objType.key], objType);
+          } else if (mem.property === 'keys') {
+            resultType = createFunctionType([], { kind: 'List', element: objType.key });
+          } else if (mem.property === 'values') {
+            resultType = createFunctionType([], { kind: 'List', element: objType.value });
+          } else if (mem.property === 'iter') {
+            resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
+          } else {
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (isString(objType)) {
+          if (mem.property === 'length') {
+            resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
+          } else if (mem.property === 'contains' || mem.property === 'starts_with' || mem.property === 'ends_with') {
+            resultType = createFunctionType([STRING_TYPE], BOOL_TYPE);
+          } else if (mem.property === 'trim') {
+            resultType = createFunctionType([], STRING_TYPE);
+          } else if (mem.property === 'split') {
+            resultType = createFunctionType([STRING_TYPE], { kind: 'List', element: STRING_TYPE });
+          } else if (mem.property === 'replace') {
+            resultType = createFunctionType([STRING_TYPE, STRING_TYPE], STRING_TYPE);
+          } else if (mem.property === 'chars') {
+            resultType = createFunctionType([], { kind: 'List', element: CHAR_TYPE });
+          } else if (mem.property === 'bytes') {
+            resultType = createFunctionType([], { kind: 'List', element: BYTE_TYPE });
+          } else {
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Iterator') {
+          switch (mem.property) {
+            case 'next':
+              resultType = createFunctionType([], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'map':
+              resultType = createFunctionType([createFunctionType([UNKNOWN_TYPE], UNKNOWN_TYPE)], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'filter':
+              resultType = createFunctionType([createFunctionType([UNKNOWN_TYPE], BOOL_TYPE)], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'take':
+            case 'skip':
+              resultType = createFunctionType([INT_TYPE], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'enumerate':
+              resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'zip':
+              resultType = createFunctionType([UNKNOWN_TYPE], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'fold':
+              resultType = createFunctionType([UNKNOWN_TYPE, createFunctionType([UNKNOWN_TYPE, UNKNOWN_TYPE], UNKNOWN_TYPE)], UNKNOWN_TYPE);
+              break;
+            case 'reduce':
+              resultType = createFunctionType([createFunctionType([UNKNOWN_TYPE, UNKNOWN_TYPE], UNKNOWN_TYPE)], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'collect':
+              resultType = createFunctionType([], { kind: 'List', element: UNKNOWN_TYPE });
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && (objType.name === 'Reader' || objType.name === 'MemoryReader' || objType.name === 'MemoryStream')) {
+          switch (mem.property) {
+            case 'read':
+              resultType = createFunctionType([INT_TYPE], createOptionType(STRING_TYPE));
+              break;
+            case 'read_all':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'is_eof':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'seek':
+              resultType = createFunctionType([INT_TYPE], UNIT_TYPE);
+              break;
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'get_content':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'clear':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'position':
+              resultType = createFunctionType([], INT_TYPE);
+              break;
+            case 'reset':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && (objType.name === 'Writer' || objType.name === 'MemoryWriter')) {
+          switch (mem.property) {
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'get_content':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'clear':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Resource') {
+          switch (mem.property) {
+            case 'close':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'is_closed':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
           }
         } else {
           resultType = UNKNOWN_TYPE;
@@ -1149,10 +1424,19 @@ export class TypeChecker {
 
     // Comparison operators: <, >, <=, >=
     if (op === '<' || op === '>' || op === '<=' || op === '>=') {
+      const isOrdParam = (t: Type): boolean => {
+        if (t.kind === 'GenericParam' && t.constraint) {
+          if (t.constraint.kind === 'Custom' && t.constraint.name === 'Ord') return true;
+        }
+        return false;
+      };
+
       const valid =
         (isInt(left) && isInt(right)) ||
         (isUInt(left) && isUInt(right)) ||
-        (isFloat(left) && isFloat(right));
+        (isFloat(left) && isFloat(right)) ||
+        (isString(left) && isString(right)) ||
+        (left.kind === 'GenericParam' && right.kind === 'GenericParam' && left.name === right.name && (isOrdParam(left) || isOrdParam(right)));
 
       if (!valid) {
         this.diagnostics.reportError(
@@ -1160,7 +1444,7 @@ export class TypeChecker {
           `Comparison operator '${op}' cannot compare '${formatType(left)}' and '${formatType(right)}'.`,
           span,
           this.currentFile,
-          `Operands must be matching numeric types.`
+          `Operands must be matching numeric or ordered types.`
         );
       }
       return BOOL_TYPE;
@@ -1251,6 +1535,91 @@ export class TypeChecker {
           this.checkExpression(arg);
         }
         return { kind: 'Custom', name: 'Resource' };
+      }
+      if (calleeName === 'MemoryReader') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'MemoryReader' };
+      }
+      if (calleeName === 'MemoryWriter') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'MemoryWriter' };
+      }
+      if (calleeName === 'MemoryStream') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'MemoryStream' };
+      }
+      if (calleeName === 'Set') {
+        const elemType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        const inner = elemType.kind === 'List' ? elemType.element : elemType;
+        return { kind: 'Set', element: inner };
+      }
+      if (calleeName === 'iter') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+      if (calleeName === 'collect') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'List', element: UNKNOWN_TYPE };
+      }
+      if (calleeName === 'filter' || calleeName === 'map' || calleeName === 'take' || calleeName === 'skip') {
+        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        for (let i = 1; i < call.args.length; i++) this.checkExpression(call.args[i]);
+        return targetType;
+      }
+      if (calleeName === 'enumerate' || calleeName === 'zip') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+      if (calleeName === 'fold') {
+        if (call.args.length > 0) this.checkExpression(call.args[0]);
+        const initType = call.args.length > 1 ? this.checkExpression(call.args[1]) : UNKNOWN_TYPE;
+        if (call.args.length > 2) this.checkExpression(call.args[2]);
+        return initType;
+      }
+      if (calleeName === 'reduce') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createOptionType(UNKNOWN_TYPE);
+      }
+      if (calleeName === 'is_some' || calleeName === 'is_none' || calleeName === 'is_ok' || calleeName === 'is_err') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return BOOL_TYPE;
+      }
+      if (calleeName === 'unwrap') {
+        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        return UNKNOWN_TYPE;
+      }
+      if (calleeName === 'expect') {
+        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        if (call.args.length > 1) this.checkExpression(call.args[1]);
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        return UNKNOWN_TYPE;
+      }
+      if (calleeName === 'unwrap_or' || calleeName === 'unwrap_or_else') {
+        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        for (let i = 1; i < call.args.length; i++) this.checkExpression(call.args[i]);
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        return UNKNOWN_TYPE;
+      }
+      if (calleeName === 'map_err' || calleeName === 'and_then' || calleeName === 'or_else') {
+        const targetType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        for (let i = 1; i < call.args.length; i++) this.checkExpression(call.args[i]);
+        return targetType;
+      }
+      if (calleeName === 'trim' || calleeName === 'replace') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return STRING_TYPE;
+      }
+      if (calleeName === 'split') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'List', element: STRING_TYPE };
+      }
+      if (calleeName === 'contains') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return BOOL_TYPE;
       }
 
       const sym = this.currentResolverResult?.resolvedSymbols.get(id);
@@ -1463,6 +1832,31 @@ export class TypeChecker {
       if (call.callee.kind === 'Identifier') {
         const id = call.callee as Identifier;
         calleeName = id.name;
+
+        // Prelude combinator pipeline fast-path
+        if (calleeName === 'iter') return { kind: 'Custom', name: 'Iterator' };
+        if (calleeName === 'collect') return { kind: 'List', element: UNKNOWN_TYPE };
+        if (calleeName === 'filter' || calleeName === 'map' || calleeName === 'take' || calleeName === 'skip') {
+          for (const a of call.args) this.checkExpression(a);
+          return valType;
+        }
+        if (calleeName === 'enumerate' || calleeName === 'zip') {
+          for (const a of call.args) this.checkExpression(a);
+          return { kind: 'Custom', name: 'Iterator' };
+        }
+        if (calleeName === 'fold') {
+          return call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        }
+        if (calleeName === 'reduce') return createOptionType(UNKNOWN_TYPE);
+        if (calleeName === 'unwrap' || calleeName === 'expect') {
+          if (valType.kind === 'Option') return valType.inner;
+          if (valType.kind === 'Result') return valType.ok;
+          return UNKNOWN_TYPE;
+        }
+        if (calleeName === 'is_some' || calleeName === 'is_none' || calleeName === 'is_ok' || calleeName === 'is_err') {
+          return BOOL_TYPE;
+        }
+
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);
         if (sym && sym.type) {
           calleeType = sym.type;
@@ -1515,6 +1909,20 @@ export class TypeChecker {
       if (pipe.right.kind === 'Identifier') {
         const id = pipe.right as Identifier;
         calleeName = id.name;
+
+        // Prelude combinator pipeline fast-path
+        if (calleeName === 'iter') return { kind: 'Custom', name: 'Iterator' };
+        if (calleeName === 'collect') return { kind: 'List', element: UNKNOWN_TYPE };
+        if (calleeName === 'enumerate') return { kind: 'Custom', name: 'Iterator' };
+        if (calleeName === 'unwrap') {
+          if (valType.kind === 'Option') return valType.inner;
+          if (valType.kind === 'Result') return valType.ok;
+          return UNKNOWN_TYPE;
+        }
+        if (calleeName === 'is_some' || calleeName === 'is_none' || calleeName === 'is_ok' || calleeName === 'is_err') {
+          return BOOL_TYPE;
+        }
+
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);
         if (sym && sym.type) {
           calleeType = sym.type;
@@ -1907,6 +2315,26 @@ export class TypeChecker {
       return createOptionType(objType.element);
     }
 
+    if (objType.kind === 'Tuple') {
+      if (!isInt(indexType) && !isUInt(indexType) && !isUnknown(indexType)) {
+        this.diagnostics.reportError(
+          'E3002',
+          `Tuple index must be of type Int or UInt, but found '${formatType(indexType)}'.`,
+          idx.index.span,
+          this.currentFile
+        );
+      }
+      if (idx.index.kind === 'Literal' && typeof (idx.index as Literal).value === 'number') {
+        const i = (idx.index as Literal).value as number;
+        if (i >= 0 && i < objType.elements.length) {
+          return createOptionType(objType.elements[i]);
+        }
+        return createOptionType(UNKNOWN_TYPE);
+      }
+      const unionElem = objType.elements.length > 0 ? objType.elements[0] : UNKNOWN_TYPE;
+      return createOptionType(unionElem);
+    }
+
     if (objType.kind === 'Map') {
       if (!isTypeAssignable(objType.key, indexType) && !isUnknown(indexType) && !isUnknown(objType.key)) {
         this.diagnostics.reportError(
@@ -1922,7 +2350,7 @@ export class TypeChecker {
     if (!isUnknown(objType)) {
       this.diagnostics.reportError(
         'E3002',
-        `Cannot index into expression of type '${formatType(objType)}'. Safe indexing is supported on List and Map.`,
+        `Cannot index into expression of type '${formatType(objType)}'. Safe indexing is supported on List, Tuple, and Map.`,
         idx.span,
         this.currentFile
       );

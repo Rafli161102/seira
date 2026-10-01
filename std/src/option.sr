@@ -1,0 +1,10 @@
+// Seira Standard Library: Option Contract
+// Module: std.option
+
+pub fn is_some<T>(opt: Option<T>) -> Bool => is_some(opt)
+
+pub fn is_none<T>(opt: Option<T>) -> Bool => is_none(opt)
+
+pub fn unwrap<T>(opt: Option<T>) -> T => unwrap(opt)
+
+pub fn expect<T>(opt: Option<T>, msg: String) -> T => expect(opt, msg)

@@ -1,0 +1,42 @@
+// Seira Standard Library: Core Contracts
+// Module: std.core
+
+pub trait Eq<T> {
+    fn eq(a: T, b: T) -> Bool
+}
+
+pub trait Ord<T> {
+    fn cmp(a: T, b: T) -> Int
+}
+
+pub trait Hash<T> {
+    fn hash(val: T) -> Int
+}
+
+pub trait Display<T> {
+    fn to_string(val: T) -> String
+}
+
+pub trait Debug<T> {
+    fn debug_string(val: T) -> String
+}
+
+pub trait Clone<T> {
+    fn clone(val: T) -> T
+}
+
+pub trait Default<T> {
+    fn default() -> T
+}
+
+pub trait Iterator<Item> {
+    fn next(it: Iterator<Item>) -> Option<Item>
+}
+
+pub trait Reader {
+    fn read(r: Reader, n: Int) -> Option<String>
+}
+
+pub trait Writer {
+    fn write(w: Writer, data: String) -> Result<Int, String>
+}

@@ -1063,12 +1063,20 @@ export class Parser {
 
   private parseWithStatement(): WithStmt {
     const withToken = this.consume(TokenType.With, "Expected 'with'.");
-    const resource = this.parseExpression();
+    let resource: Expr;
     let alias: string | undefined;
 
-    if (this.match(TokenType.As)) {
-      const aliasToken = this.consume(TokenType.Identifier, "Expected identifier after 'as'.");
+    if (this.peek().type === TokenType.Identifier && this.peekAhead(1)?.type === TokenType.Equal) {
+      const aliasToken = this.advance();
       alias = aliasToken.lexeme;
+      this.consume(TokenType.Equal, "Expected '=' after identifier in with statement.");
+      resource = this.parseExpression();
+    } else {
+      resource = this.parseExpression();
+      if (this.match(TokenType.As)) {
+        const aliasToken = this.consume(TokenType.Identifier, "Expected identifier after 'as'.");
+        alias = aliasToken.lexeme;
+      }
     }
 
     const body = this.parseBlock();

@@ -123,6 +123,13 @@ export class Resolver {
       'Tuple',
       'Map',
       'Set',
+      'Iterator',
+      'Reader',
+      'Writer',
+      'MemoryReader',
+      'MemoryWriter',
+      'MemoryStream',
+      'Resource',
     ];
     for (const typeName of builtinTypes) {
       this.globalScope.define({
@@ -133,51 +140,77 @@ export class Resolver {
       });
     }
 
-    // Built-in I/O functions
-    this.globalScope.define({
-      name: 'println',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'print',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
+    // Standard built-in traits
+    const builtinTraits = [
+      'Eq',
+      'Ord',
+      'Hash',
+      'Display',
+      'Debug',
+      'Clone',
+      'Default',
+      'Iterator',
+      'Reader',
+      'Writer',
+    ];
+    for (const traitName of builtinTraits) {
+      if (!this.globalScope.lookupLocal(traitName)) {
+        this.globalScope.define({
+          name: traitName,
+          kind: 'trait',
+          span: dummySpan,
+          isMut: false,
+        });
+      }
+    }
 
-    // Built-in constructors and utilities
-    this.globalScope.define({
-      name: 'Some',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'None',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'Ok',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'Err',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'open_resource',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
+    // Built-in functions & utilities
+    const builtinFunctions = [
+      'println',
+      'print',
+      'Some',
+      'None',
+      'Ok',
+      'Err',
+      'open_resource',
+      'MemoryReader',
+      'MemoryWriter',
+      'MemoryStream',
+      'Set',
+      'iter',
+      'collect',
+      'filter',
+      'map',
+      'take',
+      'skip',
+      'enumerate',
+      'zip',
+      'fold',
+      'reduce',
+      'is_some',
+      'is_none',
+      'is_ok',
+      'is_err',
+      'unwrap',
+      'unwrap_or',
+      'unwrap_or_else',
+      'expect',
+      'map_err',
+      'and_then',
+      'or_else',
+      'trim',
+      'replace',
+      'split',
+      'contains',
+    ];
+    for (const fnName of builtinFunctions) {
+      this.globalScope.define({
+        name: fnName,
+        kind: 'builtin',
+        span: dummySpan,
+        isMut: false,
+      });
+    }
   }
 
   public resolve(program: Program, file?: string): ResolverResult {

@@ -76,8 +76,24 @@ export class PackageGraph {
           continue;
         }
       } else {
-        // Version string without path/workspace - mock / external registry
-        continue;
+        // Version string without path/workspace - standard library or external registry
+        if (depName === 'std') {
+          const stdCandidates = [
+            resolve(pkg.rootDir, 'std'),
+            resolve(pkg.rootDir, '../std'),
+            resolve(pkg.rootDir, '../../std'),
+            resolve(process.cwd(), 'std'),
+          ];
+          for (const cand of stdCandidates) {
+            if (existsSync(join(cand, 'Seira.toml'))) {
+              depDir = cand;
+              break;
+            }
+          }
+        }
+        if (!depDir) {
+          continue;
+        }
       }
 
       if (!depDir || !existsSync(depDir)) {

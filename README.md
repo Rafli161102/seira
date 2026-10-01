@@ -1,8 +1,8 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.8-s](https://img.shields.io/badge/Release-0.0.8--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Module & Package Foundation](https://img.shields.io/badge/Status-Module%20%26%20Package%20Foundation-orange.svg)](#project-status)
+[![Release: 0.0.9-s](https://img.shields.io/badge/Release-0.0.9--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: Standard Library & Core Contract Foundation](https://img.shields.io/badge/Status-Standard%20Library%20%26%20Core%20Contract%20Foundation-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Seed stage.
 
@@ -14,10 +14,20 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.8-s) — Module & Package Foundation**  
+> **Current Status: Seed (0.0.9-s) — Standard Library & Core Contract Foundation**  
 > Seira is currently an early-stage experimental programming language project establishing its compiler architecture, language foundation, tooling boundaries, and engineering infrastructure.  
 > **Seira is NOT production-ready, and Alpha is not yet released.**  
-> In the current 0.0.8-s release, Seira establishes the module and package foundation: canonical `.sr` source extension, canonical `sr` CLI tool, single-file mode (`sr run script.sr`) alongside package mode (`sr run`), filesystem module mapping (`src/user.sr` ➔ module `user`), package manifest (`Seira.toml`), SHA-256 source integrity lockfile (`Seira.lock`), import and symbol use (`import module`, `use module.Symbol [as alias]`), public re-export (`pub use`), declaration visibility (`pub`), cross-module type, generic, and trait resolution, path dependencies (`shared = { path = "../shared" }`), multi-package workspace foundation (`[workspace] members = [...]`), cycle detection (`E6008`, `E6012`), and the active `E6xxx` diagnostic family. Tree-walking execution evaluates validated multi-module and multi-package projects.
+> In the current 0.0.9-s release, Seira establishes the official contracts between the Language Core, Compiler/Runtime boundary, and Standard Library (`std`):
+> - **Boundary Architecture**: Strict separation of Language Core, Compiler Intrinsics, Runtime Execution, Standard Library, and External Packages.
+> - **Prelude**: An intentionally small Prelude containing fundamental value types (`Option`, `Result`, `Some`, `None`, `Ok`, `Err`), basic output primitives (`print`, `println`), memory I/O primitives (`MemoryReader`, `MemoryWriter`, `MemoryStream`), resource management (`open_resource`), and core iteration combinators. Heavy/system capabilities (HTTP, Database, Process, Crypto) remain strictly outside the Prelude.
+> - **Option & Result Contracts**: First-class `Option<T>` and `Result<T, E>` with functional combinators (`is_some`, `is_none`, `is_ok`, `is_err`, `unwrap`, `expect`, `unwrap_or`, `unwrap_or_else`, `map`, `map_err`, `and_then`, `or_else`), operator integration (`?` propagation and lazy `??` fallback), and complete avoidance of `null`, `undefined`, or JavaScript exception leakage.
+> - **Core Traits**: Statically checked, deterministic traits: `Eq`, `Ord`, `Hash`, `Display`, `Debug`, `Clone`, `Default`, `Iterator`, `Reader`, `Writer`.
+> - **Collections**: Generic, immutable-by-default `List`, `Map`, `Set`, and `Tuple` with safe indexing returning `Option<T>`, structural value equality (independent of JavaScript object identity), and foundational methods (`length`, `is_empty`, `contains`, `first`, `last`, `push`, `insert`, `remove`, `keys`, `values`).
+> - **Iterator**: Lazy, composable, pipeline-friendly traversal computation with foundational combinators (`next`, `map`, `filter`, `take`, `skip`, `enumerate`, `zip`, `fold`, `reduce`, `collect`), full pipeline integration (`collection |> iter |> filter |> map |> collect`), and no hidden parallelism.
+> - **Reader / Writer & Memory I/O**: Target-independent `Reader` and `Writer` abstractions with deterministic in-memory implementations (`MemoryReader`, `MemoryWriter`, `MemoryStream`) enabling hermetic testing without OS or network side effects.
+> - **Resource Foundation**: `with res = open_resource(...) { ... }` lifecycle management with strict LIFO cleanup order and error context preservation.
+> - **String Foundation**: Immutable UTF-8 `String` with foundation APIs (`length`, `is_empty`, `contains`, `starts_with`, `ends_with`, `trim`, `split`, `replace`, `chars`, `bytes`).
+> - **Standard Library Modules**: Native `std` package containing `std.core`, `std.option`, `std.result`, `std.collections`, `std.iter`, and `std.io`.
 
 ---
 
