@@ -64,8 +64,10 @@ import type {
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
 import type { SeiraModule } from '../module/module.ts';
 import { Scope, type ScopeKind, type SymbolInfo } from './scope.ts';
+import { getBuiltinTraitDecls } from './builtin_traits.ts';
 
 export * from './scope.ts';
+export * from './builtin_traits.ts';
 
 export interface ResolverOptions {
   readonly availableModules?: Map<string, SeiraModule>;
@@ -107,7 +109,11 @@ export class Resolver {
   private registerBuiltins(): void {
     const dummySpan: Span = { start: 0, end: 0, line: 1, column: 1 };
 
-    // Standard built-in types
+    // Standard built-in types (concrete, non-trait names only).
+    // Traits (Iterator, Reader, Writer, Resource, Seekable, Flushable, Sized) are registered
+    // separately below as kind:'trait' so that `impl Trait for Type` blocks resolve correctly.
+    // Callable constructors (MemoryReader, MemoryWriter, MemoryStream) are registered as
+    // kind:'builtin' below so they are usable as both type annotations and call expressions.
     const builtinTypes = [
       'Int',
       'UInt',
@@ -123,6 +129,9 @@ export class Resolver {
       'Tuple',
       'Map',
       'Set',
+      'Path',
+      'Bytes',
+      'File',
     ];
     for (const typeName of builtinTypes) {
       this.globalScope.define({
@@ -133,51 +142,69 @@ export class Resolver {
       });
     }
 
-    // Built-in I/O functions
-    this.globalScope.define({
-      name: 'println',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'print',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
+    // Standard built-in traits (authoritative definitions with declNode)
+    for (const [traitName, traitDecl] of getBuiltinTraitDecls()) {
+      this.globalScope.define({
+        name: traitName,
+        kind: 'trait',
+        span: dummySpan,
+        isMut: false,
+        declNode: traitDecl,
+      });
+    }
 
-    // Built-in constructors and utilities
-    this.globalScope.define({
-      name: 'Some',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'None',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'Ok',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'Err',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
-    this.globalScope.define({
-      name: 'open_resource',
-      kind: 'builtin',
-      span: dummySpan,
-      isMut: false,
-    });
+    // Built-in functions & utilities
+    const builtinFunctions = [
+      'println',
+      'print',
+      'Some',
+      'None',
+      'Ok',
+      'Err',
+      'open_resource',
+      'open_file',
+      'Path',
+      'Bytes',
+      'encode',
+      'decode',
+      'MemoryReader',
+      'MemoryWriter',
+      'MemoryStream',
+      'Set',
+      'iter',
+      'collect',
+      'filter',
+      'map',
+      'take',
+      'skip',
+      'enumerate',
+      'zip',
+      'fold',
+      'reduce',
+      'is_some',
+      'is_none',
+      'is_ok',
+      'is_err',
+      'unwrap',
+      'unwrap_or',
+      'unwrap_or_else',
+      'expect',
+      'map_err',
+      'and_then',
+      'or_else',
+      'trim',
+      'replace',
+      'split',
+      'contains',
+    ];
+    for (const fnName of builtinFunctions) {
+      this.globalScope.define({
+        name: fnName,
+        kind: 'builtin',
+        span: dummySpan,
+        isMut: false,
+      });
+    }
   }
 
   public resolve(program: Program, file?: string): ResolverResult {

@@ -6,7 +6,7 @@
 import { SEIRA_VERSION } from './version.ts';
 
 export function runHelp(): void {
-  console.log(`Seira ${SEIRA_VERSION} — Module & Package Foundation
+  console.log(`Seira ${SEIRA_VERSION} — Standard Library & Core Contract Foundation
 Simple to write. Predictable to run.
 
 USAGE:

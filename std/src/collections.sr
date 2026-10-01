@@ -1,0 +1,10 @@
+// Seira Standard Library: Collections
+// Module: std.collections
+
+pub fn is_empty<T>(items: List<T>) -> Bool => items.length == 0
+
+pub fn first<T>(items: List<T>) -> Option<T> => items.first()
+
+pub fn last<T>(items: List<T>) -> Option<T> => items.last()
+
+pub fn get<T>(items: List<T>, index: Int) -> Option<T> => items[index]

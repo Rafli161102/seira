@@ -11,6 +11,56 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
 
+## [0.0.10-s] - 2026-10-01
+
+### Added
+- **I/O & Resource Boundary Foundation v1.0**:
+  - Implemented composable capability architecture: `Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`.
+  - Established strict Byte/Text boundary: `Byte`, `Bytes`, `Char`, `String` distinct types; conversion requires explicit `encode` / `decode`; implicit byte<->text coercion is strictly prohibited.
+  - Implemented encoding foundation: standard UTF-8 (default), ASCII, UTF-16LE/BE, UTF-32LE/BE support with deterministic `Result` types and structured error reporting (`InvalidEncoding`, `UnexpectedEof`, `UnsupportedEncoding`).
+  - Added first-class immutable, normalized `Path` type distinct from `String` with composable operations (`join`, `parent`, `file_name`, `extension`, `is_absolute`, `normalize`).
+  - Added safe, deterministic `File` I/O foundation: lifecycle `open` -> `use` -> `close`; operations on closed files or mode violations return deterministic `Result.Err` (`AlreadyClosed`, `PermissionDenied`, `NotFound`, `InvalidSeek`).
+  - Integrated deterministic `with` statement resource management: guaranteed cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
+  - Refined memory I/O: capability-separated `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic testing without OS or network side effects.
+
+## [0.0.9-s] - 2026-10-01
+
+### Added
+- **Standard Library & Core Contract Foundation Architecture**:
+  - Established formal architectural boundaries separating Language Core, Compiler Intrinsics, Runtime Execution, Standard Library (`std`), and External Packages.
+  - Added native `std` package containing `std.core`, `std.option`, `std.result`, `std.collections`, `std.iter`, and `std.io`.
+- **Intentionally Minimal Prelude**:
+  - Global scope includes only fundamental value types (`Option`, `Result`, `Some`, `None`, `Ok`, `Err`), basic traits, output primitives (`print`, `println`), memory I/O primitives (`MemoryReader`, `MemoryWriter`, `MemoryStream`), resource acquisition (`open_resource`), and foundational iteration combinators.
+  - Heavy subsystems (HTTP, Database, Process, Filesystem, Crypto) remain strictly excluded from the Prelude.
+- **Option & Result Contracts**:
+  - First-class `Option<T>` and `Result<T, E>` with no language-level `null` or `undefined`.
+  - Functional combinators: `is_some`, `is_none`, `unwrap`, `expect`, `unwrap_or`, `unwrap_or_else`, `map`, `and_then`, `or_else` on `Option`.
+  - Functional combinators: `is_ok`, `is_err`, `unwrap`, `expect`, `unwrap_or`, `unwrap_or_else`, `map`, `map_err`, `and_then`, `or_else` on `Result`.
+  - Question mark operator (`?`) preserves value unwrapping and error propagation without JavaScript exception semantics.
+  - Fallback operator (`??`) preserves lazy fallback evaluation.
+- **Core Traits**:
+  - Statically checked, deterministic traits: `Eq`, `Ord`, `Hash`, `Display`, `Debug`, `Clone`, `Default`, `Iterator`, `Reader`, `Writer`.
+  - Value equality (`Eq`) and structural equality independent of JavaScript object identity.
+  - Ordering (`Ord`) support in generic parameter constraints and comparison operators (`<`, `>`, `<=`, `>=`).
+- **Collections Foundation**:
+  - Generic, immutable-by-default `List`, `Map`, `Set`, and `Tuple`.
+  - Safe indexing returning `Option<T>` on `List`, `Tuple`, and `Map` (`items[idx] -> Option<T>`).
+  - Structural value equality across all collection types.
+  - Foundation methods: `length`, `is_empty`, `contains`, `first`, `last`, `push`, `insert`, `remove`, `keys`, `values`.
+- **Iterator Foundation**:
+  - Lazy traversal computations with materialization boundary (`collect`).
+  - Pipeline-friendly combinators: `next`, `map`, `filter`, `take`, `skip`, `enumerate`, `zip`, `fold`, `reduce`, `collect`.
+  - Zero hidden parallelism and strict deterministic execution order.
+- **Reader / Writer & Memory I/O**:
+  - Abstract `Reader` and `Writer` contracts.
+  - Hermetic in-memory test doubles: `MemoryReader`, `MemoryWriter`, and `MemoryStream` providing deterministic testing without operating system or network side effects.
+- **Resource Management (`with`)**:
+  - `with res = expr { ... }` and `with expr as res { ... }` syntax.
+  - Deterministic LIFO cleanup order for nested resources.
+  - Preservation of primary execution errors alongside resource cleanup error context.
+- **String Foundation APIs**:
+  - Immutable UTF-8 string foundation methods: `length`, `is_empty`, `contains`, `starts_with`, `ends_with`, `trim`, `split`, `replace`, `chars`, `bytes`.
+
 ## [0.0.8-s] - 2026-10-01
 
 ### Added

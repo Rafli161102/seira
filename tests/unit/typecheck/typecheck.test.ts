@@ -20,9 +20,9 @@ function typecheckSource(src: string) {
   const parser = new Parser(tokens);
   const ast = parser.parse();
   const resolver = new Resolver();
-  const resResult = resolver.resolve(ast, 'test.sra');
+  const resResult = resolver.resolve(ast, 'test.sr');
   const typechecker = new TypeChecker(resResult.diagnostics);
-  const tcResult = typechecker.check(ast, resResult, 'test.sra');
+  const tcResult = typechecker.check(ast, resResult, 'test.sr');
   return { ast, tcResult, diagnostics: tcResult.diagnostics };
 }
 

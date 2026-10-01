@@ -119,7 +119,7 @@ Seira maintains a strict boundary separating invalid user source from compiler i
 
 ```text
 User Error:      error[E1002]: Increment operator '++' is not permitted in Seira.
-Compiler Crash:  internal compiler error: invariant failure in [Typecheck] (in main.sra)
+Compiler Crash:  internal compiler error: invariant failure in [Typecheck] (in main.sr)
 ```
 
 ---

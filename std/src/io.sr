@@ -1,0 +1,36 @@
+// Seira Standard Library: I/O & Memory Streams
+// Module: std.io
+
+pub trait Reader {
+    fn read(r: Reader, n: Int) -> Option<String>
+}
+
+pub trait Writer {
+    fn write(w: Writer, data: String) -> Result<Int, String>
+}
+
+pub trait Seekable {
+    fn seek(s: Seekable, offset: Int) -> Result<Int, String>
+    fn position(s: Seekable) -> Int
+}
+
+pub trait Flushable {
+    fn flush(f: Flushable) -> Result<Unit, String>
+}
+
+pub trait Sized {
+    fn length(s: Sized) -> Int
+    fn is_empty(s: Sized) -> Bool
+}
+
+pub trait Resource {
+    fn close(r: Resource) -> Result<Unit, String>
+    fn is_closed(r: Resource) -> Bool
+}
+
+pub fn new_memory_reader(content: String) -> MemoryReader => MemoryReader(content)
+
+pub fn new_memory_writer() -> MemoryWriter => MemoryWriter()
+
+pub fn new_memory_stream(initial: String) -> MemoryStream => MemoryStream(initial)
+

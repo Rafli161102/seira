@@ -5,7 +5,7 @@
 The Seira compiler is designed as a multi-stage, modular transformation pipeline:
 
 ```
-Source Code (.sra)
+Source Code (.sr)
       ↓
    [Lexer]          ──► Tokens + Source Spans
       ↓

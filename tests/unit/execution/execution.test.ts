@@ -827,7 +827,7 @@ fn main() {
   assert.ok(r.output.includes('Semantic check completed'));
 });
 
-test('Integration: pipeline.sra style program executes correctly', () => {
+test('Integration: pipeline.sr style program executes correctly', () => {
   const e = new ExecutionEngine();
   const r = e.executeSource(`
 fn double(x: Int) -> Int {

@@ -73,7 +73,7 @@ import type {
 } from '../ast/ast.ts';
 import { DiagnosticBag, type Span } from '../diagnostics/index.ts';
 import type { SeiraModule } from '../module/module.ts';
-import { Resolver, type ResolverResult, type SymbolInfo } from '../resolver/index.ts';
+import { Resolver, type ResolverResult, type SymbolInfo, getBuiltinTraitDecls } from '../resolver/index.ts';
 import {
   areTypesEqual,
   BOOL_TYPE,
@@ -117,11 +117,49 @@ import type {
 
 export * from './types.ts';
 
+export const PATH_TYPE: Type = { kind: 'Custom', name: 'Path' };
+export const BYTES_TYPE: Type = { kind: 'Custom', name: 'Bytes' };
+export const FILE_TYPE: Type = { kind: 'Custom', name: 'File' };
+export const RESOURCE_TYPE: Type = { kind: 'Custom', name: 'Resource' };
+
 export interface TypecheckResult {
   readonly success: boolean;
   readonly diagnostics: DiagnosticBag;
   readonly nodeTypes: Map<ASTNode, Type>;
 }
+
+const BUILTIN_OPERATIONS = new Set<string>([
+  'map',
+  'filter',
+  'take',
+  'skip',
+  'enumerate',
+  'zip',
+  'fold',
+  'reduce',
+  'iter',
+  'collect',
+  'unwrap',
+  'expect',
+  'unwrap_or',
+  'unwrap_or_else',
+  'map_err',
+  'and_then',
+  'or_else',
+  'is_some',
+  'is_none',
+  'is_ok',
+  'is_err',
+  'trim',
+  'replace',
+  'split',
+  'contains',
+  'chars',
+  'bytes',
+  'reverse',
+  'encode',
+  'decode',
+]);
 
 export class TypeChecker {
   private readonly diagnostics: DiagnosticBag;
@@ -167,6 +205,11 @@ export class TypeChecker {
     this.typeAliases.clear();
     this.currentGenericParams = undefined;
     this.aliasExpansionStack.clear();
+
+    // Pre-populate canonical built-in traits
+    for (const [name, traitDecl] of getBuiltinTraitDecls()) {
+      this.traits.set(name, traitDecl);
+    }
 
     // Populate imported traits and type aliases from resolver global scope
     if (resolverResult) {
@@ -364,7 +407,105 @@ export class TypeChecker {
     const typeName =
       type.kind === 'Custom' ? type.name : type.kind === 'Primitive' ? type.name : formatType(type);
     const implemented = this.implementations.get(typeName);
-    return implemented ? implemented.has(constraintName) : false;
+    if (implemented && implemented.has(constraintName)) return true;
+
+    // Standard trait satisfaction for built-in types
+    if (constraintName === 'Debug') return true;
+    if (constraintName === 'Clone' || constraintName === 'Eq') {
+      return (
+        ['Int', 'UInt', 'Float', 'Bool', 'Char', 'String', 'Byte', 'Unit', 'List', 'Tuple', 'Map', 'Set', 'Option', 'Result'].includes(typeName) ||
+        type.kind === 'List' ||
+        type.kind === 'Tuple' ||
+        type.kind === 'Map' ||
+        type.kind === 'Set' ||
+        type.kind === 'Option' ||
+        type.kind === 'Result'
+      );
+    }
+    if (constraintName === 'Ord') {
+      return ['Int', 'UInt', 'Float', 'Char', 'String', 'Byte'].includes(typeName);
+    }
+    if (constraintName === 'Hash') {
+      return (
+        ['Int', 'UInt', 'Bool', 'Char', 'String', 'Byte', 'Tuple', 'List', 'Set', 'Map'].includes(typeName) ||
+        type.kind === 'Tuple' ||
+        type.kind === 'List' ||
+        type.kind === 'Set' ||
+        type.kind === 'Map'
+      );
+    }
+    if (constraintName === 'Display') {
+      return ['Int', 'UInt', 'Float', 'Bool', 'Char', 'String', 'Byte', 'Unit'].includes(typeName);
+    }
+    if (constraintName === 'Default') {
+      return (
+        ['Int', 'UInt', 'Float', 'Bool', 'String', 'Unit'].includes(typeName) ||
+        type.kind === 'List' ||
+        type.kind === 'Map' ||
+        type.kind === 'Set' ||
+        type.kind === 'Option'
+      );
+    }
+    if (constraintName === 'Iterator') {
+      return typeName === 'Iterator';
+    }
+    if (constraintName === 'Reader') {
+      return ['Reader', 'MemoryReader', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Writer') {
+      return ['Writer', 'MemoryWriter', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Seekable') {
+      return ['Seekable', 'MemoryReader', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Flushable') {
+      return ['Flushable', 'MemoryWriter', 'MemoryStream', 'File'].includes(typeName);
+    }
+    if (constraintName === 'Sized') {
+      return (
+        ['Sized', 'MemoryReader', 'MemoryWriter', 'MemoryStream', 'Bytes', 'File', 'String', 'List', 'Map', 'Set'].includes(typeName) ||
+        type.kind === 'List' ||
+        type.kind === 'Map' ||
+        type.kind === 'Set'
+      );
+    }
+    if (constraintName === 'Resource') {
+      return ['Resource', 'File'].includes(typeName);
+    }
+
+    return false;
+  }
+
+  /**
+   * Returns true if the type is a known built-in Seira type for which invalid method
+   * calls should emit E3003. Tuple is excluded because it already emits E3002 for
+   * invalid index access, and user-defined Custom types are excluded because they may
+   * have user-provided impl blocks that the typechecker doesn't fully track.
+   */
+  private isKnownBuiltinType(type: Type): boolean {
+    if (type.kind === 'Primitive') return true;
+    if (type.kind === 'List') return true;
+    if (type.kind === 'Map') return true;
+    if (type.kind === 'Set') return true;
+    if (type.kind === 'Option') return true;
+    if (type.kind === 'Result') return true;
+    // Tuple excluded: its member access already validates with E3002.
+    if (type.kind === 'Custom') {
+      const BUILTIN_CUSTOM_TYPES = new Set([
+        'Iterator',
+        'MemoryReader',
+        'MemoryWriter',
+        'MemoryStream',
+        'Reader',
+        'Writer',
+        'Path',
+        'Bytes',
+        'File',
+        'Resource',
+      ]);
+      return BUILTIN_CUSTOM_TYPES.has(type.name);
+    }
+    return false;
   }
 
   private checkFunctionDecl(fn: FunctionDecl): void {
@@ -622,6 +763,33 @@ export class TypeChecker {
 
   private checkWithStmt(stmt: WithStmt): void {
     const resType = this.checkExpression(stmt.resource);
+
+    // P1-2: Validate that the resource expression is a Resource-compatible type.
+    // The 'with' statement manages resource lifecycle and requires a value that
+    // implements the Resource trait (currently: File or Resource).
+    if (!isUnknown(resType)) {
+      const isResource = this.typeSatisfiesConstraint(resType, 'Resource');
+      if (!isResource) {
+        if (resType.kind === 'Result') {
+          this.diagnostics.reportError(
+            'E3001',
+            `'with' requires a resource value, but found '${formatType(resType)}'. Unwrap the Result first (e.g. using '?' or '.unwrap()').`,
+            stmt.resource.span,
+            this.currentFile,
+            `The 'with' statement expects a value implementing the Resource trait (e.g. File, Resource), not a Result wrapper.`
+          );
+        } else {
+          this.diagnostics.reportError(
+            'E3001',
+            `'with' requires a resource value, but found '${formatType(resType)}'.`,
+            stmt.resource.span,
+            this.currentFile,
+            `The 'with' statement expects a value implementing the Resource trait (e.g. File, Resource).`
+          );
+        }
+      }
+    }
+
     const sym = this.currentResolverResult?.declaredSymbols.get(stmt);
     if (sym) {
       sym.type = resType;
@@ -981,23 +1149,382 @@ export class TypeChecker {
             );
             resultType = UNKNOWN_TYPE;
           }
+        } else if (objType.kind === 'Option') {
+          switch (mem.property) {
+            case 'is_some':
+            case 'is_none':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'unwrap':
+              resultType = createFunctionType([], objType.inner);
+              break;
+            case 'expect':
+              resultType = createFunctionType([STRING_TYPE], objType.inner);
+              break;
+            case 'unwrap_or':
+              resultType = createFunctionType([objType.inner], objType.inner);
+              break;
+            case 'unwrap_or_else':
+              resultType = createFunctionType([createFunctionType([], objType.inner)], objType.inner);
+              break;
+            case 'map':
+              resultType = createFunctionType([createFunctionType([objType.inner], UNKNOWN_TYPE)], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'and_then':
+              resultType = createFunctionType([createFunctionType([objType.inner], createOptionType(UNKNOWN_TYPE))], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'or_else':
+              resultType = createFunctionType([createFunctionType([], objType)], objType);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Result') {
+          switch (mem.property) {
+            case 'is_ok':
+            case 'is_err':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'unwrap':
+              resultType = createFunctionType([], objType.ok);
+              break;
+            case 'expect':
+              resultType = createFunctionType([STRING_TYPE], objType.ok);
+              break;
+            case 'unwrap_or':
+              resultType = createFunctionType([objType.ok], objType.ok);
+              break;
+            case 'unwrap_or_else':
+              resultType = createFunctionType([createFunctionType([objType.err], objType.ok)], objType.ok);
+              break;
+            case 'map':
+              resultType = createFunctionType([createFunctionType([objType.ok], UNKNOWN_TYPE)], createResultType(UNKNOWN_TYPE, objType.err));
+              break;
+            case 'map_err':
+              resultType = createFunctionType([createFunctionType([objType.err], UNKNOWN_TYPE)], createResultType(objType.ok, UNKNOWN_TYPE));
+              break;
+            case 'and_then':
+              resultType = createFunctionType([createFunctionType([objType.ok], createResultType(UNKNOWN_TYPE, objType.err))], createResultType(UNKNOWN_TYPE, objType.err));
+              break;
+            case 'or_else':
+              resultType = createFunctionType([createFunctionType([objType.err], createResultType(objType.ok, UNKNOWN_TYPE))], createResultType(objType.ok, UNKNOWN_TYPE));
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
         } else if (objType.kind === 'Set') {
           if (mem.property === 'length') {
             resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
           } else if (mem.property === 'contains') {
             resultType = createFunctionType([objType.element], BOOL_TYPE);
           } else if (mem.property === 'insert') {
             resultType = createFunctionType([objType.element], objType);
           } else if (mem.property === 'remove') {
             resultType = createFunctionType([objType.element], objType);
+          } else if (mem.property === 'iter') {
+            resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
           } else {
             resultType = UNKNOWN_TYPE;
           }
         } else if (objType.kind === 'List') {
           if (mem.property === 'length') {
             resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
+          } else if (mem.property === 'first' || mem.property === 'last') {
+            resultType = createFunctionType([], createOptionType(objType.element));
+          } else if (mem.property === 'get') {
+            resultType = createFunctionType([INT_TYPE], createOptionType(objType.element));
+          } else if (mem.property === 'push') {
+            resultType = createFunctionType([objType.element], objType);
+          } else if (mem.property === 'contains') {
+            resultType = createFunctionType([objType.element], BOOL_TYPE);
+          } else if (mem.property === 'iter') {
+            resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
+          } else if (mem.property === 'map') {
+            resultType = createFunctionType([createFunctionType([objType.element], UNKNOWN_TYPE)], { kind: 'List', element: UNKNOWN_TYPE });
+          } else if (mem.property === 'filter') {
+            resultType = createFunctionType([createFunctionType([objType.element], BOOL_TYPE)], objType);
+          } else if (mem.property === 'reverse') {
+            resultType = createFunctionType([], objType);
           } else {
             resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Map') {
+          if (mem.property === 'length') {
+            resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
+          } else if (mem.property === 'get') {
+            resultType = createFunctionType([objType.key], createOptionType(objType.value));
+          } else if (mem.property === 'contains') {
+            resultType = createFunctionType([objType.key], BOOL_TYPE);
+          } else if (mem.property === 'insert') {
+            resultType = createFunctionType([objType.key, objType.value], objType);
+          } else if (mem.property === 'remove') {
+            resultType = createFunctionType([objType.key], objType);
+          } else if (mem.property === 'keys') {
+            resultType = createFunctionType([], { kind: 'List', element: objType.key });
+          } else if (mem.property === 'values') {
+            resultType = createFunctionType([], { kind: 'List', element: objType.value });
+          } else if (mem.property === 'iter') {
+            resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
+          } else {
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (isString(objType)) {
+          if (mem.property === 'length') {
+            resultType = INT_TYPE;
+          } else if (mem.property === 'is_empty') {
+            resultType = createFunctionType([], BOOL_TYPE);
+          } else if (mem.property === 'contains' || mem.property === 'starts_with' || mem.property === 'ends_with') {
+            resultType = createFunctionType([STRING_TYPE], BOOL_TYPE);
+          } else if (mem.property === 'trim') {
+            resultType = createFunctionType([], STRING_TYPE);
+          } else if (mem.property === 'split') {
+            resultType = createFunctionType([STRING_TYPE], { kind: 'List', element: STRING_TYPE });
+          } else if (mem.property === 'replace') {
+            resultType = createFunctionType([STRING_TYPE, STRING_TYPE], STRING_TYPE);
+          } else if (mem.property === 'chars') {
+            resultType = createFunctionType([], { kind: 'List', element: CHAR_TYPE });
+          } else if (mem.property === 'bytes') {
+            resultType = createFunctionType([], { kind: 'List', element: BYTE_TYPE });
+          } else if (mem.property === 'encode') {
+            resultType = createFunctionType([], createResultType(BYTES_TYPE, STRING_TYPE));
+          } else {
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Iterator') {
+          switch (mem.property) {
+            case 'next':
+              resultType = createFunctionType([], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'map':
+              resultType = createFunctionType([createFunctionType([UNKNOWN_TYPE], UNKNOWN_TYPE)], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'filter':
+              resultType = createFunctionType([createFunctionType([UNKNOWN_TYPE], BOOL_TYPE)], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'take':
+            case 'skip':
+              resultType = createFunctionType([INT_TYPE], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'enumerate':
+              resultType = createFunctionType([], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'zip':
+              resultType = createFunctionType([UNKNOWN_TYPE], { kind: 'Custom', name: 'Iterator' });
+              break;
+            case 'fold':
+              resultType = createFunctionType([UNKNOWN_TYPE, createFunctionType([UNKNOWN_TYPE, UNKNOWN_TYPE], UNKNOWN_TYPE)], UNKNOWN_TYPE);
+              break;
+            case 'reduce':
+              resultType = createFunctionType([createFunctionType([UNKNOWN_TYPE, UNKNOWN_TYPE], UNKNOWN_TYPE)], createOptionType(UNKNOWN_TYPE));
+              break;
+            case 'collect':
+              resultType = createFunctionType([], { kind: 'List', element: UNKNOWN_TYPE });
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'MemoryReader') {
+          switch (mem.property) {
+            case 'read':
+              resultType = createFunctionType([INT_TYPE], createOptionType(STRING_TYPE));
+              break;
+            case 'read_all':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'is_eof':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'seek':
+              resultType = createFunctionType([INT_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'position':
+              resultType = createFunctionType([], INT_TYPE);
+              break;
+            case 'reset':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'MemoryWriter') {
+          switch (mem.property) {
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'flush':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'get_content':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'clear':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && (objType.name === 'MemoryStream' || objType.name === 'Reader' || objType.name === 'Writer')) {
+          switch (mem.property) {
+            case 'read':
+              resultType = createFunctionType([INT_TYPE], createOptionType(STRING_TYPE));
+              break;
+            case 'read_all':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'is_eof':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'flush':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'seek':
+              resultType = createFunctionType([INT_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'position':
+              resultType = createFunctionType([], INT_TYPE);
+              break;
+            case 'reset':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'get_content':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'clear':
+              resultType = createFunctionType([], UNIT_TYPE);
+              break;
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Path') {
+          switch (mem.property) {
+            case 'to_string':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            case 'join':
+              resultType = createFunctionType([STRING_TYPE], PATH_TYPE);
+              break;
+            case 'parent':
+              resultType = createFunctionType([], createOptionType(PATH_TYPE));
+              break;
+            case 'file_name':
+              resultType = createFunctionType([], createOptionType(STRING_TYPE));
+              break;
+            case 'extension':
+              resultType = createFunctionType([], createOptionType(STRING_TYPE));
+              break;
+            case 'is_absolute':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'normalize':
+              resultType = createFunctionType([], PATH_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Bytes') {
+          switch (mem.property) {
+            case 'length':
+              resultType = INT_TYPE;
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'get':
+              resultType = createFunctionType([INT_TYPE], createOptionType(BYTE_TYPE));
+              break;
+            case 'to_list':
+              resultType = createFunctionType([], createListType(BYTE_TYPE));
+              break;
+            case 'slice':
+              resultType = createFunctionType([INT_TYPE, INT_TYPE], BYTES_TYPE);
+              break;
+            case 'decode':
+              resultType = createFunctionType([], createResultType(STRING_TYPE, STRING_TYPE));
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'File') {
+          switch (mem.property) {
+            case 'read':
+              resultType = createFunctionType([INT_TYPE], createResultType(createOptionType(STRING_TYPE), STRING_TYPE));
+              break;
+            case 'read_all':
+              resultType = createFunctionType([], createResultType(STRING_TYPE, STRING_TYPE));
+              break;
+            case 'read_bytes':
+              resultType = createFunctionType([INT_TYPE], createResultType(createOptionType(BYTES_TYPE), STRING_TYPE));
+              break;
+            case 'write':
+              resultType = createFunctionType([STRING_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'seek':
+              resultType = createFunctionType([INT_TYPE], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'position':
+              resultType = createFunctionType([], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'rewind':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'flush':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'close':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'is_closed':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'length':
+              resultType = createFunctionType([], createResultType(INT_TYPE, STRING_TYPE));
+              break;
+            case 'is_empty':
+              resultType = createFunctionType([], createResultType(BOOL_TYPE, STRING_TYPE));
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && objType.name === 'Resource') {
+          switch (mem.property) {
+            case 'close':
+              resultType = createFunctionType([], createResultType(UNIT_TYPE, STRING_TYPE));
+              break;
+            case 'is_closed':
+              resultType = createFunctionType([], BOOL_TYPE);
+              break;
+            case 'name':
+              resultType = createFunctionType([], STRING_TYPE);
+              break;
+            default:
+              resultType = UNKNOWN_TYPE;
           }
         } else {
           resultType = UNKNOWN_TYPE;
@@ -1149,10 +1676,19 @@ export class TypeChecker {
 
     // Comparison operators: <, >, <=, >=
     if (op === '<' || op === '>' || op === '<=' || op === '>=') {
+      const isOrdParam = (t: Type): boolean => {
+        if (t.kind === 'GenericParam' && t.constraint) {
+          if (t.constraint.kind === 'Custom' && t.constraint.name === 'Ord') return true;
+        }
+        return false;
+      };
+
       const valid =
         (isInt(left) && isInt(right)) ||
         (isUInt(left) && isUInt(right)) ||
-        (isFloat(left) && isFloat(right));
+        (isFloat(left) && isFloat(right)) ||
+        (isString(left) && isString(right)) ||
+        (left.kind === 'GenericParam' && right.kind === 'GenericParam' && left.name === right.name && (isOrdParam(left) || isOrdParam(right)));
 
       if (!valid) {
         this.diagnostics.reportError(
@@ -1160,7 +1696,7 @@ export class TypeChecker {
           `Comparison operator '${op}' cannot compare '${formatType(left)}' and '${formatType(right)}'.`,
           span,
           this.currentFile,
-          `Operands must be matching numeric types.`
+          `Operands must be matching numeric or ordered types.`
         );
       }
       return BOOL_TYPE;
@@ -1201,6 +1737,703 @@ export class TypeChecker {
     }
 
     return UNKNOWN_TYPE;
+  }
+
+  private checkBuiltinOperation(
+    name: string,
+    targetType: Type,
+    args: Expr[],
+    callSpan: Span,
+    fullSpan: Span
+  ): Type | null {
+    switch (name) {
+      case 'map': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'map' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const expectedFn = createFunctionType([targetType.inner], UNKNOWN_TYPE);
+          const fnType = this.checkExpression(args[0], expectedFn);
+          if (fnType.kind === 'Function') {
+            if (
+              fnType.params.length > 0 &&
+              !isTypeAssignable(fnType.params[0], targetType.inner) &&
+              !isUnknown(fnType.params[0]) &&
+              !isUnknown(targetType.inner)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Function parameter type '${formatType(fnType.params[0])}' is incompatible with Option value type '${formatType(targetType.inner)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+            return createOptionType(fnType.returnType);
+          }
+          return createOptionType(UNKNOWN_TYPE);
+        } else if (targetType.kind === 'Result') {
+          const expectedFn = createFunctionType([targetType.ok], UNKNOWN_TYPE);
+          const fnType = this.checkExpression(args[0], expectedFn);
+          if (fnType.kind === 'Function') {
+            if (
+              fnType.params.length > 0 &&
+              !isTypeAssignable(fnType.params[0], targetType.ok) &&
+              !isUnknown(fnType.params[0]) &&
+              !isUnknown(targetType.ok)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Function parameter type '${formatType(fnType.params[0])}' is incompatible with Result Ok type '${formatType(targetType.ok)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+            return createResultType(fnType.returnType, targetType.err);
+          }
+          return createResultType(UNKNOWN_TYPE, targetType.err);
+        } else if (targetType.kind === 'List') {
+          const expectedFn = createFunctionType([targetType.element], UNKNOWN_TYPE);
+          const fnType = this.checkExpression(args[0], expectedFn);
+          if (fnType.kind === 'Function') {
+            if (
+              fnType.params.length > 0 &&
+              !isTypeAssignable(fnType.params[0], targetType.element) &&
+              !isUnknown(fnType.params[0]) &&
+              !isUnknown(targetType.element)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Function parameter type '${formatType(fnType.params[0])}' is incompatible with List element type '${formatType(targetType.element)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+            return { kind: 'List', element: fnType.returnType };
+          }
+          return { kind: 'List', element: UNKNOWN_TYPE };
+        } else if (targetType.kind === 'Custom' && targetType.name === 'Iterator') {
+          this.checkExpression(args[0]);
+          return { kind: 'Custom', name: 'Iterator' };
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'map' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          if (args.length > 0) this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'unwrap_or': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'unwrap_or' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fallbackType = this.checkExpression(args[0], targetType.inner);
+          if (
+            !isTypeAssignable(targetType.inner, fallbackType) &&
+            !isUnknown(fallbackType) &&
+            !isUnknown(targetType.inner)
+          ) {
+            this.diagnostics.reportError(
+              'E3003',
+              `Fallback type '${formatType(fallbackType)}' is incompatible with Option value type '${formatType(targetType.inner)}'.`,
+              args[0].span,
+              this.currentFile
+            );
+          }
+          return isUnknown(targetType.inner) ? fallbackType : targetType.inner;
+        } else if (targetType.kind === 'Result') {
+          const fallbackType = this.checkExpression(args[0], targetType.ok);
+          if (
+            !isTypeAssignable(targetType.ok, fallbackType) &&
+            !isUnknown(fallbackType) &&
+            !isUnknown(targetType.ok)
+          ) {
+            this.diagnostics.reportError(
+              'E3003',
+              `Fallback type '${formatType(fallbackType)}' is incompatible with Result Ok type '${formatType(targetType.ok)}'.`,
+              args[0].span,
+              this.currentFile
+            );
+          }
+          return isUnknown(targetType.ok) ? fallbackType : targetType.ok;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'unwrap_or' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'unwrap_or_else': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'unwrap_or_else' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fnType = this.checkExpression(args[0], createFunctionType([], targetType.inner));
+          if (fnType.kind === 'Function') {
+            if (
+              !isTypeAssignable(targetType.inner, fnType.returnType) &&
+              !isUnknown(fnType.returnType) &&
+              !isUnknown(targetType.inner)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Fallback closure return type '${formatType(fnType.returnType)}' is incompatible with Option value type '${formatType(targetType.inner)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return isUnknown(targetType.inner) && fnType.kind === 'Function' ? fnType.returnType : targetType.inner;
+        } else if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(args[0], createFunctionType([targetType.err], targetType.ok));
+          if (fnType.kind === 'Function') {
+            if (
+              !isTypeAssignable(targetType.ok, fnType.returnType) &&
+              !isUnknown(fnType.returnType) &&
+              !isUnknown(targetType.ok)
+            ) {
+              this.diagnostics.reportError(
+                'E3003',
+                `Fallback closure return type '${formatType(fnType.returnType)}' is incompatible with Result Ok type '${formatType(targetType.ok)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return isUnknown(targetType.ok) && fnType.kind === 'Function' ? fnType.returnType : targetType.ok;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'unwrap_or_else' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'map_err': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'map_err' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(args[0], createFunctionType([targetType.err], UNKNOWN_TYPE));
+          if (fnType.kind === 'Function') {
+            return createResultType(targetType.ok, fnType.returnType);
+          }
+          return createResultType(targetType.ok, UNKNOWN_TYPE);
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'map_err' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'and_then': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'and_then' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fnType = this.checkExpression(
+            args[0],
+            createFunctionType([targetType.inner], createOptionType(UNKNOWN_TYPE))
+          );
+          if (fnType.kind === 'Function') {
+            if (fnType.returnType.kind === 'Option') {
+              return fnType.returnType;
+            } else if (!isUnknown(fnType.returnType)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'and_then' closure must return Option, but returns '${formatType(fnType.returnType)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return createOptionType(UNKNOWN_TYPE);
+        } else if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(
+            args[0],
+            createFunctionType([targetType.ok], createResultType(UNKNOWN_TYPE, targetType.err))
+          );
+          if (fnType.kind === 'Function') {
+            if (fnType.returnType.kind === 'Result') {
+              return fnType.returnType;
+            } else if (!isUnknown(fnType.returnType)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'and_then' closure must return Result, but returns '${formatType(fnType.returnType)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return createResultType(UNKNOWN_TYPE, targetType.err);
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'and_then' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'or_else': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'or_else' expects 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+          return UNKNOWN_TYPE;
+        }
+        if (targetType.kind === 'Option') {
+          const fnType = this.checkExpression(args[0], createFunctionType([], targetType));
+          if (fnType.kind === 'Function') {
+            if (!isTypeAssignable(targetType, fnType.returnType) && !isUnknown(fnType.returnType)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'or_else' closure return type '${formatType(fnType.returnType)}' is incompatible with '${formatType(targetType)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return targetType;
+        } else if (targetType.kind === 'Result') {
+          const fnType = this.checkExpression(
+            args[0],
+            createFunctionType([targetType.err], createResultType(targetType.ok, UNKNOWN_TYPE))
+          );
+          if (fnType.kind === 'Function') {
+            if (fnType.returnType.kind === 'Result') {
+              return fnType.returnType;
+            }
+          }
+          return targetType;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'or_else' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          this.checkExpression(args[0]);
+          return UNKNOWN_TYPE;
+        }
+      }
+
+      case 'trim': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'trim' requires a String receiver, but got '${formatType(targetType)}'.`,
+            fullSpan,
+            this.currentFile
+          );
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'trim' takes 0 arguments, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+        }
+        return STRING_TYPE;
+      }
+
+      case 'replace': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'replace' requires a String receiver, but got '${formatType(targetType)}'.`,
+            fullSpan,
+            this.currentFile
+          );
+        }
+        if (args.length !== 2) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'replace' takes 2 arguments, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+        }
+        for (let i = 0; i < args.length; i++) {
+          const aType = this.checkExpression(args[i], STRING_TYPE);
+          if (!isString(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'replace' argument ${i + 1} must be String, but got '${formatType(aType)}'.`,
+              args[i].span,
+              this.currentFile
+            );
+          }
+        }
+        return STRING_TYPE;
+      }
+
+      case 'split': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'split' requires a String receiver, but got '${formatType(targetType)}'.`,
+            fullSpan,
+            this.currentFile
+          );
+        }
+        if (args.length !== 1) {
+          this.diagnostics.reportError(
+            'E3003',
+            `'split' takes 1 argument, but got ${args.length}.`,
+            callSpan,
+            this.currentFile
+          );
+        }
+        if (args.length > 0) {
+          const aType = this.checkExpression(args[0], STRING_TYPE);
+          if (!isString(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'split' separator must be String, but got '${formatType(aType)}'.`,
+              args[0].span,
+              this.currentFile
+            );
+          }
+        }
+        return { kind: 'List', element: STRING_TYPE };
+      }
+
+      case 'contains': {
+        if (isString(targetType)) {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], STRING_TYPE);
+            if (!isString(aType) && !isUnknown(aType)) {
+              this.diagnostics.reportError('E3003', `'contains' argument must be String, but got '${formatType(aType)}'.`, args[0].span, this.currentFile);
+            }
+          }
+          return BOOL_TYPE;
+        } else if (targetType.kind === 'List') {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], targetType.element);
+            if (!isTypeAssignable(targetType.element, aType) && !isUnknown(aType) && !isUnknown(targetType.element)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'contains' argument type '${formatType(aType)}' is incompatible with List element type '${formatType(targetType.element)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return BOOL_TYPE;
+        } else if (targetType.kind === 'Set') {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], targetType.element);
+            if (!isTypeAssignable(targetType.element, aType) && !isUnknown(aType) && !isUnknown(targetType.element)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'contains' argument type '${formatType(aType)}' is incompatible with Set element type '${formatType(targetType.element)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return BOOL_TYPE;
+        } else if (targetType.kind === 'Map') {
+          if (args.length !== 1) {
+            this.diagnostics.reportError('E3003', `'contains' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          if (args.length > 0) {
+            const aType = this.checkExpression(args[0], targetType.key);
+            if (!isTypeAssignable(targetType.key, aType) && !isUnknown(aType) && !isUnknown(targetType.key)) {
+              this.diagnostics.reportError(
+                'E3003',
+                `'contains' argument type '${formatType(aType)}' is incompatible with Map key type '${formatType(targetType.key)}'.`,
+                args[0].span,
+                this.currentFile
+              );
+            }
+          }
+          return BOOL_TYPE;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError(
+              'E3003',
+              `'contains' is not supported on type '${formatType(targetType)}'.`,
+              fullSpan,
+              this.currentFile
+            );
+          }
+          for (const a of args) this.checkExpression(a);
+          return BOOL_TYPE;
+        }
+      }
+
+      case 'unwrap': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'unwrap' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        if (!isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'unwrap' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        return UNKNOWN_TYPE;
+      }
+
+      case 'expect': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'expect' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) {
+          const aType = this.checkExpression(args[0], STRING_TYPE);
+          if (!isString(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError('E3003', `'expect' argument must be String, but got '${formatType(aType)}'.`, args[0].span, this.currentFile);
+          }
+        }
+        if (targetType.kind === 'Option') return targetType.inner;
+        if (targetType.kind === 'Result') return targetType.ok;
+        if (!isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'expect' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        return UNKNOWN_TYPE;
+      }
+
+      case 'is_some':
+      case 'is_none': {
+        if (targetType.kind !== 'Option' && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'${name}' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'${name}' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return BOOL_TYPE;
+      }
+
+      case 'is_ok':
+      case 'is_err': {
+        if (targetType.kind !== 'Result' && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'${name}' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'${name}' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return BOOL_TYPE;
+      }
+
+      case 'filter': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'filter' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (targetType.kind === 'List') {
+          if (args.length > 0) this.checkExpression(args[0], createFunctionType([targetType.element], BOOL_TYPE));
+          return targetType;
+        } else if (targetType.kind === 'Custom' && targetType.name === 'Iterator') {
+          if (args.length > 0) this.checkExpression(args[0]);
+          return targetType;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError('E3003', `'filter' is not supported on type '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+          }
+          if (args.length > 0) this.checkExpression(args[0]);
+          return targetType;
+        }
+      }
+
+      case 'take':
+      case 'skip': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'${name}' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) {
+          const aType = this.checkExpression(args[0], INT_TYPE);
+          if (!isInt(aType) && !isUnknown(aType)) {
+            this.diagnostics.reportError('E3003', `'${name}' argument must be Int, but got '${formatType(aType)}'.`, args[0].span, this.currentFile);
+          }
+        }
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'enumerate': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'enumerate' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'zip': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'zip' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) this.checkExpression(args[0]);
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'fold': {
+        if (args.length < 2) {
+          this.diagnostics.reportError('E3003', `'fold' takes 2 arguments (initial, folder), but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        const initType = args.length > 0 ? this.checkExpression(args[0]) : UNKNOWN_TYPE;
+        if (args.length > 1) this.checkExpression(args[1]);
+        return initType;
+      }
+
+      case 'reduce': {
+        if (args.length !== 1) {
+          this.diagnostics.reportError('E3003', `'reduce' takes 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length > 0) this.checkExpression(args[0]);
+        return createOptionType(UNKNOWN_TYPE);
+      }
+
+      case 'iter': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'iter' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'Custom', name: 'Iterator' };
+      }
+
+      case 'collect': {
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'collect' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'List', element: UNKNOWN_TYPE };
+      }
+
+      case 'chars': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'chars' requires a String receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'chars' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'List', element: CHAR_TYPE };
+      }
+
+      case 'bytes': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'bytes' requires a String receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length !== 0) {
+          this.diagnostics.reportError('E3003', `'bytes' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        return { kind: 'List', element: BYTE_TYPE };
+      }
+
+      case 'reverse': {
+        if (targetType.kind === 'List') {
+          if (args.length !== 0) {
+            this.diagnostics.reportError('E3003', `'reverse' takes 0 arguments, but got ${args.length}.`, callSpan, this.currentFile);
+          }
+          return targetType;
+        } else {
+          if (!isUnknown(targetType)) {
+            this.diagnostics.reportError('E3003', `'reverse' requires a List receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+          }
+          return targetType;
+        }
+      }
+
+      case 'encode': {
+        if (!isString(targetType) && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'encode' requires a String receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length > 1) {
+          this.diagnostics.reportError('E3003', `'encode' takes 0 or 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length === 1) {
+          this.checkExpression(args[0], STRING_TYPE);
+        }
+        return createResultType(BYTES_TYPE, STRING_TYPE);
+      }
+
+      case 'decode': {
+        if ((targetType.kind !== 'Custom' || targetType.name !== 'Bytes') && !isUnknown(targetType)) {
+          this.diagnostics.reportError('E3003', `'decode' requires a Bytes receiver, but got '${formatType(targetType)}'.`, fullSpan, this.currentFile);
+        }
+        if (args.length > 1) {
+          this.diagnostics.reportError('E3003', `'decode' takes 0 or 1 argument, but got ${args.length}.`, callSpan, this.currentFile);
+        }
+        if (args.length === 1) {
+          this.checkExpression(args[0], STRING_TYPE);
+        }
+        return createResultType(STRING_TYPE, STRING_TYPE);
+      }
+
+      default:
+        return null;
+    }
   }
 
   private checkCall(call: CallExpr, expectedType?: Type): Type {
@@ -1252,6 +2485,68 @@ export class TypeChecker {
         }
         return { kind: 'Custom', name: 'Resource' };
       }
+      if (calleeName === 'MemoryReader') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'MemoryReader' };
+      }
+      if (calleeName === 'MemoryWriter') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'MemoryWriter' };
+      }
+      if (calleeName === 'MemoryStream') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return { kind: 'Custom', name: 'MemoryStream' };
+      }
+      if (calleeName === 'open_file') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createResultType(FILE_TYPE, STRING_TYPE);
+      }
+      if (calleeName === 'Path') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return PATH_TYPE;
+      }
+      if (calleeName === 'Bytes') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return BYTES_TYPE;
+      }
+      if (calleeName === 'encode') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createResultType(BYTES_TYPE, STRING_TYPE);
+      }
+      if (calleeName === 'decode') {
+        for (const arg of call.args) this.checkExpression(arg);
+        return createResultType(STRING_TYPE, STRING_TYPE);
+      }
+      if (calleeName === 'Set') {
+        const elemType = call.args.length > 0 ? this.checkExpression(call.args[0]) : UNKNOWN_TYPE;
+        const inner = elemType.kind === 'List' ? elemType.element : elemType;
+        return { kind: 'Set', element: inner };
+      }
+
+      if (BUILTIN_OPERATIONS.has(calleeName)) {
+        if (call.args.length > 0) {
+          const targetType = this.checkExpression(call.args[0]);
+          return (
+            this.checkBuiltinOperation(
+              calleeName,
+              targetType,
+              call.args.slice(1),
+              call.span,
+              call.span
+            ) ?? UNKNOWN_TYPE
+          );
+        } else {
+          return (
+            this.checkBuiltinOperation(
+              calleeName,
+              UNKNOWN_TYPE,
+              [],
+              call.span,
+              call.span
+            ) ?? UNKNOWN_TYPE
+          );
+        }
+      }
 
       const sym = this.currentResolverResult?.resolvedSymbols.get(id);
       if (sym && sym.type) {
@@ -1282,6 +2577,55 @@ export class TypeChecker {
         this.currentGenericParams = prevGenericParams;
         calleeType = createFunctionType(paramTypes, returnType, fnDecl.isEffectful, genericParamTypes);
         sym.type = calleeType;
+      }
+    } else if (call.callee.kind === 'MemberExpr') {
+      const mem = call.callee as MemberExpr;
+      if (BUILTIN_OPERATIONS.has(mem.property)) {
+        const targetType = this.checkExpression(mem.object);
+        const builtinRes = this.checkBuiltinOperation(
+          mem.property,
+          targetType,
+          call.args,
+          call.span,
+          call.span
+        );
+        if (builtinRes !== null) {
+          return builtinRes;
+        }
+      }
+      if (mem.property === 'read') {
+        const objType = this.checkExpression(mem.object);
+        if (call.args.length > 1) {
+          this.diagnostics.reportError('E3003', `'read' expects 0 or 1 argument, but got ${call.args.length}.`, call.span, this.currentFile);
+        }
+        if (call.args.length === 1) {
+          this.checkExpression(call.args[0], INT_TYPE);
+        }
+        if (objType.kind === 'Custom' && objType.name === 'File') {
+          return createResultType(createOptionType(STRING_TYPE), STRING_TYPE);
+        }
+        return createOptionType(STRING_TYPE);
+      }
+      if (mem.property === 'length') {
+        const objType = this.checkExpression(mem.object);
+        if (objType.kind === 'Custom' && objType.name === 'File') {
+          return createResultType(INT_TYPE, STRING_TYPE);
+        }
+        return INT_TYPE;
+      }
+      calleeType = this.checkExpression(call.callee);
+      // P1-4: Emit E3003 if method/property does not exist on a known built-in type.
+      // UNKNOWN_TYPE from a MemberExpr on a known built-in object indicates method lookup failure.
+      if (isUnknown(calleeType)) {
+        const objType = this.nodeTypes.get(mem.object);
+        if (objType && !isUnknown(objType) && this.isKnownBuiltinType(objType)) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Method or property '${mem.property}' does not exist on type '${formatType(objType)}'.`,
+            call.span,
+            this.currentFile
+          );
+        }
       }
     } else {
       calleeType = this.checkExpression(call.callee);
@@ -1463,6 +2807,20 @@ export class TypeChecker {
       if (call.callee.kind === 'Identifier') {
         const id = call.callee as Identifier;
         calleeName = id.name;
+
+        if (BUILTIN_OPERATIONS.has(calleeName)) {
+          const builtinRes = this.checkBuiltinOperation(
+            calleeName,
+            valType,
+            call.args,
+            call.span,
+            pipe.span
+          );
+          if (builtinRes !== null) {
+            return builtinRes;
+          }
+        }
+
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);
         if (sym && sym.type) {
           calleeType = sym.type;
@@ -1515,6 +2873,20 @@ export class TypeChecker {
       if (pipe.right.kind === 'Identifier') {
         const id = pipe.right as Identifier;
         calleeName = id.name;
+
+        if (BUILTIN_OPERATIONS.has(calleeName)) {
+          const builtinRes = this.checkBuiltinOperation(
+            calleeName,
+            valType,
+            [],
+            pipe.right.span,
+            pipe.span
+          );
+          if (builtinRes !== null) {
+            return builtinRes;
+          }
+        }
+
         const sym = this.currentResolverResult?.resolvedSymbols.get(id);
         if (sym && sym.type) {
           calleeType = sym.type;
@@ -1602,6 +2974,8 @@ export class TypeChecker {
         return BYTE_TYPE;
       case 'Unit':
         return UNIT_TYPE;
+      case 'Unknown':
+        return UNKNOWN_TYPE;
       case 'Function': {
         const params = annotation.functionParams
           ? annotation.functionParams.map((p) => this.resolveTypeAnnotation(p))
@@ -1907,6 +3281,26 @@ export class TypeChecker {
       return createOptionType(objType.element);
     }
 
+    if (objType.kind === 'Tuple') {
+      if (!isInt(indexType) && !isUInt(indexType) && !isUnknown(indexType)) {
+        this.diagnostics.reportError(
+          'E3002',
+          `Tuple index must be of type Int or UInt, but found '${formatType(indexType)}'.`,
+          idx.index.span,
+          this.currentFile
+        );
+      }
+      if (idx.index.kind === 'Literal' && typeof (idx.index as Literal).value === 'number') {
+        const i = (idx.index as Literal).value as number;
+        if (i >= 0 && i < objType.elements.length) {
+          return createOptionType(objType.elements[i]);
+        }
+        return createOptionType(UNKNOWN_TYPE);
+      }
+      const unionElem = objType.elements.length > 0 ? objType.elements[0] : UNKNOWN_TYPE;
+      return createOptionType(unionElem);
+    }
+
     if (objType.kind === 'Map') {
       if (!isTypeAssignable(objType.key, indexType) && !isUnknown(indexType) && !isUnknown(objType.key)) {
         this.diagnostics.reportError(
@@ -1922,7 +3316,7 @@ export class TypeChecker {
     if (!isUnknown(objType)) {
       this.diagnostics.reportError(
         'E3002',
-        `Cannot index into expression of type '${formatType(objType)}'. Safe indexing is supported on List and Map.`,
+        `Cannot index into expression of type '${formatType(objType)}'. Safe indexing is supported on List, Tuple, and Map.`,
         idx.span,
         this.currentFile
       );

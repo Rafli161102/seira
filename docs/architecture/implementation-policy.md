@@ -13,7 +13,7 @@
 **The Seira Language Specification MUST remain completely independent from the implementation language of the Seira compiler.**
 
 The following concepts are strictly separated:
-- **Seira Language**: The specification, grammar, semantics, value model, effect system, and ownership model defining `.sra` code.
+- **Seira Language**: The specification, grammar, semantics, value model, effect system, and ownership model defining `.sr` code.
 - **Compiler Implementation**: The executable codebase responsible for lexing, parsing, analyzing, and lowering Seira code.
 - **Runtime Implementation**: The execution support layer providing memory scopes, allocators, and host adapters.
 - **Developer Tooling**: CLI utilities, package managers, and formatters.
@@ -41,7 +41,7 @@ The Seed implementation currently uses **TypeScript + Node.js**.
 The Seira repository is architected to allow multiple implementation languages across decoupled subsystems:
 
 ```text
-Seira Language (.sra)
+Seira Language (.sr)
     ↓
 Compiler Core
     ↓ Native Implementation (e.g. Rust / Zig / C++ evaluated in future milestone)
@@ -63,7 +63,7 @@ Target Backends
     └── WebAssembly (Wasm)
 ```
 
-The presence of multiple programming languages on GitHub (TypeScript, native languages, Shell, Markdown, Seira `.sra`) is expected and architecturally sound, provided every language has a clear, isolated subsystem responsibility.
+The presence of multiple programming languages on GitHub (TypeScript, native languages, Shell, Markdown, Seira `.sr`) is expected and architecturally sound, provided every language has a clear, isolated subsystem responsibility.
 
 ---
 
@@ -106,4 +106,4 @@ $$\text{Architecture First} \longrightarrow \text{Implementation-Language Decisi
 1. **Maintain Current Stack**: Continue using the existing TypeScript/Node.js stack for compiler foundation work.
 2. **Preserve Neutrality**: Keep all compiler and AST structures language-neutral and migratable.
 3. **No Speculative Splitting**: Do not introduce second or third implementation languages without explicit milestone mandate.
-4. **Distinguish Product from Implementation**: Seira (`.sra`) is the product; TypeScript is merely the current bootstrapping compiler implementation.
+4. **Distinguish Product from Implementation**: Seira (`.sr`) is the product; TypeScript is merely the current bootstrapping compiler implementation.

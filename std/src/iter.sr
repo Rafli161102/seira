@@ -1,0 +1,10 @@
+// Seira Standard Library: Iterator Combinators
+// Module: std.iter
+
+pub trait Iterator<Item> {
+    fn next(it: Iterator<Item>) -> Option<Item>
+}
+
+pub fn iter<T>(items: List<T>) -> Iterator => items.iter()
+
+pub fn collect(it: Iterator) -> List => it.collect()

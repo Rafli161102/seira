@@ -1,8 +1,8 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.8-s](https://img.shields.io/badge/Release-0.0.8--s%20Seed-green.svg)](CHANGELOG.md)
-[![Status: Module & Package Foundation](https://img.shields.io/badge/Status-Module%20%26%20Package%20Foundation-orange.svg)](#project-status)
+[![Release: 0.0.10-s](https://img.shields.io/badge/Release-0.0.10--s%20Seed-green.svg)](CHANGELOG.md)
+[![Status: I/O & Resource Boundary Foundation](https://img.shields.io/badge/Status-I%2FO%20%26%20Resource%20Boundary%20Foundation-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Seed stage.
 
@@ -14,10 +14,18 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Seed (0.0.8-s) — Module & Package Foundation**  
+> **Current Status: Seed (0.0.10-s) — I/O & Resource Boundary Foundation v1.0**  
 > Seira is currently an early-stage experimental programming language project establishing its compiler architecture, language foundation, tooling boundaries, and engineering infrastructure.  
 > **Seira is NOT production-ready, and Alpha is not yet released.**  
-> In the current 0.0.8-s release, Seira establishes the module and package foundation: canonical `.sr` source extension, canonical `sr` CLI tool, single-file mode (`sr run script.sr`) alongside package mode (`sr run`), filesystem module mapping (`src/user.sr` ➔ module `user`), package manifest (`Seira.toml`), SHA-256 source integrity lockfile (`Seira.lock`), import and symbol use (`import module`, `use module.Symbol [as alias]`), public re-export (`pub use`), declaration visibility (`pub`), cross-module type, generic, and trait resolution, path dependencies (`shared = { path = "../shared" }`), multi-package workspace foundation (`[workspace] members = [...]`), cycle detection (`E6008`, `E6012`), and the active `E6xxx` diagnostic family. Tree-walking execution evaluates validated multi-module and multi-package projects.
+> In the current 0.0.10-s release, Seira establishes the official I/O, Capability, and Resource boundaries:
+> - **Capability Architecture**: Capabilities are composable, not universal (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`).
+> - **Byte/Text Boundary**: Strict boundary between raw binary data (`Byte`, `Bytes`) and text (`Char`, `String`). Conversions are explicit (`encode` / `decode`); implicit coercion is strictly prohibited.
+> - **Encoding Foundation**: Supported standard encodings (UTF-8 default, ASCII, UTF-16, UTF-32) returning deterministic `Result` types. Invalid byte sequences produce structured errors, never panics or corruption.
+> - **Path Abstraction**: First-class, immutable, normalized `Path` type distinct from `String` with composable operations (`join`, `parent`, `file_name`, `extension`, `is_absolute`, `normalize`).
+> - **File I/O Foundation**: Deterministic, safe `File` lifecycle (open → use → close). Operations on closed files or mode violations produce deterministic `Result` errors (`AlreadyClosed`, `PermissionDenied`, `NotFound`, `InvalidSeek`).
+> - **Deterministic Resource Management**: First-class `with` statement with guaranteed deterministic cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
+> - **Memory I/O Refinement**: Target-independent `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic execution without OS/network side effects.
+
 
 ---
 
@@ -47,7 +55,7 @@ The outside world is an Effect.»
 The following examples demonstrate syntax and semantic features supported and validated by the current `0.0.6-s` implementation:
 
 ### 1. Hello World
-```sra
+```sr
 // Canonical function and output
 fn main() {
     println("Hello, Seira!")
@@ -55,7 +63,7 @@ fn main() {
 ```
 
 ### 2. Functional Pipelines, Option Fallback, and Lambdas
-```sra
+```sr
 fn double(x: Int) -> Int {
     x * 2
 }
@@ -73,7 +81,7 @@ fn compute_score(input: Option<Int>) -> Int {
 ```
 
 ### 3. Collections, Safe Indexing, Pattern Matching, and Loops
-```sra
+```sr
 fn describe_first(items: List<Int>) -> String {
     match items[0] {
         Some(first) => if first > 0 { "positive" } else { "non-positive" }
@@ -95,7 +103,7 @@ fn run_pipeline() {
 ```
 
 ### 4. Generics, Type Aliases, Unions, and Traits
-```sra
+```sr
 // Type Alias & Union Type
 type UserId = Int
 type Identifier = UserId | String

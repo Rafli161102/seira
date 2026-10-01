@@ -15,7 +15,7 @@ test('Compiler: compiles source end-to-end through Parser phase', () => {
     }
   `;
 
-  const result = compileSource(source, 'main.sra');
+  const result = compileSource(source, 'main.sr');
   assert.strictEqual(result.success, true);
   assert.ok(result.ast);
   assert.strictEqual(result.ast?.items.length, 1);
@@ -24,7 +24,7 @@ test('Compiler: compiles source end-to-end through Parser phase', () => {
 
 test('Compiler: halts and reports errors on invalid syntax', () => {
   const source = 'fn main( { invalid';
-  const result = compileSource(source, 'invalid.sra');
+  const result = compileSource(source, 'invalid.sr');
   assert.strictEqual(result.success, false);
   assert.strictEqual(result.diagnostics.hasErrors(), true);
 });

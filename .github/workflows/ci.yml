@@ -62,4 +62,4 @@ jobs:
         run: |
           node --experimental-strip-types tools/cli/index.ts --version
           node --experimental-strip-types tools/cli/index.ts info
-          node --experimental-strip-types tools/cli/index.ts check examples/hello_world.sra
+          node --experimental-strip-types tools/cli/index.ts check examples/hello_world.sr

@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.8-s Module & Package Foundation
+# Specification: 0.0.10-s I/O & Resource Boundary Foundation v1.0
 
 [package]
 name = "seira"
-version = "0.0.8-s"
+version = "0.0.10-s"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — Module & Package Foundation"
+description = "The Seira Programming Language — I/O & Resource Boundary Foundation v1.0"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 

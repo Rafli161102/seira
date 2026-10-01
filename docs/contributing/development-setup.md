@@ -50,7 +50,7 @@ The Seira CLI is located at `bin/seira`:
 ./bin/seira info
 
 # Validate an example Seira file
-./bin/seira check examples/hello_world.sra
+./bin/seira check examples/hello_world.sr
 ```
 
 Optional: You can link the binary to your system PATH using:
@@ -97,7 +97,7 @@ When working on changes, adhere strictly to our architectural boundaries:
 - `std/` - Standard library specifications and code.
 - `tools/` - CLI command implementations and `Seira.toml` manifest parser.
 - `tests/` - Automated unit, integration, and conformance tests.
-- `examples/` - Example `.sra` programs.
+- `examples/` - Example `.sr` programs.
 - `docs/` - System and language documentation.
 
 ---
