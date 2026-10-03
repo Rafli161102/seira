@@ -1,81 +1,27 @@
 /**
  * Seira High-Level Intermediate Representation (HIR)
  *
- * ARCHITECTURAL SKELETON — NOT IMPLEMENTED
+ * Official semantic representation boundary between AST-level language
+ * representation and the future MIR/backend pipeline.
  *
- * Responsibilities:
- * - Lowering AST into canonical high-level semantic representation
- * - Desugaring syntactic sugar (pipelines `|>`, default operators `??`, `with` blocks)
- * - Module linking and monomorphization preparation
- * - Semantic annotations (resolved symbols, validated types, effect signatures)
- *
- * Milestone: Planned for Development Series (0.0.11-d+).
+ * Characteristics:
+ * - Resolved (symbols, functions, fields, traits, impls)
+ * - Strongly typed (canonical HIRType on every node)
+ * - Source-aware (direct source mapping & synthetic tracking)
+ * - Deterministic (canonical ID generation and formatting)
+ * - Canonical (desugared pipelines, fallbacks, try propagation, resource blocks)
+ * - Backend-neutral (purely high-level, no low-level IR constructs)
  */
 
-import type { Program } from '../ast/ast.ts';
-import { DiagnosticBag } from '../diagnostics/index.ts';
-import type { Span } from '../source/span.ts';
+export * from './ids.ts';
+export * from './origin.ts';
+export * from './types.ts';
+export * from './nodes.ts';
+export * from './visitor.ts';
+export * from './lowering.ts';
+export * from './validator.ts';
+export * from './printer.ts';
 
-export type HIRId = number;
-
-export interface HIRProgram {
-  readonly version: string;
-  readonly modules: ReadonlyArray<HIRModule>;
-  readonly functions: ReadonlyArray<HIRFunction>;
-}
-
-export interface HIRModule {
-  readonly id: HIRId;
-  readonly name: string;
-  readonly span: Span;
-}
-
-export interface HIRFunction {
-  readonly id: HIRId;
-  readonly name: string;
-  readonly isEffectful: boolean;
-  readonly body: HIRBlock;
-  readonly span: Span;
-}
-
-export interface HIRBlock {
-  readonly id: HIRId;
-  readonly statements: ReadonlyArray<HIRStmt>;
-  readonly span: Span;
-}
-
-export interface HIRStmt {
-  readonly id: HIRId;
-  readonly kind: string;
-  readonly span: Span;
-}
-
-export interface HIRExpr {
-  readonly id: HIRId;
-  readonly kind: string;
-  readonly span: Span;
-}
-
-export class HIRLowering {
-  private readonly diagnostics: DiagnosticBag;
-
-  constructor(diagnostics?: DiagnosticBag) {
-    this.diagnostics = diagnostics ?? new DiagnosticBag();
-  }
-
-  public lower(program: Program, file?: string): HIRProgram {
-    this.diagnostics.reportInfo(
-      'I1001',
-      'HIR lowering is an architectural skeleton reserved for the Development Series.',
-      program.span,
-      file,
-      'HIR transformation will be enabled in 0.0.11-d.'
-    );
-
-    return {
-      version: '0.0.4-s',
-      modules: [],
-      functions: [],
-    };
-  }
-}
+// Backward compatibility alias
+import type { NodeId } from './ids.ts';
+export type HIRId = NodeId;

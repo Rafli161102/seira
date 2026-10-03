@@ -12,7 +12,7 @@ import type { Program } from '../ast/ast.ts';
 import { CompilerBackend, type BackendResult } from '../backend/index.ts';
 import { DiagnosticBag } from '../diagnostics/index.ts';
 import { InternalCompilerError } from '../diagnostics/ice.ts';
-import { HIRLowering, type HIRProgram } from '../hir/index.ts';
+import { HIRLowering, HIRValidator, type HIRProgram } from '../hir/index.ts';
 import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
 import { MIRBuilder, type MIRModule } from '../mir/index.ts';
@@ -25,7 +25,7 @@ import {
 } from '../module/index.ts';
 import { Parser } from '../parser/parser.ts';
 import { Resolver, type ResolverResult } from '../resolver/index.ts';
-import { TypeChecker } from '../typecheck/index.ts';
+import { TypeChecker, type TypecheckResult } from '../typecheck/index.ts';
 import type { CompilerConfig } from './config.ts';
 import { CompilerContext } from './context.ts';
 import { CompilerStage, isStageAtLeast } from './stage.ts';
@@ -304,9 +304,10 @@ export class CompilerDriver {
     }
 
     // Stage 4: Type Checking & Semantic Analysis
+    let typecheckResult: TypecheckResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.Typecheck)) {
       const typeChecker = new TypeChecker(context.diagnostics);
-      typeChecker.check(ast, resolverResult, filePath);
+      typecheckResult = typeChecker.check(ast, resolverResult, filePath);
 
       if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Typecheck) {
         context.finish();
@@ -321,13 +322,18 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 5: High-Level Intermediate Representation (HIR) Lowering (Architectural Skeleton)
+    // Stage 5: High-Level Intermediate Representation (HIR) Lowering & Validation
     let hir: HIRProgram | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.HIR)) {
       const hirLowering = new HIRLowering(context.diagnostics);
-      hir = hirLowering.lower(ast, filePath);
+      hir = hirLowering.lower(ast, resolverResult, typecheckResult, filePath);
 
-      if (effectiveStop === CompilerStage.HIR) {
+      if (hir && !context.diagnostics.hasErrors()) {
+        const hirValidator = new HIRValidator(context.diagnostics);
+        hirValidator.validate(hir);
+      }
+
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.HIR) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),
