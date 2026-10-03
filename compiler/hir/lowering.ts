@@ -55,6 +55,7 @@ import type {
   TopLevelItem,
   TraitDecl,
   TupleLiteral,
+  TypeAnnotation,
   UnaryExpr,
   WhileStmt,
   WildcardPattern,
@@ -113,11 +114,24 @@ import {
   HIR_UNIT_TYPE,
   HIR_UNKNOWN_TYPE,
   type HIRType,
+  isHIRUnknown,
+  typeAnnotationToHIRType,
   typeToHIRType,
 } from './types.ts';
 
+export type HIRLoweringMode = 'production' | 'tooling';
+
+export interface HIRLoweringOptions {
+  readonly mode?: HIRLoweringMode;
+  readonly allowUnknownTypes?: boolean;
+}
+
 export class HIRLowering {
   private readonly diagnostics: DiagnosticBag;
+  private readonly mode: HIRLoweringMode;
+  private readonly traitMethodsMap = new Map<string, string>();
+  private readonly traitMethodSignatures = new Map<string, HIRFunctionSignature>();
+  private readonly structDeclarations = new Map<string, StructDecl>();
   private nextNodeId: number = 1;
   private currentFile?: string;
   private resolverResult?: ResolverResult;
@@ -125,8 +139,9 @@ export class HIRLowering {
   private currentFunction?: string;
   private disambiguatorMap = new Map<string, number>();
 
-  constructor(diagnostics?: DiagnosticBag) {
+  constructor(diagnostics?: DiagnosticBag, options?: HIRLoweringOptions) {
     this.diagnostics = diagnostics ?? new DiagnosticBag();
+    this.mode = options?.mode ?? 'production';
   }
 
   private allocId(): NodeId {
@@ -142,7 +157,180 @@ export class HIRLowering {
 
   private getType(node: ASTNode): HIRType {
     if (this.typecheckResult && this.typecheckResult.nodeTypes.has(node)) {
-      return typeToHIRType(this.typecheckResult.nodeTypes.get(node)!);
+      const t = this.typecheckResult.nodeTypes.get(node)!;
+      const ht = typeToHIRType(t);
+      if (ht.kind !== 'Unknown') {
+        return ht;
+      }
+    }
+    if (node.kind === 'TypeAnnotation') {
+      return typeAnnotationToHIRType(node as TypeAnnotation);
+    }
+    if (node.kind === 'Identifier') {
+      const id = node as Identifier;
+      const sym = this.resolverResult?.resolvedSymbols.get(id);
+      if (sym) {
+        if (sym.type) {
+          const ht = typeToHIRType(sym.type);
+          if (ht.kind !== 'Unknown') return ht;
+        }
+        if (sym.declNode && sym.declNode.kind === 'FunctionDecl') {
+          const fnDecl = sym.declNode as FunctionDecl;
+          const paramTypes = fnDecl.params.map((p) =>
+            p.typeAnnotation ? typeAnnotationToHIRType(p.typeAnnotation) : HIR_UNIT_TYPE
+          );
+          const returnType = fnDecl.returnType
+            ? typeAnnotationToHIRType(fnDecl.returnType)
+            : HIR_UNIT_TYPE;
+          const formatted = `(${paramTypes.map((p) => p.name).join(', ')}) -> ${returnType.name}`;
+          return {
+            id: createTypeId(formatted),
+            kind: 'Function',
+            name: formatted,
+            paramTypes,
+            returnType,
+            isEffectful: fnDecl.isEffectful,
+          };
+        }
+        if (sym.declNode && sym.declNode.kind === 'StructDecl') {
+          return { id: createTypeId(sym.name), kind: 'Custom', name: sym.name };
+        }
+        if (sym.declNode && sym.declNode.kind === 'BindingStmt') {
+          const bs = sym.declNode as BindingStmt;
+          if (bs.typeAnnotation) return typeAnnotationToHIRType(bs.typeAnnotation);
+        }
+        if (sym.declNode && sym.declNode.kind === 'LetStmt') {
+          const ls = sym.declNode as LetStmt;
+          if (ls.typeAnnotation) return typeAnnotationToHIRType(ls.typeAnnotation);
+        }
+        if (sym.declNode && sym.declNode.kind === 'Param') {
+          const ps = sym.declNode as Param;
+          if (ps.typeAnnotation) return typeAnnotationToHIRType(ps.typeAnnotation);
+        }
+        if (sym.kind === 'builtin') {
+          if (sym.name === 'println' || sym.name === 'print') {
+            return {
+              id: createTypeId('(String) -> Unit'),
+              kind: 'Function',
+              name: '(String) -> Unit',
+              paramTypes: [HIR_STRING_TYPE],
+              returnType: HIR_UNIT_TYPE,
+              isEffectful: true,
+            };
+          }
+          if (sym.name === 'open_resource') {
+            return {
+              id: createTypeId('(String) -> Resource'),
+              kind: 'Function',
+              name: '(String) -> Resource',
+              paramTypes: [HIR_STRING_TYPE],
+              returnType: { id: createTypeId('Resource'), kind: 'Custom', name: 'Resource' },
+            };
+          }
+          if (sym.name === 'open_file') {
+            return {
+              id: createTypeId('(String) -> Result[File, String]'),
+              kind: 'Function',
+              name: '(String) -> Result[File, String]',
+              paramTypes: [HIR_STRING_TYPE],
+              returnType: {
+                id: createTypeId('Result[File, String]'),
+                kind: 'Result',
+                name: 'Result',
+                typeArguments: [
+                  { id: createTypeId('File'), kind: 'Custom', name: 'File' },
+                  HIR_STRING_TYPE,
+                ],
+              },
+            };
+          }
+          if (sym.name === 'None') {
+            return {
+              id: createTypeId('Option[Unit]'),
+              kind: 'Option',
+              name: 'Option',
+              typeArguments: [HIR_UNIT_TYPE],
+            };
+          }
+          if (sym.name === 'Some') {
+            return {
+              id: createTypeId('(T) -> Option[T]'),
+              kind: 'Function',
+              name: '(T) -> Option[T]',
+              returnType: { id: createTypeId('Option'), kind: 'Option', name: 'Option' },
+            };
+          }
+          if (sym.name === 'Ok') {
+            return {
+              id: createTypeId('(T) -> Result[T, E]'),
+              kind: 'Function',
+              name: '(T) -> Result[T, E]',
+              returnType: { id: createTypeId('Result'), kind: 'Result', name: 'Result' },
+            };
+          }
+          if (sym.name === 'Err') {
+            return {
+              id: createTypeId('(E) -> Result[T, E]'),
+              kind: 'Function',
+              name: '(E) -> Result[T, E]',
+              returnType: { id: createTypeId('Result'), kind: 'Result', name: 'Result' },
+            };
+          }
+        }
+      }
+      if (this.structDeclarations.has(id.name)) {
+        return { id: createTypeId(id.name), kind: 'Custom', name: id.name };
+      }
+    }
+    if (node.kind === 'CallExpr') {
+      const call = node as CallExpr;
+      if (call.callee.kind === 'Identifier') {
+        const name = (call.callee as Identifier).name;
+        if (name === 'println' || name === 'print') {
+          return HIR_UNIT_TYPE;
+        }
+        if (name === 'open_resource') {
+          return { id: createTypeId('Resource'), kind: 'Custom', name: 'Resource' };
+        }
+        if (name === 'Some') {
+          const inner = call.args.length > 0 ? this.getType(call.args[0]) : HIR_UNIT_TYPE;
+          return {
+            id: createTypeId(`Option[${inner.name}]`),
+            kind: 'Option',
+            name: 'Option',
+            typeArguments: [inner],
+          };
+        }
+        if (name === 'Ok') {
+          const inner = call.args.length > 0 ? this.getType(call.args[0]) : HIR_UNIT_TYPE;
+          return {
+            id: createTypeId(`Result[${inner.name}, String]`),
+            kind: 'Result',
+            name: 'Result',
+            typeArguments: [inner, HIR_STRING_TYPE],
+          };
+        }
+        if (name === 'Err') {
+          const err = call.args.length > 0 ? this.getType(call.args[0]) : HIR_STRING_TYPE;
+          return {
+            id: createTypeId(`Result[Unit, ${err.name}]`),
+            kind: 'Result',
+            name: 'Result',
+            typeArguments: [HIR_UNIT_TYPE, err],
+          };
+        }
+      }
+    }
+    if (node.kind === 'OptionFallbackExpr') {
+      const fb = node as any;
+      return this.getType(fb.right);
+    }
+    if (node.kind === 'OptionPropagateExpr') {
+      const op = node as any;
+      const operandType = this.getType(op.operand);
+      if (operandType.typeArguments && operandType.typeArguments.length > 0) {
+        return operandType.typeArguments[0];
+      }
     }
     return HIR_UNKNOWN_TYPE;
   }
@@ -201,6 +389,46 @@ export class HIRLowering {
 
     const origin = fromSource(program.span, this.currentFile);
     const topLevelItems: HIRItem[] = [];
+
+    this.traitMethodsMap.clear();
+    this.traitMethodSignatures.clear();
+    this.structDeclarations.clear();
+    for (const item of program.items) {
+      if (item.kind === 'StructDecl') {
+        const sd = item as StructDecl;
+        this.structDeclarations.set(sd.name, sd);
+      } else if (item.kind === 'TraitDecl') {
+        const td = item as TraitDecl;
+        for (const m of td.methods) {
+          this.traitMethodsMap.set(m.name, td.name);
+          const sig: HIRFunctionSignature = {
+            name: m.name,
+            params: m.params.map((p) => ({
+              name: p.name,
+              type: p.typeAnnotation ? typeAnnotationToHIRType(p.typeAnnotation) : HIR_UNIT_TYPE,
+            })),
+            returnType: m.returnType ? typeAnnotationToHIRType(m.returnType) : HIR_UNIT_TYPE,
+            isEffectful: m.isEffectful,
+          };
+          this.traitMethodSignatures.set(`${td.name}::${m.name}`, sig);
+          this.traitMethodSignatures.set(m.name, sig);
+        }
+      } else if (item.kind === 'ImplDecl') {
+        const id = item as ImplDecl;
+        for (const m of id.methods) {
+          const sig: HIRFunctionSignature = {
+            name: m.name,
+            params: m.params.map((p) => ({
+              name: p.name,
+              type: p.typeAnnotation ? typeAnnotationToHIRType(p.typeAnnotation) : HIR_UNIT_TYPE,
+            })),
+            returnType: m.returnType ? typeAnnotationToHIRType(m.returnType) : HIR_UNIT_TYPE,
+            isEffectful: m.isEffectful,
+          };
+          this.traitMethodSignatures.set(`${id.targetType.name}::${m.name}`, sig);
+        }
+      }
+    }
 
     for (const item of program.items) {
       const lowered = this.lowerTopLevelItem(item);
@@ -275,6 +503,8 @@ export class HIRLowering {
       let pType = HIR_UNKNOWN_TYPE;
       if (fnType && fnType.kind === 'Function' && fnType.params && fnType.params[idx]) {
         pType = typeToHIRType(fnType.params[idx]);
+      } else if (p.typeAnnotation) {
+        pType = typeAnnotationToHIRType(p.typeAnnotation);
       } else {
         pType = this.getType(p);
       }
@@ -292,6 +522,8 @@ export class HIRLowering {
     let returnType = HIR_UNIT_TYPE;
     if (fnType && fnType.kind === 'Function' && fnType.returnType) {
       returnType = typeToHIRType(fnType.returnType);
+    } else if (fn.returnType) {
+      returnType = typeAnnotationToHIRType(fn.returnType);
     } else {
       returnType = this.getType(fn);
     }
@@ -349,12 +581,18 @@ export class HIRLowering {
     const traitId = createTraitId(trait.name);
     const genericParams = this.lowerGenericParams(trait.genericParams, trait.name);
 
-    const methods: HIRFunctionSignature[] = trait.methods.map((m) => ({
-      name: m.name,
-      params: m.params.map((p) => ({ name: p.name, type: this.getType(p) })),
-      returnType: this.getType(m),
-      isEffectful: m.isEffectful,
-    }));
+    const methods: HIRFunctionSignature[] = trait.methods.map((m) => {
+      this.traitMethodsMap.set(m.name, trait.name);
+      return {
+        name: m.name,
+        params: m.params.map((p) => ({
+          name: p.name,
+          type: p.typeAnnotation ? typeAnnotationToHIRType(p.typeAnnotation) : this.getType(p),
+        })),
+        returnType: m.returnType ? typeAnnotationToHIRType(m.returnType) : HIR_UNIT_TYPE,
+        isEffectful: m.isEffectful,
+      };
+    });
 
     return {
       kind: 'HIRTrait',
@@ -435,14 +673,22 @@ export class HIRLowering {
       case 'LetStmt': {
         const letStmt = stmt as LetStmt;
         const symId = this.getSymbolId(letStmt.name, this.currentFunction ?? 'block');
+        let letType = this.getType(letStmt);
+        if (letType.kind === 'Unknown' && letStmt.typeAnnotation) {
+          letType = typeAnnotationToHIRType(letStmt.typeAnnotation);
+        }
+        const initializer = letStmt.initializer ? this.lowerExpr(letStmt.initializer) : undefined;
+        if (letType.kind === 'Unknown' && initializer && initializer.type.kind !== 'Unknown') {
+          letType = initializer.type;
+        }
         return {
           kind: 'HIRLetStmt',
           id: this.allocId(),
           symbolId: symId,
           name: letStmt.name,
           isMut: letStmt.isMut,
-          type: this.getType(letStmt),
-          initializer: letStmt.initializer ? this.lowerExpr(letStmt.initializer) : undefined,
+          type: letType,
+          initializer,
           source: origin,
         };
       }
@@ -450,24 +696,38 @@ export class HIRLowering {
       case 'ConstStmt': {
         const constStmt = stmt as ConstStmt;
         const symId = this.getSymbolId(constStmt.name, this.currentFunction ?? 'block');
+        let constType = this.getType(constStmt);
+        if (constType.kind === 'Unknown' && constStmt.typeAnnotation) {
+          constType = typeAnnotationToHIRType(constStmt.typeAnnotation);
+        }
+        const initializer = this.lowerExpr(constStmt.initializer);
+        if (constType.kind === 'Unknown' && initializer && initializer.type.kind !== 'Unknown') {
+          constType = initializer.type;
+        }
         return {
           kind: 'HIRLetStmt',
           id: this.allocId(),
           symbolId: symId,
           name: constStmt.name,
           isMut: false,
-          type: this.getType(constStmt),
-          initializer: this.lowerExpr(constStmt.initializer),
+          type: constType,
+          initializer,
           source: origin,
         };
       }
 
       case 'BindingStmt': {
         const bindStmt = stmt as BindingStmt;
+        const declaredType = bindStmt.typeAnnotation
+          ? typeAnnotationToHIRType(bindStmt.typeAnnotation)
+          : undefined;
         const existingSym = this.resolverResult?.resolvedSymbols.get(bindStmt);
         if (existingSym) {
           const symId = createSymbolId(this.currentFunction ?? 'block', bindStmt.name);
-          const targetType = existingSym.type ? typeToHIRType(existingSym.type) : this.getType(bindStmt);
+          let targetType = existingSym.type ? typeToHIRType(existingSym.type) : this.getType(bindStmt);
+          if (targetType.kind === 'Unknown' && declaredType) {
+            targetType = declaredType;
+          }
           const targetExpr: HIRExpr = {
             kind: 'HIRLocalExpr',
             id: this.allocId(),
@@ -487,14 +747,22 @@ export class HIRLowering {
         }
 
         const symId = this.getSymbolId(bindStmt.name, this.currentFunction ?? 'block');
+        let finalType = this.getType(bindStmt);
+        if (finalType.kind === 'Unknown' && declaredType) {
+          finalType = declaredType;
+        }
+        const initializer = this.lowerExpr(bindStmt.initializer);
+        if (finalType.kind === 'Unknown' && initializer && initializer.type.kind !== 'Unknown') {
+          finalType = initializer.type;
+        }
         return {
           kind: 'HIRLetStmt',
           id: this.allocId(),
           symbolId: symId,
           name: bindStmt.name,
           isMut: bindStmt.isMut,
-          type: this.getType(bindStmt),
-          initializer: this.lowerExpr(bindStmt.initializer),
+          type: finalType,
+          initializer,
           source: origin,
         };
       }
@@ -702,12 +970,16 @@ export class HIRLowering {
         const operand = this.lowerExpr(prop.operand);
         const synthOrigin = fromSynthetic(prop.span, 'desugared_try_propagation', this.currentFile);
         const tryKind = operand.type.kind === 'Result' ? 'Result' : 'Option';
+        let resolvedType = exprType;
+        if (resolvedType.kind === 'Unknown' && operand.type.typeArguments && operand.type.typeArguments.length > 0) {
+          resolvedType = operand.type.typeArguments[0];
+        }
         return {
           kind: 'HIRTryExpr',
           id: this.allocId(),
           operand,
           tryKind,
-          type: exprType,
+          type: resolvedType,
           source: synthOrigin,
         };
       }
@@ -721,13 +993,23 @@ export class HIRLowering {
         const mem = expr as MemberExpr;
         const target = this.lowerExpr(mem.object);
         const structName = target.type.name && target.type.name !== 'Unknown' ? target.type.name : 'member';
+        let fieldType = exprType;
+        if (fieldType.kind === 'Unknown') {
+          const sd = this.structDeclarations.get(structName);
+          if (sd) {
+            const f = sd.fields.find((fld) => fld.name === mem.property);
+            if (f) {
+              fieldType = typeAnnotationToHIRType(f.type);
+            }
+          }
+        }
         return {
           kind: 'HIRFieldAccessExpr',
           id: this.allocId(),
           target,
           fieldId: createFieldId(structName, mem.property),
           fieldName: mem.property,
-          type: exprType,
+          type: fieldType,
           source: origin,
         };
       }
@@ -805,6 +1087,8 @@ export class HIRLowering {
           let paramType = HIR_UNKNOWN_TYPE;
           if (fnType && fnType.paramTypes && fnType.paramTypes[idx]) {
             paramType = fnType.paramTypes[idx];
+          } else if (p.typeAnnotation) {
+            paramType = typeAnnotationToHIRType(p.typeAnnotation);
           } else {
             paramType = this.getType(p);
           }
@@ -910,6 +1194,10 @@ export class HIRLowering {
       const mem = call.callee as MemberExpr;
       const receiver = this.lowerExpr(mem.object);
       const dispatch = this.resolveMethodDispatch(receiver.type, mem.property);
+      let resolvedType = callType;
+      if (resolvedType.kind === 'Unknown') {
+        resolvedType = this.resolveMethodReturnType(receiver.type, mem.property, dispatch);
+      }
 
       return {
         kind: 'HIRMethodCallExpr',
@@ -919,7 +1207,7 @@ export class HIRLowering {
         dispatch,
         args,
         genericArgs,
-        type: callType,
+        type: resolvedType,
         source: origin,
       };
     }
@@ -1014,43 +1302,124 @@ export class HIRLowering {
   }
 
   private resolveMethodDispatch(receiverType: HIRType, property: string): HIRMethodDispatch {
-    const BUILTIN_OPERATIONS = new Set([
-      'map', 'filter', 'take', 'skip', 'enumerate', 'zip', 'fold', 'reduce', 'collect',
-      'is_some', 'is_none', 'unwrap', 'expect', 'unwrap_or', 'unwrap_or_else', 'and_then', 'or_else',
-      'is_ok', 'is_err', 'map_err',
-      'length', 'is_empty', 'first', 'last', 'get', 'push', 'contains', 'iter', 'reverse',
-      'keys', 'values', 'insert', 'remove',
-      'trim', 'split', 'replace', 'chars', 'bytes', 'encode', 'decode',
-      'read', 'read_all', 'write', 'seek', 'position', 'flush', 'close', 'is_closed', 'reset', 'clear',
-    ]);
-
-    if (BUILTIN_OPERATIONS.has(property)) {
-      return { kind: 'Builtin', operation: property };
-    }
-
-    const traitMethods = new Map<string, string>([
+    const standardTraitMethods = new Map<string, string>([
       ['read', 'Reader'],
+      ['read_all', 'Reader'],
       ['write', 'Writer'],
       ['seek', 'Seekable'],
+      ['position', 'Seekable'],
       ['flush', 'Flushable'],
       ['length', 'Sized'],
+      ['is_empty', 'Sized'],
       ['close', 'Resource'],
+      ['is_closed', 'Resource'],
       ['print', 'Printable'],
+      ['next', 'Iterator'],
+      ['iter', 'Iterator'],
     ]);
 
-    const matchingTrait = traitMethods.get(property);
+    const matchingTrait = this.traitMethodsMap.get(property) ?? standardTraitMethods.get(property);
+    const targetName = receiverType.name && receiverType.name !== 'Unknown' ? receiverType.name : 'core';
+
     if (matchingTrait) {
+      const traitId = createTraitId(matchingTrait);
+      const implId = createImplId(targetName, matchingTrait);
+      const methodId = createFunctionId(matchingTrait, property);
       return {
         kind: 'Trait',
-        traitId: createTraitId(matchingTrait),
-        methodId: createFunctionId(matchingTrait, property),
+        traitId,
+        implId,
+        methodId,
+        trait_id: traitId,
+        impl_id: implId,
+        method_id: methodId,
       };
     }
 
+    const implId = createImplId(targetName, 'core');
+    const methodId = createFunctionId(targetName, property);
     return {
       kind: 'Concrete',
-      methodId: createFunctionId(receiverType.name, property),
+      implId,
+      methodId,
+      impl_id: implId,
+      method_id: methodId,
     };
+  }
+
+  private resolveMethodReturnType(
+    receiverType: HIRType,
+    property: string,
+    dispatch: HIRMethodDispatch
+  ): HIRType {
+    // 1. User trait or impl signatures
+    if (dispatch.kind === 'Trait') {
+      const traitName = dispatch.traitId.replace(/^trait:/, '');
+      const sig =
+        this.traitMethodSignatures.get(`${traitName}::${property}`) ??
+        this.traitMethodSignatures.get(property);
+      if (sig && sig.returnType.kind !== 'Unknown') {
+        return sig.returnType;
+      }
+    } else if (dispatch.kind === 'Concrete') {
+      const sig = this.traitMethodSignatures.get(`${receiverType.name}::${property}`);
+      if (sig && sig.returnType.kind !== 'Unknown') {
+        return sig.returnType;
+      }
+    }
+
+    // 2. Standard trait / builtin return types
+    switch (property) {
+      case 'length':
+        return HIR_INT_TYPE;
+      case 'is_empty':
+      case 'is_some':
+      case 'is_none':
+      case 'is_ok':
+      case 'is_err':
+      case 'contains':
+        return HIR_BOOL_TYPE;
+      case 'trim':
+      case 'replace':
+      case 'read_all':
+      case 'to_string':
+        return HIR_STRING_TYPE;
+      case 'unwrap':
+        if (receiverType.typeArguments && receiverType.typeArguments.length > 0) {
+          return receiverType.typeArguments[0];
+        }
+        return HIR_UNIT_TYPE;
+      case 'read':
+        return {
+          id: createTypeId('Option[String]'),
+          kind: 'Option',
+          name: 'Option',
+          typeArguments: [HIR_STRING_TYPE],
+        };
+      case 'write':
+        return {
+          id: createTypeId('Result[Int, String]'),
+          kind: 'Result',
+          name: 'Result',
+          typeArguments: [HIR_INT_TYPE, HIR_STRING_TYPE],
+        };
+      case 'close':
+      case 'flush':
+        return {
+          id: createTypeId('Result[Unit, String]'),
+          kind: 'Result',
+          name: 'Result',
+          typeArguments: [HIR_UNIT_TYPE, HIR_STRING_TYPE],
+        };
+      case 'seek':
+      case 'position':
+        return HIR_INT_TYPE;
+      case 'print':
+      case 'push':
+        return HIR_UNIT_TYPE;
+      default:
+        return HIR_UNKNOWN_TYPE;
+    }
   }
 
   // ─── Pattern Lowering ───────────────────────────────────────────────────────

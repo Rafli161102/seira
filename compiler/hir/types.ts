@@ -6,6 +6,7 @@
  * immutable, ID-bearing HIRType structures.
  */
 
+import type { TypeAnnotation } from '../ast/ast.ts';
 import type { Type } from '../typecheck/types.ts';
 import { formatType } from '../typecheck/types.ts';
 import { createTypeId, type TypeId } from './ids.ts';
@@ -56,12 +57,18 @@ export const HIR_UNKNOWN_TYPE: HIRType = {
   name: 'Unknown',
 };
 
+export function isHIRUnknown(t?: HIRType): boolean {
+  if (!t) return true;
+  return t.kind === 'Unknown' || t.name === 'Unknown' || t.id === 'type:Unknown';
+}
+
 export function typeToHIRType(t: Type): HIRType {
   const formatted = formatType(t);
   const id = createTypeId(formatted);
 
   switch (t.kind) {
     case 'Primitive':
+      if (t.name === 'Unknown') return HIR_UNKNOWN_TYPE;
       return {
         id,
         kind: 'Primitive',
@@ -177,3 +184,145 @@ export function typeToHIRType(t: Type): HIRType {
       return HIR_UNKNOWN_TYPE;
   }
 }
+
+export function typeAnnotationToHIRType(ann: TypeAnnotation): HIRType {
+  if (!ann) return HIR_UNKNOWN_TYPE;
+
+  // Union type
+  if (ann.unionTypes && ann.unionTypes.length > 0) {
+    const types = ann.unionTypes.map(typeAnnotationToHIRType);
+    const formatted = types.map((t) => t.name).join(' | ');
+    return {
+      id: createTypeId(formatted),
+      kind: 'Union',
+      name: formatted,
+      typeArguments: types,
+    };
+  }
+
+  // Function type
+  if (ann.functionParams !== undefined) {
+    const paramTypes = ann.functionParams.map(typeAnnotationToHIRType);
+    const returnType = ann.returnType ? typeAnnotationToHIRType(ann.returnType) : HIR_UNIT_TYPE;
+    const formatted = `(${paramTypes.map((p) => p.name).join(', ')}) -> ${returnType.name}`;
+    return {
+      id: createTypeId(formatted),
+      kind: 'Function',
+      name: formatted,
+      paramTypes,
+      returnType,
+      isEffectful: ann.isEffectful,
+    };
+  }
+
+  // Standard primitives
+  const PRIMITIVES = new Set(['Int', 'UInt', 'Float', 'Bool', 'Char', 'String', 'Byte', 'Unit']);
+  if (PRIMITIVES.has(ann.name)) {
+    return makePrimitiveHIRType(ann.name);
+  }
+
+  // Option
+  if (ann.name === 'Option') {
+    const inner =
+      ann.generics && ann.generics.length > 0
+        ? typeAnnotationToHIRType(ann.generics[0])
+        : HIR_UNIT_TYPE;
+    return {
+      id: createTypeId(`Option[${inner.name}]`),
+      kind: 'Option',
+      name: 'Option',
+      typeArguments: [inner],
+    };
+  }
+
+  // Result
+  if (ann.name === 'Result') {
+    const ok =
+      ann.generics && ann.generics.length > 0
+        ? typeAnnotationToHIRType(ann.generics[0])
+        : HIR_UNIT_TYPE;
+    const err =
+      ann.generics && ann.generics.length > 1
+        ? typeAnnotationToHIRType(ann.generics[1])
+        : HIR_STRING_TYPE;
+    return {
+      id: createTypeId(`Result[${ok.name}, ${err.name}]`),
+      kind: 'Result',
+      name: 'Result',
+      typeArguments: [ok, err],
+    };
+  }
+
+  // List
+  if (ann.name === 'List') {
+    const elem =
+      ann.generics && ann.generics.length > 0
+        ? typeAnnotationToHIRType(ann.generics[0])
+        : HIR_UNKNOWN_TYPE;
+    return {
+      id: createTypeId(`List[${elem.name}]`),
+      kind: 'List',
+      name: 'List',
+      typeArguments: [elem],
+    };
+  }
+
+  // Map
+  if (ann.name === 'Map') {
+    const key =
+      ann.generics && ann.generics.length > 0
+        ? typeAnnotationToHIRType(ann.generics[0])
+        : HIR_UNKNOWN_TYPE;
+    const val =
+      ann.generics && ann.generics.length > 1
+        ? typeAnnotationToHIRType(ann.generics[1])
+        : HIR_UNKNOWN_TYPE;
+    return {
+      id: createTypeId(`Map[${key.name}, ${val.name}]`),
+      kind: 'Map',
+      name: 'Map',
+      typeArguments: [key, val],
+    };
+  }
+
+  // Set
+  if (ann.name === 'Set') {
+    const elem =
+      ann.generics && ann.generics.length > 0
+        ? typeAnnotationToHIRType(ann.generics[0])
+        : HIR_UNKNOWN_TYPE;
+    return {
+      id: createTypeId(`Set[${elem.name}]`),
+      kind: 'Set',
+      name: 'Set',
+      typeArguments: [elem],
+    };
+  }
+
+  // Tuple
+  if (ann.name === 'Tuple') {
+    const elems = ann.generics ? ann.generics.map(typeAnnotationToHIRType) : [];
+    const formatted = `(${elems.map((e) => e.name).join(', ')})`;
+    return {
+      id: createTypeId(formatted),
+      kind: 'Tuple',
+      name: 'Tuple',
+      typeArguments: elems,
+    };
+  }
+
+  // Custom / GenericParam / Named types
+  const typeArgs = ann.generics ? ann.generics.map(typeAnnotationToHIRType) : undefined;
+  const formatted =
+    typeArgs && typeArgs.length > 0
+      ? `${ann.name}[${typeArgs.map((a) => a.name).join(', ')}]`
+      : ann.name;
+
+  return {
+    id: createTypeId(formatted),
+    kind: 'Custom',
+    name: ann.name,
+    typeArguments: typeArgs,
+  };
+}
+

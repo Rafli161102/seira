@@ -31,18 +31,36 @@ export interface HIRValidationResult {
   readonly warnings: ReadonlyArray<string>;
 }
 
+export interface HIRValidatorOptions {
+  readonly mode?: 'production' | 'tooling';
+  readonly allowUnknownTypes?: boolean;
+}
+
 export class HIRValidator {
   private readonly diagnostics: DiagnosticBag;
+  private readonly allowUnknownTypes: boolean;
   private readonly errors: string[] = [];
   private readonly warnings: string[] = [];
 
-  constructor(diagnostics?: DiagnosticBag) {
-    this.diagnostics = diagnostics ?? new DiagnosticBag();
+  constructor(
+    diagnosticsOrOptions?: DiagnosticBag | HIRValidatorOptions,
+    options?: HIRValidatorOptions
+  ) {
+    if (diagnosticsOrOptions && 'add' in diagnosticsOrOptions) {
+      this.diagnostics = diagnosticsOrOptions as DiagnosticBag;
+      this.allowUnknownTypes = options?.allowUnknownTypes ?? (options?.mode === 'tooling' ? true : false);
+    } else {
+      this.diagnostics = new DiagnosticBag();
+      const opts = diagnosticsOrOptions as HIRValidatorOptions | undefined;
+      this.allowUnknownTypes = opts?.allowUnknownTypes ?? (opts?.mode === 'tooling' ? true : false);
+    }
   }
 
-  public validate(program: HIRProgram): HIRValidationResult {
+  public validate(program: HIRProgram, options?: HIRValidatorOptions): HIRValidationResult {
     this.errors.length = 0;
     this.warnings.length = 0;
+
+    const allowUnknown = options?.allowUnknownTypes ?? (options?.mode ? options.mode === 'tooling' : this.allowUnknownTypes);
 
     // Layer 1: Structural Validation
     this.validateStructural(program);
@@ -51,7 +69,7 @@ export class HIRValidator {
     this.validateSemanticReferences(program);
 
     // Layer 3: Type Attachment
-    this.validateTypeAttachment(program);
+    this.validateTypeAttachment(program, allowUnknown);
 
     // Layer 4: Source Mapping
     this.validateSourceMapping(program);
@@ -158,23 +176,58 @@ export class HIRValidator {
 
   // ─── Layer 3: Type Attachment Validation ───────────────────────────────────
 
-  private validateTypeAttachment(program: HIRProgram): void {
+  private validateTypeAttachment(program: HIRProgram, allowUnknown: boolean): void {
+    for (const item of program.topLevelItems) {
+      if (item.kind === 'HIRStruct') {
+        for (const f of item.fields) {
+          if (!allowUnknown && (f.type?.kind === 'Unknown' || f.type?.id === 'type:Unknown')) {
+            this.errors.push(`Field '${f.name}' in struct '${item.name}' at NodeId ${item.id} has forbidden Unknown type in complete production HIR.`);
+          }
+        }
+      }
+    }
+
     walkHIRProgram(program, {
+      visitFunction: (fn) => {
+        if (!allowUnknown && (fn.returnType?.kind === 'Unknown' || fn.returnType?.id === 'type:Unknown')) {
+          this.errors.push(`Function '${fn.name}' at NodeId ${fn.id} has forbidden Unknown returnType in complete production HIR.`);
+        }
+        for (const p of fn.params) {
+          if (!allowUnknown && (p.type?.kind === 'Unknown' || p.type?.id === 'type:Unknown')) {
+            this.errors.push(`Parameter '${p.name}' in function '${fn.name}' at NodeId ${p.id} has forbidden Unknown type in complete production HIR.`);
+          }
+        }
+      },
       visitExpr: (expr) => {
         if (!expr.type || typeof expr.type !== 'object') {
           this.errors.push(`Expression kind '${expr.kind}' at NodeId ${expr.id} lacks an attached HIRType.`);
         } else if (!expr.type.id || !expr.type.id.startsWith('type:')) {
           this.errors.push(`Expression kind '${expr.kind}' at NodeId ${expr.id} has invalid TypeId '${expr.type.id}'.`);
+        } else if (!allowUnknown && (expr.type.kind === 'Unknown' || expr.type.id === 'type:Unknown')) {
+          this.errors.push(`Expression kind '${expr.kind}' at NodeId ${expr.id} has forbidden Unknown type in complete production HIR.`);
         }
       },
       visitStmt: (stmt) => {
         if (stmt.kind === 'HIRLetStmt') {
           if (!stmt.type || !stmt.type.id) {
             this.errors.push(`LetStmt '${stmt.name}' lacks a valid attached HIRType.`);
+          } else if (!allowUnknown && (stmt.type.kind === 'Unknown' || stmt.type.id === 'type:Unknown')) {
+            this.errors.push(`LetStmt '${stmt.name}' has forbidden Unknown type in complete production HIR.`);
           }
         } else if (stmt.kind === 'HIRWithStmt') {
           if (!stmt.resourceType || !stmt.resourceType.id) {
             this.errors.push(`WithStmt lacks a valid attached resourceType.`);
+          } else if (!allowUnknown && (stmt.resourceType.kind === 'Unknown' || stmt.resourceType.id === 'type:Unknown')) {
+            this.errors.push(`WithStmt has forbidden Unknown resourceType in complete production HIR.`);
+          }
+        }
+      },
+      visitPattern: (pat) => {
+        if (pat.kind === 'HIRBindingPattern') {
+          if (!pat.type || !pat.type.id) {
+            this.errors.push(`BindingPattern '${pat.name}' lacks a valid attached HIRType.`);
+          } else if (!allowUnknown && (pat.type.kind === 'Unknown' || pat.type.id === 'type:Unknown')) {
+            this.errors.push(`BindingPattern '${pat.name}' has forbidden Unknown type in complete production HIR.`);
           }
         }
       },
@@ -214,8 +267,8 @@ export class HIRValidator {
     walkHIRProgram(program, {
       visitStmt: (stmt) => {
         if (stmt.kind === 'HIRWithStmt') {
-          if (!stmt.cleanupContract || stmt.cleanupContract !== 'close') {
-            this.errors.push(`WithStmt has invalid cleanupContract '${stmt.cleanupContract}'. Expected 'close'.`);
+          if (!stmt.cleanupContract || typeof stmt.cleanupContract !== 'string' || stmt.cleanupContract.trim().length === 0) {
+            this.errors.push(`WithStmt at NodeId ${stmt.id} has missing or invalid cleanupContract metadata: '${stmt.cleanupContract}'.`);
           }
         }
       },
@@ -225,8 +278,16 @@ export class HIRValidator {
             this.errors.push(`HIRTryExpr has invalid tryKind '${expr.tryKind}'. Expected 'Result' or 'Option'.`);
           }
         } else if (expr.kind === 'HIRMethodCallExpr') {
-          if (!expr.dispatch || !['Concrete', 'Trait', 'Builtin'].includes(expr.dispatch.kind)) {
-            this.errors.push(`MethodCallExpr '${expr.method}' has invalid dispatch kind.`);
+          if (!expr.dispatch || (expr.dispatch.kind !== 'Concrete' && expr.dispatch.kind !== 'Trait')) {
+            this.errors.push(`MethodCallExpr '${expr.method}' at NodeId ${expr.id} has invalid dispatch kind '${(expr.dispatch as any)?.kind}'. Expected 'Concrete' or 'Trait'.`);
+          } else if (expr.dispatch.kind === 'Concrete') {
+            if (!expr.dispatch.implId || !expr.dispatch.methodId) {
+              this.errors.push(`MethodCallExpr '${expr.method}' with Concrete dispatch at NodeId ${expr.id} must contain both implId and methodId.`);
+            }
+          } else if (expr.dispatch.kind === 'Trait') {
+            if (!expr.dispatch.traitId || !expr.dispatch.methodId) {
+              this.errors.push(`MethodCallExpr '${expr.method}' with Trait dispatch at NodeId ${expr.id} must contain both traitId and methodId.`);
+            }
           }
         }
       },

@@ -58,3 +58,9 @@ export function createImplId(targetType: string, traitName: string): ImplId {
 export function createGenericParamId(container: string, paramName: string): GenericParamId {
   return `gen:${container}:${paramName}`;
 }
+
+export type CleanupContractId = string;
+
+export function createCleanupContractId(containerOrType: string, operationName: string): CleanupContractId {
+  return `cleanup:${containerOrType}::${operationName}`;
+}

@@ -198,9 +198,8 @@ export interface HIRContinueStmt extends HIRBaseNode {
 // ─── Method Dispatch ────────────────────────────────────────────────────────
 
 export type HIRMethodDispatch =
-  | { readonly kind: 'Concrete'; readonly implId?: ImplId; readonly methodId?: FunctionId }
-  | { readonly kind: 'Trait'; readonly traitId: TraitId; readonly implId?: ImplId; readonly methodId?: FunctionId }
-  | { readonly kind: 'Builtin'; readonly operation: string };
+  | { readonly kind: 'Concrete'; readonly implId: ImplId; readonly methodId: FunctionId; readonly impl_id?: ImplId; readonly method_id?: FunctionId }
+  | { readonly kind: 'Trait'; readonly traitId: TraitId; readonly implId?: ImplId; readonly methodId: FunctionId; readonly trait_id?: TraitId; readonly impl_id?: ImplId; readonly method_id?: FunctionId };
 
 // ─── Expressions ────────────────────────────────────────────────────────────
 
