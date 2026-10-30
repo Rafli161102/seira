@@ -231,7 +231,13 @@ export class ExecutionContext {
 
   public emitOutput(text: string, appendNewline = true): void {
     if (this.config.enableOutput) {
-      process.stdout.write(appendNewline ? text + "\n" : text);
+      // Preserve console.log interception used by embedders and CLI consumers
+      // for line-oriented output; print remains a raw no-newline write.
+      if (appendNewline) {
+        console.log(text);
+      } else {
+        process.stdout.write(text);
+      }
     }
     this.outputLines.push(text);
   }
