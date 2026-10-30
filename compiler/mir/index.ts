@@ -110,9 +110,8 @@ class FunctionLowerer {
     });
     const entry = this.newBlock('entry');
     this.current = entry;
-    this.lowerBlock(this.fn.body);
+    const result = this.lowerBlock(this.fn.body);
     if (!this.current.terminator) {
-      const result = this.fn.body.resultExpr ? this.lowerExpr(this.fn.body.resultExpr) : undefined;
       this.releaseResources(0);
       this.terminate({ kind: 'Return', value: result?.id });
     }
