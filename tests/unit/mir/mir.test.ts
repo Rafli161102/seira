@@ -57,7 +57,33 @@ test('MIR merges mutable bindings into SSA block parameters after if branches', 
   assert.ok(fn);
   const merge = fn.blocks.find((block) => block.name.startsWith('if.join'));
   assert.ok(merge);
-  assert.ok(merge.parameters.length >= 2, 'expected result and mutable-local block parameters');
+  const hirFn = result.hir!.topLevelItems.find((item) => item.kind === 'HIRFunction' && item.name === 'choose') as any;
+  const debug = {
+    hirStatements: hirFn.body.statements.map((stmt: any) => ({
+      kind: stmt.kind,
+      symbolId: stmt.symbolId,
+      isMut: stmt.isMut,
+      exprKind: stmt.expr?.kind,
+      thenStatements: stmt.expr?.thenBranch?.statements?.map((inner: any) => ({
+        kind: inner.kind,
+        targetSymbolId: inner.target?.symbolId,
+        targetName: inner.target?.name,
+      })),
+      elseStatements: stmt.expr?.elseBranch?.statements?.map((inner: any) => ({
+        kind: inner.kind,
+        targetSymbolId: inner.target?.symbolId,
+        targetName: inner.target?.name,
+      })),
+    })),
+    mergeParameters: merge.parameters,
+    blocks: fn.blocks.map((block) => ({
+      name: block.name,
+      parameters: block.parameters,
+      operations: block.operations,
+      terminator: block.terminator,
+    })),
+  };
+  assert.ok(merge.parameters.length >= 2, `expected result and mutable-local block parameters: ${JSON.stringify(debug)}`);
   assert.ok(merge.parameters.some((parameter) => parameter.symbolId?.includes('value')));
   assert.equal(validateMIR(result.mir!).success, true, validateMIR(result.mir!).errors.join('\n'));
 });
