@@ -26,7 +26,7 @@
 > - **Deterministic Resource Management**: First-class `with` statement with guaranteed deterministic cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
 > - **Memory I/O Refinement**: Target-independent `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic execution without OS/network side effects.
 
-The existing `develop` branch contains post-Seed stabilization work. The compiler now has an operational AST-to-HIR-to-MIR path: typed HIR is lowered into source-mapped control-flow graphs with SSA values, block parameters for value merges, explicit resource lifetime operations, and structural MIR validation. The MIR is an intermediate representation foundation; native and WebAssembly code generation remain future work.
+The existing `develop` branch contains post-Seed stabilization work. The compiler has an AST-to-HIR-to-MIR path with typed control-flow graphs, SSA values, block-parameter merges for mutable state across conditionals and loops, explicit resource lifetime operations, and a MIR verifier for value definitions, use ordering, branch argument types, and block dominance. The MIR remains an intermediate representation foundation; native and WebAssembly code generation are future work.
 
 
 ---

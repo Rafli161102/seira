@@ -95,8 +95,9 @@ class FunctionLowerer {
   private blocks: MutableBlock[] = [];
   private current!: MutableBlock;
   private locals: Locals = new Map();
+  private readonly mutableSymbols = new Set<string>();
   private resourceStack: Array<{ value: MIRValue; cleanup: string; source: MIRSource }> = [];
-  private loopTargets: Array<{ breakTarget: number; continueTarget: number; resourceDepth: number }> = [];
+  private loopTargets: Array<{ breakTarget: number; continueTarget: number; resourceDepth: number; mutableSymbols: ReadonlyArray<string> }> = [];
 
   constructor(fn: HIRFunction) {
     this.fn = fn;
@@ -106,6 +107,7 @@ class FunctionLowerer {
     const params = this.fn.params.map((param) => {
       const value = this.value(param.type, param.symbolId, param.name);
       this.locals.set(param.symbolId, value);
+      if (param.isMut) this.mutableSymbols.add(param.symbolId);
       return value;
     });
     const entry = this.newBlock('entry');
@@ -177,11 +179,20 @@ class FunctionLowerer {
   }
 
   private lowerBlock(block: HIRBlock): MIRValue | undefined {
+    const outerSymbols = new Set(this.locals.keys());
     for (const stmt of block.statements) {
       if (this.current.terminator) break;
       this.lowerStmt(stmt);
     }
-    return !this.current.terminator && block.resultExpr ? this.lowerExpr(block.resultExpr) : undefined;
+    const result = !this.current.terminator && block.resultExpr
+      ? this.lowerExpr(block.resultExpr)
+      : undefined;
+    // Keep branch-local bindings alive through the block result, but do not
+    // leak them into the enclosing lexical scope.
+    for (const symbolId of this.locals.keys()) {
+      if (!outerSymbols.has(symbolId)) this.locals.delete(symbolId);
+    }
+    return result;
   }
 
   private lowerStmt(stmt: HIRStmt): void {
@@ -191,6 +202,7 @@ class FunctionLowerer {
         const init = stmt.initializer ? this.lowerExpr(stmt.initializer) :
           this.emit('undef', [], stmt.type, stmt.id, { symbol: stmt.name });
         this.locals.set(stmt.symbolId, init);
+        if (stmt.isMut) this.mutableSymbols.add(stmt.symbolId);
         return;
       }
       case 'HIRAssignStmt': {
@@ -223,6 +235,7 @@ class FunctionLowerer {
         if (stmt.aliasSymbolId) this.locals.set(stmt.aliasSymbolId, resource);
         this.lowerBlock(stmt.body);
         if (!this.current.terminator) this.releaseResources(this.resourceStack.length - 1);
+        if (stmt.aliasSymbolId) this.locals.delete(stmt.aliasSymbolId);
         return;
       }
       case 'HIRLoopStmt':
@@ -232,7 +245,8 @@ class FunctionLowerer {
         const target = this.loopTargets[this.loopTargets.length - 1];
         if (target) {
           this.releaseResources(target.resourceDepth);
-          this.terminate({ kind: 'Branch', target: target.breakTarget, args: [] });
+          const args = target.mutableSymbols.map((symbolId) => this.locals.get(symbolId)?.id).filter((id): id is number => id !== undefined);
+          this.terminate({ kind: 'Branch', target: target.breakTarget, args });
         }
         return;
       }
@@ -240,7 +254,8 @@ class FunctionLowerer {
         const target = this.loopTargets[this.loopTargets.length - 1];
         if (target) {
           this.releaseResources(target.resourceDepth);
-          this.terminate({ kind: 'Branch', target: target.continueTarget, args: [] });
+          const args = target.mutableSymbols.map((symbolId) => this.locals.get(symbolId)?.id).filter((id): id is number => id !== undefined);
+          this.terminate({ kind: 'Branch', target: target.continueTarget, args });
         }
         return;
       }
@@ -258,29 +273,78 @@ class FunctionLowerer {
   }
 
   private lowerLoop(stmt: Extract<HIRStmt, { kind: 'HIRLoopStmt' }>): void {
+    let iterator: MIRValue | undefined;
+    let iterableValue: MIRValue | undefined;
+    let iteratorElementType: HIRType | undefined;
+    if (stmt.loopKind === 'Iterator' && stmt.iterator) {
+      iterableValue = this.lowerExpr(stmt.iterator.iterable);
+      iteratorElementType = iterableValue.type.typeArguments?.[0] ?? iterableValue.type;
+    }
+
+    // The iterable expression is evaluated once before entering the loop.
     const preheader = this.current;
-    const header = this.newBlock('loop.header');
+    const loopSymbols = [...this.mutableSymbols].filter((symbolId) => this.locals.has(symbolId));
+    const incoming = loopSymbols.map((symbolId) => this.locals.get(symbolId)!);
+    if (iterableValue) {
+      iterator = this.emit('iterator.begin', [iterableValue.id], iterableValue.type, stmt.id);
+    }
+
+    // Header parameters are loop-carried SSA values. The preheader supplies
+    // the initial versions, and the back-edge supplies each updated version.
+    const header = this.newBlock('loop.header', incoming.map((value) => value.type));
     const body = this.newBlock('loop.body');
-    const exit = this.newBlock('loop.exit');
-    preheader.terminator = { kind: 'Branch', target: header.id, args: [] };
+    const exit = this.newBlock('loop.exit', incoming.map((value) => value.type));
+    header.parameters = incoming.map((value, index) => this.value(value.type, loopSymbols[index], value.name));
+    exit.parameters = incoming.map((value, index) => this.value(value.type, loopSymbols[index], value.name));
+    preheader.terminator = {
+      kind: 'Branch', target: header.id,
+      args: incoming.map((value) => value.id),
+    };
+    loopSymbols.forEach((symbolId, index) => this.locals.set(symbolId, header.parameters[index]));
+
     this.current = header;
     let condition: MIRValue | undefined;
-    if (stmt.loopKind === 'Condition' && stmt.condition) condition = this.lowerExpr(stmt.condition);
-    if (stmt.loopKind === 'Iterator' && stmt.iterator) {
-      const iterable = this.lowerExpr(stmt.iterator.iterable);
-      const iterator = this.emit('iterator.begin', [iterable.id], stmt.iterator.iterable.type, stmt.id);
-      const hasNext = this.emit('iterator.has_next', [iterator.id], HIR_BOOL_TYPE, stmt.id);
-      condition = hasNext;
-      const next = this.emit('iterator.next', [iterator.id], stmt.iterator.iterable.type.typeArguments?.[0] ?? stmt.iterator.iterable.type, stmt.id);
+    if (stmt.loopKind === 'Condition' && stmt.condition) {
+      condition = this.lowerExpr(stmt.condition);
+    } else if (stmt.loopKind === 'Iterator' && iterator) {
+      condition = this.emit('iterator.has_next', [iterator.id], HIR_BOOL_TYPE, stmt.id);
+    }
+
+    if (condition) {
+      this.terminate({
+        kind: 'CondBranch', condition: condition.id,
+        trueTarget: body.id, trueArgs: [],
+        falseTarget: exit.id, falseArgs: header.parameters.map((parameter) => parameter.id),
+      });
+    } else {
+      this.terminate({ kind: 'Branch', target: body.id, args: [] });
+    }
+
+    this.current = body;
+    if (stmt.loopKind === 'Iterator' && stmt.iterator && iterator && iteratorElementType) {
+      const next = this.emit('iterator.next', [iterator.id], iteratorElementType, stmt.id);
       this.locals.set(stmt.iterator.symbolId, next);
     }
-    if (condition) this.terminate({ kind: 'CondBranch', condition: condition.id, trueTarget: body.id, trueArgs: [], falseTarget: exit.id, falseArgs: [] });
-    else this.terminate({ kind: 'Branch', target: body.id, args: [] });
-    this.current = body;
-    this.loopTargets.push({ breakTarget: exit.id, continueTarget: header.id, resourceDepth: this.resourceStack.length });
+    this.loopTargets.push({
+      breakTarget: exit.id,
+      continueTarget: header.id,
+      resourceDepth: this.resourceStack.length,
+      mutableSymbols: loopSymbols,
+    });
     this.lowerBlock(stmt.body);
     this.loopTargets.pop();
-    if (!this.current.terminator) this.terminate({ kind: 'Branch', target: header.id, args: [] });
+    if (!this.current.terminator) {
+      const backEdgeArgs = loopSymbols.map((symbolId) => this.locals.get(symbolId)?.id);
+      this.terminate({
+        kind: 'Branch', target: header.id,
+        args: backEdgeArgs.filter((id): id is number => id !== undefined),
+      });
+    }
+
+    // Both the condition-false edge and break edges carry their final state
+    // into the loop exit block.
+    loopSymbols.forEach((symbolId, index) => this.locals.set(symbolId, exit.parameters[index]));
+    if (stmt.iterator) this.locals.delete(stmt.iterator.symbolId);
     this.current = exit;
   }
 
@@ -424,22 +488,86 @@ class FunctionLowerer {
 
   private lowerIf(expr: Extract<HIRExpr, { kind: 'HIRIfExpr' }>): MIRValue {
     const condition = this.lowerExpr(expr.condition);
+    const baseLocals = new Map(this.locals);
     const thenBlock = this.newBlock('if.then');
     const elseBlock = this.newBlock('if.else');
     const join = this.newBlock('if.join', [expr.type]);
-    this.terminate({ kind: 'CondBranch', condition: condition.id, trueTarget: thenBlock.id, trueArgs: [], falseTarget: elseBlock.id, falseArgs: [] });
+    this.terminate({
+      kind: 'CondBranch', condition: condition.id,
+      trueTarget: thenBlock.id, trueArgs: [],
+      falseTarget: elseBlock.id, falseArgs: [],
+    });
+
     this.current = thenBlock;
-    const thenValue = this.lowerBlock(expr.thenBranch) ?? this.emit('unit', [], expr.type, expr.id);
-    if (!this.current.terminator) this.terminate({ kind: 'Branch', target: join.id, args: [thenValue.id] });
+    let thenValue = this.lowerBlock(expr.thenBranch);
+    const thenEnd = this.current;
+    const thenFallsThrough = !thenEnd.terminator;
+    if (thenFallsThrough) {
+      thenValue ??= this.emit('unit', [], expr.type, expr.id);
+      this.terminate({ kind: 'Branch', target: join.id, args: [thenValue.id] });
+    }
+    const thenLocals = new Map(this.locals);
+
+    this.locals = new Map(baseLocals);
     this.current = elseBlock;
-    let elseValue: MIRValue;
-    if (!expr.elseBranch) elseValue = this.emit('unit', [], expr.type, expr.id);
-    else if ('kind' in expr.elseBranch && expr.elseBranch.kind === 'HIRBlock') elseValue = this.lowerBlock(expr.elseBranch as HIRBlock) ?? this.emit('unit', [], expr.type, expr.id);
-    else elseValue = this.lowerExpr(expr.elseBranch as HIRExpr);
-    if (!this.current.terminator) this.terminate({ kind: 'Branch', target: join.id, args: [elseValue.id] });
+    let elseValue: MIRValue | undefined;
+    if (!expr.elseBranch) {
+      elseValue = this.emit('unit', [], expr.type, expr.id);
+    } else if ('kind' in expr.elseBranch && expr.elseBranch.kind === 'HIRBlock') {
+      elseValue = this.lowerBlock(expr.elseBranch as HIRBlock);
+    } else {
+      elseValue = this.lowerExpr(expr.elseBranch as HIRExpr);
+    }
+    const elseEnd = this.current;
+    const elseFallsThrough = !elseEnd.terminator;
+    if (elseFallsThrough) {
+      elseValue ??= this.emit('unit', [], expr.type, expr.id);
+      this.terminate({ kind: 'Branch', target: join.id, args: [elseValue.id] });
+    }
+    const elseLocals = new Map(this.locals);
+
+    // Merge only pre-existing mutable bindings. New lexical bindings from a
+    // branch are deliberately not visible outside that branch.
+    if (thenFallsThrough && elseFallsThrough) {
+      const thenArgs = [thenValue!.id];
+      const elseArgs = [elseValue!.id];
+      const merged = new Map(baseLocals);
+      for (const symbolId of this.mutableSymbols) {
+        const before = baseLocals.get(symbolId);
+        const thenValueForSymbol = thenLocals.get(symbolId);
+        const elseValueForSymbol = elseLocals.get(symbolId);
+        if (!before || !thenValueForSymbol || !elseValueForSymbol) continue;
+        if (thenValueForSymbol.id === elseValueForSymbol.id) {
+          merged.set(symbolId, thenValueForSymbol);
+          continue;
+        }
+        const parameter = this.value(
+          thenValueForSymbol.type,
+          symbolId,
+          thenValueForSymbol.name ?? elseValueForSymbol.name
+        );
+        join.parameters.push(parameter);
+        thenArgs.push(thenValueForSymbol.id);
+        elseArgs.push(elseValueForSymbol.id);
+        merged.set(symbolId, parameter);
+      }
+      // The first block parameter carries the if-expression value. Remaining
+      // parameters are SSA merges for mutable locals.
+      thenEnd.terminator = { kind: 'Branch', target: join.id, args: thenArgs };
+      elseEnd.terminator = { kind: 'Branch', target: join.id, args: elseArgs };
+      this.locals = merged;
+    } else if (thenFallsThrough) {
+      this.locals = thenLocals;
+    } else if (elseFallsThrough) {
+      this.locals = elseLocals;
+    } else {
+      this.locals = baseLocals;
+    }
+
     this.current = join;
     return join.parameters[0];
   }
+
 
   private lowerArm(body: HIRExpr | HIRBlock, type: HIRType): MIRValue {
     const value = body.kind === 'HIRBlock' ? this.lowerBlock(body as HIRBlock) : this.lowerExpr(body as HIRExpr);
@@ -495,42 +623,168 @@ export class MIRBuilder {
   }
 }
 
-/** Structural verifier used at the MIR boundary before backend consumption. */
+/** Structural and SSA verifier used before backend consumption. */
 export interface MIRValidationResult {
   readonly success: boolean;
   readonly errors: ReadonlyArray<string>;
 }
+
+interface MIRDefinition {
+  readonly block: BasicBlockId;
+  /** Function parameters and block parameters are available before operation 0. */
+  readonly position: number;
+  readonly type: HIRType;
+}
+
 export function validateMIR(module: MIRModule): MIRValidationResult {
   const errors: string[] = [];
+  const report = (message: string): void => { errors.push(message); };
+
   for (const fn of module.functions) {
-    const blocks = new Map(fn.blocks.map((block) => [block.id, block]));
-    if (!blocks.has(fn.entry)) errors.push(`Function '${fn.name}' has missing entry block.`);
-    const values = new Set<number>();
+    const prefix = `Function '${fn.name}'`;
+    const blocks = new Map<BasicBlockId, BasicBlock>();
     for (const block of fn.blocks) {
-      for (const parameter of block.parameters) {
-        if (values.has(parameter.id)) errors.push(`Function '${fn.name}' defines value %${parameter.id} more than once.`);
-        values.add(parameter.id);
-      }
-      for (const op of block.operations) {
-        if (op.dest !== undefined) {
-          if (values.has(op.dest)) errors.push(`Function '${fn.name}' defines value %${op.dest} more than once.`);
-          values.add(op.dest);
-        }
-      }
+      if (blocks.has(block.id)) report(`${prefix} has duplicate block id ${block.id}.`);
+      blocks.set(block.id, block);
+    }
+    if (!blocks.has(fn.entry)) {
+      report(`${prefix} has missing entry block.`);
+      continue;
+    }
+
+    const predecessors = new Map<BasicBlockId, BasicBlockId[]>();
+    const successors = new Map<BasicBlockId, BasicBlockId[]>();
+    for (const block of fn.blocks) {
+      predecessors.set(block.id, []);
+      successors.set(block.id, []);
     }
     for (const block of fn.blocks) {
       const term = block.terminator;
       const targets = term.kind === 'Branch' ? [term.target] :
         term.kind === 'CondBranch' ? [term.trueTarget, term.falseTarget] : [];
-      for (const target of targets) if (!blocks.has(target)) errors.push(`Block ${block.id} branches to missing block ${target}.`);
-      if (term.kind === 'Branch') {
-        const target = blocks.get(term.target);
-        if (target && target.parameters.length !== term.args.length) errors.push(`Branch ${block.id} passes ${term.args.length} args to block ${term.target}, expected ${target.parameters.length}.`);
+      for (const target of targets) {
+        if (!blocks.has(target)) {
+          report(`Block ${block.id} branches to missing block ${target}.`);
+          continue;
+        }
+        successors.get(block.id)!.push(target);
+        predecessors.get(target)!.push(block.id);
       }
-      if (term.kind === 'CondBranch') {
+    }
+
+    // Reachability and iterative dominator sets.
+    const reachable = new Set<BasicBlockId>();
+    const worklist: BasicBlockId[] = [fn.entry];
+    while (worklist.length > 0) {
+      const id = worklist.pop()!;
+      if (reachable.has(id)) continue;
+      reachable.add(id);
+      for (const next of successors.get(id) ?? []) worklist.push(next);
+    }
+    const dominators = new Map<BasicBlockId, Set<BasicBlockId>>();
+    for (const id of reachable) {
+      dominators.set(id, id === fn.entry ? new Set([id]) : new Set(reachable));
+    }
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of reachable) {
+        if (id === fn.entry) continue;
+        const preds = (predecessors.get(id) ?? []).filter((pred) => reachable.has(pred));
+        let next = preds.length > 0 ? new Set(dominators.get(preds[0])!) : new Set<BasicBlockId>();
+        for (const pred of preds.slice(1)) {
+          const predDom = dominators.get(pred)!;
+          next = new Set([...next].filter((candidate) => predDom.has(candidate)));
+        }
+        next.add(id);
+        const current = dominators.get(id)!;
+        if (current.size !== next.size || [...current].some((value) => !next.has(value))) {
+          dominators.set(id, next);
+          changed = true;
+        }
+      }
+    }
+
+    const definitions = new Map<ValueId, MIRDefinition>();
+    const define = (value: MIRValue, block: BasicBlockId, position: number, label: string): void => {
+      if (definitions.has(value.id)) {
+        report(`${prefix} defines value %${value.id} more than once (${label}).`);
+        return;
+      }
+      definitions.set(value.id, { block, position, type: value.type });
+    };
+    const entry = blocks.get(fn.entry)!;
+    for (const parameter of fn.parameters) define(parameter, fn.entry, -2, 'function parameter');
+    for (const block of fn.blocks) {
+      for (const parameter of block.parameters) define(parameter, block.id, -1, 'block parameter');
+      for (let index = 0; index < block.operations.length; index++) {
+        const operation = block.operations[index];
+        if (operation.dest !== undefined) {
+          const type = operation.type ?? { id: 'type:Unknown', kind: 'Unknown', name: 'Unknown' } as HIRType;
+          define({ id: operation.dest, type, typeName: type.name }, block.id, index, operation.opcode);
+        }
+      }
+    }
+
+    const checkUse = (valueId: ValueId, useBlock: BasicBlockId, usePosition: number, context: string): MIRDefinition | undefined => {
+      const definition = definitions.get(valueId);
+      if (!definition) {
+        report(`${prefix} uses undefined value %${valueId} in block ${useBlock} (${context}).`);
+        return undefined;
+      }
+      if (definition.block === useBlock) {
+        if (definition.position >= usePosition) {
+          report(`${prefix} uses value %${valueId} before its definition in block ${useBlock} (${context}).`);
+        }
+      } else if (reachable.has(useBlock) && !dominators.get(useBlock)?.has(definition.block)) {
+        report(`${prefix} uses value %${valueId} from block ${definition.block}, which does not dominate block ${useBlock} (${context}).`);
+      }
+      return definition;
+    };
+
+    for (const block of fn.blocks) {
+      for (let index = 0; index < block.operations.length; index++) {
+        const operation = block.operations[index];
+        for (const operand of operation.operands) checkUse(operand, block.id, index, operation.opcode);
+      }
+      // Resource operations are ordered at block-scope cleanup points; validate
+      // references after all ordinary operations in that block.
+      for (const resourceOp of block.resourceOps) {
+        checkUse(resourceOp.resourceId, block.id, block.operations.length, `resource ${resourceOp.action}`);
+      }
+
+      const term = block.terminator;
+      if (term.kind === 'Return' && term.value !== undefined) {
+        checkUse(term.value, block.id, block.operations.length, 'return');
+      } else if (term.kind === 'Branch') {
+        const target = blocks.get(term.target);
+        term.args.forEach((arg, index) => {
+          const definition = checkUse(arg, block.id, block.operations.length, `branch to ${term.target}`);
+          const parameter = target?.parameters[index];
+          if (parameter && definition && parameter.type.id !== definition.type.id) {
+            report(`${prefix} passes ${definition.type.name} to block ${term.target}, expected ${parameter.type.name}.`);
+          }
+        });
+        if (target && target.parameters.length !== term.args.length) {
+          report(`Branch ${block.id} passes ${term.args.length} args to block ${term.target}, expected ${target.parameters.length}.`);
+        }
+      } else if (term.kind === 'CondBranch') {
+        const condition = checkUse(term.condition, block.id, block.operations.length, 'conditional branch');
+        if (condition && condition.type.id !== 'type:Bool') {
+          report(`Conditional branch in block ${block.id} requires Bool, found ${condition.type.name}.`);
+        }
         for (const [targetId, args] of [[term.trueTarget, term.trueArgs], [term.falseTarget, term.falseArgs]] as const) {
           const target = blocks.get(targetId);
-          if (target && target.parameters.length !== args.length) errors.push(`Conditional branch ${block.id} passes invalid arguments to block ${targetId}.`);
+          args.forEach((arg, index) => {
+            const definition = checkUse(arg, block.id, block.operations.length, `conditional branch to ${targetId}`);
+            const parameter = target?.parameters[index];
+            if (parameter && definition && parameter.type.id !== definition.type.id) {
+              report(`${prefix} passes ${definition.type.name} to block ${targetId}, expected ${parameter.type.name}.`);
+            }
+          });
+          if (target && target.parameters.length !== args.length) {
+            report(`Conditional branch ${block.id} passes invalid arguments to block ${targetId}.`);
+          }
         }
       }
     }
