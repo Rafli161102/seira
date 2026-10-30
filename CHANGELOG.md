@@ -13,6 +13,12 @@ and this project adheres to the Seira Staged Versioning Model:
 
 ## [Unreleased]
 
+### Added
+- Implemented the HIR-to-MIR lowering pipeline with typed SSA values, basic blocks, explicit branch edges, block parameters for value merges, and source-node provenance.
+- Lowered expressions, calls, collections, closures, conditionals, match dispatch, loops, early returns, and `with` resource acquire/release operations into MIR operations and control flow.
+- Added MIR structural validation for entry blocks, unique definitions, branch targets, and block-argument arity; the compiler driver now validates MIR before exposing it.
+- Added MIR pipeline and resource-lifecycle regression tests.
+
 ### Fixed
 - Hardened module discovery by refusing symbolic links and checking canonical paths against the source root.
 - Restricted workspace members to real directories contained within the workspace root.

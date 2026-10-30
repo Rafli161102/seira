@@ -15,7 +15,7 @@ import { InternalCompilerError } from '../diagnostics/ice.ts';
 import { HIRLowering, HIRValidator, type HIRProgram } from '../hir/index.ts';
 import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
-import { MIRBuilder, type MIRModule } from '../mir/index.ts';
+import { MIRBuilder, validateMIR, type MIRModule } from '../mir/index.ts';
 import {
   ModuleGraph,
   PackageGraph,
@@ -373,8 +373,12 @@ export class CompilerDriver {
     if (isStageAtLeast(effectiveStop, CompilerStage.MIR) && hir) {
       const mirBuilder = new MIRBuilder();
       mir = mirBuilder.build(hir);
+      const mirValidation = validateMIR(mir);
+      for (const error of mirValidation.errors) {
+        context.diagnostics.reportError('E4005', `MIR Validation Error: ${error}`, hir.source.span, hir.source.file);
+      }
 
-      if (effectiveStop === CompilerStage.MIR) {
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.MIR) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),
