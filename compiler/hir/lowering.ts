@@ -729,7 +729,10 @@ export class HIRLowering {
           : undefined;
         const existingSym = this.resolverResult?.resolvedSymbols.get(bindStmt);
         if (existingSym) {
-          const symId = createSymbolId(this.currentFunction ?? 'block', bindStmt.name);
+          const declaredSymbolId = existingSym.declNode
+            ? this.symbolIdsByDeclaration.get(existingSym.declNode)
+            : undefined;
+          const symId = declaredSymbolId ?? createSymbolId(this.currentFunction ?? 'block', bindStmt.name);
           let targetType = existingSym.type ? typeToHIRType(existingSym.type) : this.getType(bindStmt);
           if (targetType.kind === 'Unknown' && declaredType) {
             targetType = declaredType;
