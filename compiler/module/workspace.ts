@@ -9,8 +9,8 @@
  * └── shared/
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DiagnosticBag } from '../diagnostics/index.ts';
 import { ManifestParser, type WorkspaceSection } from './manifest.ts';
 import { PackageLoader, SeiraPackage } from './package.ts';
@@ -46,7 +46,7 @@ export class WorkspaceLoader {
       if (existsSync(manifest)) {
         try {
           const content = readFileSync(manifest, 'utf-8');
-          if (content.includes('[workspace]')) {
+          if (/^\s*\[workspace\]\s*(?:#.*)?$/m.test(content)) {
             return curr;
           }
         } catch {
@@ -82,13 +82,73 @@ export class WorkspaceLoader {
     const members = [...manifest.workspace.members].sort();
     const ws = new SeiraWorkspace(absDir, manifestPath, members);
     const loader = new PackageLoader(this.diagnostics);
+    const realWorkspaceRoot = realpathSync(absDir);
 
     for (const member of members) {
-      const memberDir = isAbsolute(member) ? member : resolve(absDir, member);
+      if (isAbsolute(member)) {
+        this.diagnostics.reportError(
+          "E6013",
+          "Workspace member must be a relative path inside the workspace: " + member,
+          { start: 0, end: 0, line: 1, column: 1 },
+          manifestPath
+        );
+        continue;
+      }
+
+      const memberDir = resolve(absDir, member);
+      const relativeMember = relative(absDir, memberDir);
+      if (
+        relativeMember === "" ||
+        relativeMember === ".." ||
+        relativeMember.startsWith(".." + sep) ||
+        isAbsolute(relativeMember)
+      ) {
+        this.diagnostics.reportError(
+          "E6013",
+          "Workspace member escapes the workspace root: " + member,
+          { start: 0, end: 0, line: 1, column: 1 },
+          manifestPath,
+          undefined,
+          "Use a relative member path that stays inside the workspace directory."
+        );
+        continue;
+      }
+
       if (!existsSync(memberDir)) {
         this.diagnostics.reportError(
-          'E6009',
-          `Workspace member directory '${member}' not found at '${memberDir}'.`,
+          "E6009",
+          "Workspace member directory not found: " + memberDir,
+          { start: 0, end: 0, line: 1, column: 1 },
+          manifestPath
+        );
+        continue;
+      }
+
+      try {
+        const memberStat = lstatSync(memberDir);
+        const realMemberDir = realpathSync(memberDir);
+        const realRelativeMember = relative(realWorkspaceRoot, realMemberDir);
+        if (
+          memberStat.isSymbolicLink() ||
+          realRelativeMember === "" ||
+          realRelativeMember === ".." ||
+          realRelativeMember.startsWith(".." + sep) ||
+          isAbsolute(realRelativeMember)
+        ) {
+          this.diagnostics.reportError(
+            "E6013",
+            "Workspace member is outside the workspace or uses a symbolic link: " + member,
+            { start: 0, end: 0, line: 1, column: 1 },
+            manifestPath,
+            undefined,
+            "Workspace members must be real directories contained by the workspace root."
+          );
+          continue;
+        }
+      } catch {
+        this.diagnostics.reportError(
+          "E6009",
+          "Unable to access workspace member directory: " + member,
           { start: 0, end: 0, line: 1, column: 1 },
           manifestPath
         );

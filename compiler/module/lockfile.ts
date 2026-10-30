@@ -1,19 +1,19 @@
 /**
  * Seira Lockfile Architecture (Seira.lock)
  *
- * Represents deterministic dependency resolution and integrity verification.
- * Uses SHA-256 checksums for source integrity.
+ * Provides deterministic package checksums and strict parsing/serialization for
+ * the lockfile subset emitted by Seira.
  */
 
-import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 
 export interface LockedPackage {
   readonly name: string;
   readonly version: string;
-  readonly source: string; // e.g. "path:../shared" or "workspace"
-  readonly checksum: string; // SHA-256 hex string
+  readonly source: string;
+  readonly checksum: string;
   readonly dependencies?: string[];
 }
 
@@ -22,137 +22,229 @@ export interface SeiraLock {
   readonly packages: LockedPackage[];
 }
 
+function quoteTomlString(value: string): string {
+  // JSON string escaping is a valid subset for TOML basic strings.
+  return JSON.stringify(value);
+}
+
+function parseTomlString(raw: string, field: string): string {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid Seira.lock string value for '" + field + "'.");
+  }
+  if (typeof value !== "string") {
+    throw new Error("Seira.lock field '" + field + "' must be a string.");
+  }
+  return value;
+}
+
+function validateLockedPackage(pkg: Partial<LockedPackage>, index: number): LockedPackage {
+  if (
+    typeof pkg.name !== "string" || pkg.name.length === 0 ||
+    typeof pkg.version !== "string" || pkg.version.length === 0 ||
+    typeof pkg.source !== "string" || pkg.source.length === 0 ||
+    typeof pkg.checksum !== "string" || !/^[a-f0-9]{64}$/i.test(pkg.checksum)
+  ) {
+    throw new Error("Invalid or incomplete Seira.lock package entry at index " + index + ".");
+  }
+
+  if (pkg.dependencies !== undefined && (
+    !Array.isArray(pkg.dependencies) ||
+    pkg.dependencies.some((dependency) => typeof dependency !== "string")
+  )) {
+    throw new Error("Invalid dependencies in Seira.lock package entry at index " + index + ".");
+  }
+
+  return {
+    name: pkg.name,
+    version: pkg.version,
+    source: pkg.source,
+    checksum: pkg.checksum.toLowerCase(),
+    dependencies: pkg.dependencies ? [...pkg.dependencies] : [],
+  };
+}
+
 export class LockfileManager {
-  /**
-   * Generates or computes a deterministic SHA-256 checksum across all files in a package directory.
-   */
   public generatePackageChecksum(pkgDir: string): string {
     return this.computePackageChecksum(pkgDir);
   }
 
+  /**
+   * Hashes package-relative source paths and bytes so identical packages have
+   * the same checksum regardless of their absolute checkout directory.
+   * Symbolic links are deliberately excluded and never traversed.
+   */
   public computePackageChecksum(pkgDir: string): string {
-    const hash = createHash('sha256');
+    const rootDir = resolve(pkgDir);
+    const rootStat = lstatSync(rootDir);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+      throw new Error("Package checksum root must be a real directory: " + rootDir);
+    }
+
     const files: string[] = [];
-
-    const collectFiles = (dir: string) => {
-      let entries: string[];
-      try {
-        entries = readdirSync(dir);
-      } catch {
-        return;
-      }
-      entries.sort();
-
+    const collectFiles = (directory: string): void => {
+      const entries = readdirSync(directory).sort();
       for (const entry of entries) {
-        if (entry.startsWith('.') || entry === 'node_modules' || entry === 'target') continue;
-        const full = join(dir, entry);
-        const stat = statSync(full);
+        if (entry.startsWith(".") || entry === "node_modules" || entry === "target") continue;
+
+        const fullPath = join(directory, entry);
+        const stat = lstatSync(fullPath);
+        if (stat.isSymbolicLink()) continue;
         if (stat.isDirectory()) {
-          collectFiles(full);
-        } else if (stat.isFile() && (entry.endsWith('.sr') || entry.endsWith('.sra') || entry === 'Seira.toml')) {
-          files.push(full);
+          collectFiles(fullPath);
+        } else if (
+          stat.isFile() &&
+          (entry.endsWith(".sr") || entry.endsWith(".sra") || entry === "Seira.toml")
+        ) {
+          files.push(fullPath);
         }
       }
     };
 
-    collectFiles(pkgDir);
-    files.sort();
+    collectFiles(rootDir);
+    files.sort((left, right) => {
+      const a = relative(rootDir, left).split(sep).join("/");
+      const b = relative(rootDir, right).split(sep).join("/");
+      return a.localeCompare(b);
+    });
 
-    for (const f of files) {
-      const content = readFileSync(f);
-      hash.update(f);
+    const hash = createHash("sha256");
+    for (const filePath of files) {
+      const relativePath = relative(rootDir, filePath).split(sep).join("/");
+      const content = readFileSync(filePath);
+      hash.update(relativePath);
+      hash.update("\0");
+      hash.update(String(content.length));
+      hash.update("\0");
       hash.update(content);
+      hash.update("\0");
     }
 
-    return hash.digest('hex');
+    return hash.digest("hex");
   }
 
-  /**
-   * Serializes the lockfile into canonical TOML format.
-   */
+  public verifyPackageChecksum(pkgDir: string, expectedChecksum: string): boolean {
+    if (!/^[a-f0-9]{64}$/i.test(expectedChecksum)) return false;
+    return this.computePackageChecksum(pkgDir) === expectedChecksum.toLowerCase();
+  }
+
   public serialize(lock: SeiraLock): string {
-    let out = `# This file is automatically generated by Seira.\n`;
-    out += `# It is not intended for manual editing.\n`;
-    out += `version = ${lock.version}\n\n`;
+    if (!Number.isInteger(lock.version) || lock.version < 1) {
+      throw new Error("Seira.lock version must be a positive integer.");
+    }
+
+    let out = "# This file is automatically generated by Seira.\n";
+    out += "# It is not intended for manual editing.\n";
+    out += "version = " + lock.version + "\n\n";
 
     const sortedPackages = [...lock.packages].sort((a, b) => a.name.localeCompare(b.name));
-    for (const pkg of sortedPackages) {
-      out += `[[package]]\n`;
-      out += `name = "${pkg.name}"\n`;
-      out += `version = "${pkg.version}"\n`;
-      out += `source = "${pkg.source}"\n`;
-      out += `checksum = "${pkg.checksum}"\n`;
-      if (pkg.dependencies && pkg.dependencies.length > 0) {
-        const depsStr = pkg.dependencies.map((d) => `"${d}"`).join(', ');
-        out += `dependencies = [${depsStr}]\n`;
-      }
-      out += `\n`;
+    for (let index = 0; index < sortedPackages.length; index++) {
+      const pkg = validateLockedPackage(sortedPackages[index], index);
+      out += "[[package]]\n";
+      out += "name = " + quoteTomlString(pkg.name) + "\n";
+      out += "version = " + quoteTomlString(pkg.version) + "\n";
+      out += "source = " + quoteTomlString(pkg.source) + "\n";
+      out += "checksum = " + quoteTomlString(pkg.checksum) + "\n";
+      out += "dependencies = [" + (pkg.dependencies ?? []).map(quoteTomlString).join(", ") + "]\n\n";
     }
 
     return out;
   }
 
-  /**
-   * Writes the lockfile to disk at `pkgDir/Seira.lock` or directly at `lockFilePath`.
-   */
   public writeLockfile(pkgDirOrFile: string, lock: SeiraLock): void {
-    const lockPath = pkgDirOrFile.endsWith('Seira.lock') ? pkgDirOrFile : join(pkgDirOrFile, 'Seira.lock');
-    writeFileSync(lockPath, this.serialize(lock), 'utf-8');
+    const lockPath = pkgDirOrFile.endsWith("Seira.lock")
+      ? pkgDirOrFile
+      : join(pkgDirOrFile, "Seira.lock");
+    writeFileSync(lockPath, this.serialize(lock), "utf-8");
   }
 
-  /**
-   * Reads and parses a `Seira.lock` from disk if present.
-   */
   public readLockfile(pkgDirOrFile: string): SeiraLock | null {
-    const lockPath = pkgDirOrFile.endsWith('Seira.lock') ? pkgDirOrFile : join(pkgDirOrFile, 'Seira.lock');
+    const lockPath = pkgDirOrFile.endsWith("Seira.lock")
+      ? pkgDirOrFile
+      : join(pkgDirOrFile, "Seira.lock");
     if (!existsSync(lockPath)) return null;
 
     try {
-      const content = readFileSync(lockPath, 'utf-8');
-      return this.parse(content);
+      return this.parse(readFileSync(lockPath, "utf-8"));
     } catch {
       return null;
     }
   }
 
+  /**
+   * Parses the TOML subset emitted by serialize(). Malformed or incomplete
+   * lockfiles fail closed instead of silently producing partial package entries.
+   */
   public parse(content: string): SeiraLock {
+    let lockVersion: number | undefined;
     const packages: LockedPackage[] = [];
-    const lines = content.split(/\r?\n/);
-    let currentPkg: Partial<LockedPackage> = {};
-    let inPkg = false;
+    let currentPackage: Partial<LockedPackage> | undefined;
+    let currentKeys = new Set<string>();
 
-    for (let line of lines) {
-      line = line.trim();
-      if (!line || line.startsWith('#')) continue;
+    const finishPackage = (): void => {
+      if (!currentPackage) return;
+      packages.push(validateLockedPackage(currentPackage, packages.length));
+      currentPackage = undefined;
+      currentKeys = new Set<string>();
+    };
 
-      if (line === '[[package]]') {
-        if (inPkg && currentPkg.name && currentPkg.version) {
-          packages.push(currentPkg as LockedPackage);
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+
+      if (line === "[[package]]") {
+        if (lockVersion === undefined) {
+          throw new Error("Seira.lock must declare its version before package entries.");
         }
-        currentPkg = {};
-        inPkg = true;
+        finishPackage();
+        currentPackage = {};
+        currentKeys = new Set<string>();
         continue;
       }
 
-      const eqIdx = line.indexOf('=');
-      if (eqIdx !== -1 && inPkg) {
-        const key = line.slice(0, eqIdx).trim();
-        const val = line.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(line);
+      if (!match) throw new Error("Malformed Seira.lock line: '" + line + "'.");
 
-        if (key === 'name') currentPkg = { ...currentPkg, name: val };
-        else if (key === 'version') currentPkg = { ...currentPkg, version: val };
-        else if (key === 'source') currentPkg = { ...currentPkg, source: val };
-        else if (key === 'checksum') currentPkg = { ...currentPkg, checksum: val };
+      const key = match[1];
+      const rawValue = match[2].trim();
+
+      if (!currentPackage) {
+        if (key !== "version" || lockVersion !== undefined || !/^\d+$/.test(rawValue)) {
+          throw new Error("Unexpected Seira.lock root field '" + key + "'.");
+        }
+        lockVersion = Number(rawValue);
+        if (!Number.isSafeInteger(lockVersion) || lockVersion < 1) {
+          throw new Error("Seira.lock version must be a positive safe integer.");
+        }
+        continue;
+      }
+
+      if (currentKeys.has(key)) throw new Error("Duplicate Seira.lock field '" + key + "'.");
+      currentKeys.add(key);
+
+      if (key === "name" || key === "version" || key === "source" || key === "checksum") {
+        (currentPackage as Record<string, unknown>)[key] = parseTomlString(rawValue, key);
+      } else if (key === "dependencies") {
+        let dependencies: unknown;
+        try {
+          dependencies = JSON.parse(rawValue);
+        } catch {
+          throw new Error("Invalid Seira.lock dependencies array.");
+        }
+        if (!Array.isArray(dependencies) || dependencies.some((value) => typeof value !== "string")) {
+          throw new Error("Seira.lock dependencies must be an array of strings.");
+        }
+        currentPackage.dependencies = dependencies as string[];
+      } else {
+        throw new Error("Unsupported Seira.lock package field '" + key + "'.");
       }
     }
 
-    if (inPkg && currentPkg.name && currentPkg.version) {
-      packages.push(currentPkg as LockedPackage);
-    }
+    finishPackage();
+    if (lockVersion === undefined) throw new Error("Seira.lock is missing its root version field.");
 
-    return {
-      version: 1,
-      packages,
-    };
+    return { version: lockVersion, packages };
   }
 }

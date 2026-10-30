@@ -11,6 +11,22 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
 
+## [Unreleased]
+
+### Fixed
+- Hardened module discovery by refusing symbolic links and checking canonical paths against the source root.
+- Restricted workspace members to real directories contained within the workspace root.
+- Integrated workspace member maps into package dependency resolution.
+- Kept module dependency graphs package-scoped so identical module paths in different packages cannot overwrite one another.
+- Made package checksums independent of absolute checkout location and added strict lockfile parsing, dependency round-tripping, and checksum verification.
+- Corrected virtual file mode handling for `w+`, `a`, and `a+`; unsupported modes now return `Result.Err`.
+- Routed `print` and `println` through the same captured runtime output sink.
+- Added npm dependency auditing to the cross-platform CI workflow.
+
+### Notes
+- Runtime file I/O remains an in-memory virtual filesystem. A native filesystem host adapter is still future work; this change does not claim real operating-system file access.
+- Changes are being developed on the existing `develop` branch; no additional branch was created.
+
 ## [0.0.10-s] - 2026-10-01
 
 ### Added

@@ -22,6 +22,7 @@ import {
   PackageLoader,
   SeiraModule,
   SeiraPackage,
+  WorkspaceLoader,
 } from '../module/index.ts';
 import { Parser } from '../parser/parser.ts';
 import { Resolver, type ResolverResult } from '../resolver/index.ts';
@@ -110,8 +111,24 @@ export class CompilerDriver {
       };
     }
 
-    // Resolve package dependencies via PackageGraph
-    const packageGraph = new PackageGraph(diagnostics);
+    // Discover a workspace from this package directory (or one of its ancestors).
+    // The workspace package map is required to resolve { workspace = true } dependencies.
+    const workspaceLoader = new WorkspaceLoader(diagnostics);
+    const workspaceRoot = workspaceLoader.findWorkspaceRoot(packageDir);
+    const workspace = workspaceRoot ? workspaceLoader.loadWorkspace(workspaceRoot) : null;
+
+    if (diagnostics.hasErrors()) {
+      return {
+        success: false,
+        package: pkg,
+        modules: pkg.modules,
+        sortedModules: [],
+        diagnostics,
+      };
+    }
+
+    // Resolve package dependencies via PackageGraph, including workspace members.
+    const packageGraph = new PackageGraph(diagnostics, workspace?.packages);
     const resolvedPackages = packageGraph.resolvePackage(packageDir);
 
     if (diagnostics.hasErrors()) {
@@ -176,13 +193,17 @@ export class CompilerDriver {
       };
     }
 
-    // Build module dependency graph and detect module cycles (E6008)
-    const moduleMap = new Map<string, SeiraModule>();
-    for (const mod of allModulesToCompile) {
-      moduleMap.set(mod.id.path, mod);
+    // Resolve module order within each package independently.
+    // Module names are package-scoped: package_a::utils and package_b::utils
+    // must not overwrite one another merely because both files are named utils.sr.
+    // Cross-package ordering is already guaranteed by PackageGraph.
+    const sortedModules: SeiraModule[] = [];
+    for (const resolvedPkg of resolvedPackages) {
+      const activePkg = resolvedPkg.name === pkg.name ? pkg : resolvedPkg;
+      const packageModules = new Map(activePkg.modules);
+      const moduleGraph = new ModuleGraph(packageModules, diagnostics);
+      sortedModules.push(...moduleGraph.resolveOrder());
     }
-    const moduleGraph = new ModuleGraph(moduleMap, diagnostics);
-    const sortedModules = moduleGraph.resolveOrder();
 
     if (diagnostics.hasErrors()) {
       return {

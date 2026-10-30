@@ -716,6 +716,10 @@ export function createFile(
 ): FileRuntimeValue {
   const normPath = normalizePath(pathStr);
   const normMode = mode.toLowerCase();
+  const supportedModes = new Set(['r', 'w', 'a', 'r+', 'w+', 'a+']);
+  if (!supportedModes.has(normMode)) {
+    throw new RangeError("Unsupported file mode '" + mode + "'.");
+  }
 
   if (initialContent !== undefined) {
     const b = typeof initialContent === 'string'
@@ -727,10 +731,10 @@ export function createFile(
   let closed = false;
   let pos = 0;
 
-  if (normMode === 'w') {
+  if (normMode === 'w' || normMode === 'w+') {
     VIRTUAL_FILES.set(normPath, new Uint8Array(0));
     pos = 0;
-  } else if (normMode === 'a') {
+  } else if (normMode === 'a' || normMode === 'a+') {
     const existing = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
     pos = existing.length;
   } else if (normMode === 'r' || normMode === 'r+') {
@@ -750,7 +754,7 @@ export function createFile(
     },
     read(n?: number): ResultRuntimeValue {
       if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
-      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      if (normMode === 'w' || normMode === 'a') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
       const data = VIRTUAL_FILES.get(normPath);
       if (!data || pos >= data.length) {
         return rtOk(rtNone);
@@ -763,7 +767,7 @@ export function createFile(
     },
     readAll(): ResultRuntimeValue {
       if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
-      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      if (normMode === 'w' || normMode === 'a') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
       const data = VIRTUAL_FILES.get(normPath);
       if (!data || pos >= data.length) {
         return rtOk(rtString(''));
@@ -775,7 +779,7 @@ export function createFile(
     },
     readBytes(n?: number): ResultRuntimeValue {
       if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
-      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      if (normMode === 'w' || normMode === 'a') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
       const data = VIRTUAL_FILES.get(normPath);
       if (!data || pos >= data.length) {
         return rtOk(rtNone);
@@ -792,7 +796,7 @@ export function createFile(
       const current = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
 
       let updated: Uint8Array;
-      if (normMode === 'a') {
+      if (normMode === 'a' || normMode === 'a+') {
         updated = new Uint8Array(current.length + bytesToWrite.length);
         updated.set(current, 0);
         updated.set(bytesToWrite, current.length);
@@ -855,6 +859,9 @@ export function createFile(
 export function openFile(pathStr: string, mode: string = 'r'): ResultRuntimeValue {
   const normPath = normalizePath(pathStr);
   const normMode = mode.toLowerCase();
+  if (!['r', 'w', 'a', 'r+', 'w+', 'a+'].includes(normMode)) {
+    return rtErr(rtString("InvalidArgument: Unsupported file mode '" + mode + "'"));
+  }
   if (normMode === 'r' || normMode === 'r+') {
     if (!VIRTUAL_FILES.has(normPath)) {
       return rtErr(rtString(`NotFound: File '${pathStr}' does not exist`));

@@ -22,9 +22,11 @@
 > - **Byte/Text Boundary**: Strict boundary between raw binary data (`Byte`, `Bytes`) and text (`Char`, `String`). Conversions are explicit (`encode` / `decode`); implicit coercion is strictly prohibited.
 > - **Encoding Foundation**: Supported standard encodings (UTF-8 default, ASCII, UTF-16, UTF-32) returning deterministic `Result` types. Invalid byte sequences produce structured errors, never panics or corruption.
 > - **Path Abstraction**: First-class, immutable, normalized `Path` type distinct from `String` with composable operations (`join`, `parent`, `file_name`, `extension`, `is_absolute`, `normalize`).
-> - **File I/O Foundation**: Deterministic, safe `File` lifecycle (open → use → close). Operations on closed files or mode violations produce deterministic `Result` errors (`AlreadyClosed`, `PermissionDenied`, `NotFound`, `InvalidSeek`).
+> - **File I/O Foundation**: Deterministic, safe `File` lifecycle (open → use → close) over the current in-memory virtual filesystem. It does not yet read or write the host operating system's filesystem. Operations on closed files or mode violations produce deterministic `Result` errors (`AlreadyClosed`, `PermissionDenied`, `NotFound`, `InvalidSeek`).
 > - **Deterministic Resource Management**: First-class `with` statement with guaranteed deterministic cleanup in strict LIFO order across all exit paths (normal scope exit, early return, break, continue, and panic).
 > - **Memory I/O Refinement**: Target-independent `MemoryReader` (`Reader` + `Seekable` + `Sized`), `MemoryWriter` (`Writer` + `Flushable` + `Sized`), and `MemoryStream` (all 5 capabilities) enabling fast, hermetic execution without OS/network side effects.
+
+The existing `develop` branch contains post-Seed stabilization work. Workspace dependency compilation, package-scoped module ordering, symlink-safe module discovery, strict lockfile parsing, and runtime I/O regression coverage are being hardened before the next development milestone.
 
 
 ---

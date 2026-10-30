@@ -229,11 +229,11 @@ export class ExecutionContext {
     return this.callStack;
   }
 
-  public emitOutput(line: string): void {
+  public emitOutput(text: string, appendNewline = true): void {
     if (this.config.enableOutput) {
-      console.log(line);
+      process.stdout.write(appendNewline ? text + "\n" : text);
     }
-    this.outputLines.push(line);
+    this.outputLines.push(text);
   }
 
   public getCapturedOutput(): ReadonlyArray<string> {
@@ -2595,9 +2595,7 @@ export class Evaluator {
 
       case 'print': {
         const parts = args.map(formatRuntimeValue);
-        if (this.ctx.config.enableOutput) {
-          process.stdout.write(parts.join(' '));
-        }
+        this.ctx.emitOutput(parts.join(' '), false);
         return normalOutcome(UNIT_VALUE);
       }
 
