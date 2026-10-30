@@ -138,6 +138,8 @@ export class HIRLowering {
   private typecheckResult?: TypecheckResult;
   private currentFunction?: string;
   private disambiguatorMap = new Map<string, number>();
+  /** Maps resolver declaration nodes to the exact IDs emitted into HIR. */
+  private readonly symbolIdsByDeclaration = new WeakMap<ASTNode, SymbolId>();
 
   constructor(diagnostics?: DiagnosticBag, options?: HIRLoweringOptions) {
     this.diagnostics = diagnostics ?? new DiagnosticBag();
@@ -494,12 +496,14 @@ export class HIRLowering {
 
     const fnId = createFunctionId(container, fn.name);
     const symId = createSymbolId(container || 'global', fn.name);
+    this.symbolIdsByDeclaration.set(fn, symId);
     const origin = fromSource(fn.span, this.currentFile);
     const genericParams = this.lowerGenericParams(fn.genericParams, fn.name);
 
     const fnType = this.typecheckResult?.nodeTypes.get(fn);
     const params: HIRParameter[] = fn.params.map((p, idx) => {
       const pSym = createSymbolId(`fn:${fn.name}`, p.name);
+      this.symbolIdsByDeclaration.set(p, pSym);
       let pType = HIR_UNKNOWN_TYPE;
       if (fnType && fnType.kind === 'Function' && fnType.params && fnType.params[idx]) {
         pType = typeToHIRType(fnType.params[idx]);
@@ -673,6 +677,7 @@ export class HIRLowering {
       case 'LetStmt': {
         const letStmt = stmt as LetStmt;
         const symId = this.getSymbolId(letStmt.name, this.currentFunction ?? 'block');
+        this.symbolIdsByDeclaration.set(letStmt, symId);
         let letType = this.getType(letStmt);
         if (letType.kind === 'Unknown' && letStmt.typeAnnotation) {
           letType = typeAnnotationToHIRType(letStmt.typeAnnotation);
@@ -696,6 +701,7 @@ export class HIRLowering {
       case 'ConstStmt': {
         const constStmt = stmt as ConstStmt;
         const symId = this.getSymbolId(constStmt.name, this.currentFunction ?? 'block');
+        this.symbolIdsByDeclaration.set(constStmt, symId);
         let constType = this.getType(constStmt);
         if (constType.kind === 'Unknown' && constStmt.typeAnnotation) {
           constType = typeAnnotationToHIRType(constStmt.typeAnnotation);
@@ -747,6 +753,7 @@ export class HIRLowering {
         }
 
         const symId = this.getSymbolId(bindStmt.name, this.currentFunction ?? 'block');
+        this.symbolIdsByDeclaration.set(bindStmt, symId);
         let finalType = this.getType(bindStmt);
         if (finalType.kind === 'Unknown' && declaredType) {
           finalType = declaredType;
@@ -819,6 +826,7 @@ export class HIRLowering {
         const aliasSymId = withStmt.alias
           ? this.getSymbolId(withStmt.alias, 'with')
           : undefined;
+        if (aliasSymId) this.symbolIdsByDeclaration.set(withStmt, aliasSymId);
         return {
           kind: 'HIRWithStmt',
           id: this.allocId(),
@@ -847,6 +855,7 @@ export class HIRLowering {
       case 'ForStmt': {
         const forStmt = stmt as ForStmt;
         const symId = this.getSymbolId(forStmt.variable, 'for');
+        this.symbolIdsByDeclaration.set(forStmt, symId);
         return {
           kind: 'HIRLoopStmt',
           id: this.allocId(),
@@ -898,7 +907,8 @@ export class HIRLowering {
       case 'Identifier': {
         const id = expr as Identifier;
         const sym = this.resolverResult?.resolvedSymbols.get(id);
-        const symbolId = sym ? createSymbolId(sym.kind, sym.name) : createSymbolId('unknown', id.name);
+        const declarationId = sym?.declNode ? this.symbolIdsByDeclaration.get(sym.declNode) : undefined;
+        const symbolId = declarationId ?? (sym ? createSymbolId(sym.kind, sym.name) : createSymbolId('unknown', id.name));
         if (sym && (sym.kind === 'function' || sym.kind === 'builtin')) {
           return {
             kind: 'HIRGlobalExpr',
@@ -1449,6 +1459,7 @@ export class HIRLowering {
       case 'IdentifierPattern': {
         const idPat = pattern as IdentifierPattern;
         const symId = this.getSymbolId(idPat.name, 'pattern');
+        this.symbolIdsByDeclaration.set(idPat, symId);
         return {
           kind: 'HIRBindingPattern',
           id: this.allocId(),
@@ -1471,6 +1482,12 @@ export class HIRLowering {
         };
       }
     }
+  }
+
+  private getLambdaParameterSymbolId(param: Param): SymbolId {
+    const symbolId = this.getSymbolId(param.name, 'lambda');
+    this.symbolIdsByDeclaration.set(param, symbolId);
+    return symbolId;
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
