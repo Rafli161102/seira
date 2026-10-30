@@ -15,6 +15,7 @@
 import type {
   ASTNode,
   AssignStmt,
+  AssignmentExpr,
   BinaryExpr,
   BindingStmt,
   Block,
@@ -929,6 +930,68 @@ export class HIRLowering {
           name: id.name,
           type: exprType,
           source: origin,
+        };
+      }
+
+      case 'AssignmentExpr': {
+        const assignment = expr as AssignmentExpr;
+        const target = this.lowerExpr(assignment.target);
+        const value = this.lowerExpr(assignment.value);
+        const temporaryId = this.allocId();
+        const temporarySymbolId = createSymbolId('temporary', `assignment_${temporaryId}`);
+        const syntheticOrigin = fromSynthetic(
+          assignment.span,
+          'lowered_assignment_expression',
+          this.currentFile
+        );
+        const temporaryValue: HIRExpr = {
+          kind: 'HIRLocalExpr',
+          id: this.allocId(),
+          symbolId: temporarySymbolId,
+          name: `$assignment_${temporaryId}`,
+          type: value.type,
+          source: syntheticOrigin,
+        };
+        const resultValue: HIRExpr = {
+          kind: 'HIRLocalExpr',
+          id: this.allocId(),
+          symbolId: temporarySymbolId,
+          name: `$assignment_${temporaryId}`,
+          type: exprType.kind === 'Unknown' ? target.type : exprType,
+          source: syntheticOrigin,
+        };
+        const block: HIRBlock = {
+          kind: 'HIRBlock',
+          id: this.allocId(),
+          statements: [
+            {
+              kind: 'HIRLetStmt',
+              id: temporaryId,
+              symbolId: temporarySymbolId,
+              name: `$assignment_${temporaryId}`,
+              isMut: false,
+              type: value.type,
+              initializer: value,
+              source: syntheticOrigin,
+            },
+            {
+              kind: 'HIRAssignStmt',
+              id: this.allocId(),
+              operator: assignment.operator,
+              target,
+              value: temporaryValue,
+              source: syntheticOrigin,
+            },
+          ],
+          resultExpr: resultValue,
+          source: syntheticOrigin,
+        };
+        return {
+          kind: 'HIRBlockExpr',
+          id: this.allocId(),
+          block,
+          type: exprType.kind === 'Unknown' ? target.type : exprType,
+          source: syntheticOrigin,
         };
       }
 
