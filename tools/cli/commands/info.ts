@@ -32,8 +32,8 @@ export function runInfo(): void {
   console.log('  [x] Resolver:        Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s)');
   console.log('  [x] Typecheck:       Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s)');
   console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s)');
-  console.log('  [ ] HIR:             Skeleton (Reserved: 0.0.11-d)');
-  console.log('  [ ] MIR:             Skeleton (Reserved: 0.0.11-d)');
+  console.log('  [x] HIR:             Active — AST to typed HIR lowering & validation (develop)');
+  console.log('  [x] MIR:             Active — HIR to SSA/CFG lowering & verification (develop)');
   console.log('  [ ] Native Codegen:  Skeleton (Reserved: 0.1.0-alpha)');
   console.log('  [ ] Wasm Codegen:    Skeleton (Reserved: 0.1.0-alpha)');
   console.log('');

@@ -15,6 +15,8 @@ and this project adheres to the Seira Staged Versioning Model:
 
 ### Added
 - Implemented the HIR-to-MIR lowering pipeline with typed SSA values, basic blocks, explicit branch edges, block parameters for value merges, and source-node provenance.
+- Lowered assignment expressions into explicit HIR mutation blocks with single-evaluation RHS temporaries and preserved assignment results.
+- Updated `seira info` to report HIR and MIR as active development pipeline stages while native/WASM code generation remains reserved.
 - Added SSA block-parameter merges for mutable bindings across `if` branches and loop-carried values across loop headers, back-edges, exits, `break`, and `continue` edges.
 - Added MIR verifier checks for undefined and duplicate value definitions, use-before-definition, control-flow dominance, Boolean branch conditions, branch-target validity, block-argument arity, and edge argument type compatibility.
 - Preserved lexical binding scopes while lowering nested HIR blocks and iterator loop bindings.
