@@ -44,9 +44,9 @@ test('MIR merges mutable bindings into SSA block parameters after if branches', 
     fn choose(flag: Bool) -> Int {
       let mut value = 0;
       if flag {
-        value = 1;
+        value += 1;
       } else {
-        value = 2;
+        value += 2;
       }
       value
     }
