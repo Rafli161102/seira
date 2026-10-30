@@ -236,7 +236,7 @@ export class LockfileManager {
         if (!Array.isArray(dependencies) || dependencies.some((value) => typeof value !== "string")) {
           throw new Error("Seira.lock dependencies must be an array of strings.");
         }
-        currentPackage.dependencies = dependencies as string[];
+        currentPackage = { ...currentPackage, dependencies: dependencies as string[] };
       } else {
         throw new Error("Unsupported Seira.lock package field '" + key + "'.");
       }
