@@ -475,18 +475,24 @@ class FunctionLowerer {
 
 export class MIRBuilder {
   public build(hir: HIRProgram): MIRModule {
-    const functions: MIRFunction[] = [];
+    const functions = new Map<string, MIRFunction>();
     const collect = (items: HIRProgram['topLevelItems']): void => {
       for (const item of items) {
-        if (item.kind === 'HIRFunction') functions.push(new FunctionLowerer(item).lower());
-        else if (item.kind === 'HIRImpl') {
-          for (const method of item.methods) functions.push(new FunctionLowerer(method).lower());
+        if (item.kind === 'HIRFunction') {
+          if (!functions.has(item.functionId)) functions.set(item.functionId, new FunctionLowerer(item).lower());
+        } else if (item.kind === 'HIRImpl') {
+          for (const method of item.methods) {
+            if (!functions.has(method.functionId)) functions.set(method.functionId, new FunctionLowerer(method).lower());
+          }
         }
       }
     };
+    // Some HIR producers expose the same declaration through both the
+    // top-level convenience list and its owning module. Deduplicate by
+    // semantic FunctionId rather than emitting duplicate MIR bodies.
     collect(hir.topLevelItems);
     for (const module of hir.modules) collect(module.items);
-    return { name: 'root', functions };
+    return { name: 'root', functions: [...functions.values()] };
   }
 }
 
