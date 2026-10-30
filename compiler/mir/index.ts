@@ -89,6 +89,7 @@ interface MutableBlock {
 type Locals = Map<string, MIRValue>;
 
 class FunctionLowerer {
+  private readonly fn: HIRFunction;
   private nextBlock = 0;
   private nextValue = 0;
   private blocks: MutableBlock[] = [];
@@ -97,7 +98,9 @@ class FunctionLowerer {
   private resourceStack: Array<{ value: MIRValue; cleanup: string; source: MIRSource }> = [];
   private loopTargets: Array<{ breakTarget: number; continueTarget: number; resourceDepth: number }> = [];
 
-  constructor(private readonly fn: HIRFunction) {}
+  constructor(fn: HIRFunction) {
+    this.fn = fn;
+  }
 
   lower(): MIRFunction {
     const params = this.fn.params.map((param) => {
