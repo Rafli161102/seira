@@ -210,6 +210,7 @@ test('Borrow checker: rejects a mutable borrow while a shared borrow is active',
   const result = ownershipModule([
     operation('borrow.shared', [11], 21),
     operation('borrow.mutable', [11], 22),
+    operation('call', [21], 23),
     operation('borrow.end', [21]),
     operation('borrow.end', [22]),
   ]);
