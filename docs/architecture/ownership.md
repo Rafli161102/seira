@@ -56,7 +56,7 @@ Returning an owned resource value is treated as an ownership transfer to the cal
 
 ## Limitations and next work
 
-This is an initial NLL foundation, not a complete Rust-style borrow checker. P1.8 adds place-sensitive analysis for named struct fields, while tuple/index projections, closure-capture ownership, and arbitrary alias propagation remain unsupported. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
+This is an initial NLL foundation, not a complete Rust-style borrow checker. Place-sensitive analysis supports named struct fields, tuple positions, and List index projections. Dynamic List indices are represented conservatively and may alias any position; Map index references, closure-capture ownership, and arbitrary alias propagation remain unsupported. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
 
 
 ## Source-level references (P1.4)
@@ -84,7 +84,7 @@ The analysis is intentionally limited to named-reference dereference reborrows (
 
 A field borrow carries a root SSA value and a dot-separated place path in MIR attributes. An empty path means the whole value. Two non-empty paths are disjoint when neither path equals nor prefixes the other; otherwise the places overlap. Thus `pair.left` and `pair.right` can be borrowed independently, while `pair.profile` overlaps `pair.profile.name`. Field-read MIR operations carry the same root/path metadata, allowing the checker to permit reads from disjoint fields but reject reads overlapping an active mutable loan. Mutable field borrows require a mutable root binding.
 
-P1.8 introduced named struct-field projections in compiler/MIR ownership analysis. P1.9 added runtime constant tuple-position references. P1.10 adds runtime Struct values and field references. Dynamic list/map indices, union/enum payload projections, and general interprocedural alias tracking remain deferred.
+P1.8 introduced named struct-field projections in compiler/MIR ownership analysis. P1.9 added runtime constant tuple-position references. P1.10 adds runtime Struct values and field references. P1.11 adds runtime List index references and conservative alias handling. Map indices, union/enum payload projections, and general interprocedural alias tracking remain deferred.
 
 
 ## Runtime tuple projections (P1.9)
@@ -98,4 +98,13 @@ This runtime representation is deliberately narrower than the compiler's place m
 
 User-defined structs are represented at runtime as named Struct values with named fields. Positional constructors follow declaration field order, for example `Person("Mika", 23)`. Runtime references store ordered tuple-position and struct-field projections from the root lexical binding. This supports nested paths such as `player.stats.score`, shared reads, exclusive mutation, and reborrowing without detached field copies.
 
-The MIR ownership checker uses the same logical root-plus-path model. Distinct sibling paths remain independently borrowable, while identical and parent/nested paths overlap. Runtime writes rebuild nested immutable tuple/struct containers from the modified leaf back to the root mutable binding. Dynamic list/map index references remain deferred.
+The MIR ownership checker uses the same logical root-plus-path model. Distinct sibling paths remain independently borrowable, while identical and parent/nested paths overlap. Runtime writes rebuild nested immutable tuple/struct containers from the modified leaf back to the root mutable binding. List index references are covered by P1.11; Map index references remain deferred.
+
+
+## Runtime List index projections & alias safety (P1.11)
+
+Borrowing a List element uses the source forms `&values[index]` and `&mut values[index]`. Ordinary safe indexing is unchanged and still yields `Option<T>`; a borrow of an in-bounds List slot refers to the element type `T` itself. Runtime reference paths now include a zero-based List projection in addition to tuple positions and struct field names. Dereference reads and writes resolve the complete path from the original lexical root binding. A mutable write rebuilds List/Tuple/Struct containers from the modified leaf outward and retains every untouched sibling.
+
+MIR encodes a statically known non-negative index as `@N` and an index that is not a compile-time integer literal as `@*`. Distinct constant positions such as `@0` and `@1` are disjoint. A dynamic `@*` projection conservatively overlaps every constant or dynamic List index at that projection depth because the runtime value may select the same element. Indexed reads carry the same root-plus-place metadata, so a read of a disjoint constant position can remain available while another element is mutably borrowed. Out-of-range runtime borrows fail with a structured runtime diagnostic rather than producing a dangling reference.
+
+Map key projections are intentionally not included: equality, stable key addressing, and alias rules for map entries need a separate semantic contract. This milestone does not add Map borrows or general interprocedural alias propagation.

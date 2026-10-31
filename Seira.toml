@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.11-d Runtime Struct Values & Field References
+# Specification: 0.0.12-d Runtime List Index References & Alias Safety
 
 [package]
 name = "seira"
-version = "0.0.11-d"
+version = "0.0.12-d"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — Runtime Struct Values & Field References (Development Release)"
+description = "The Seira Programming Language — Runtime List Index References & Alias Safety (Development Release)"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 
