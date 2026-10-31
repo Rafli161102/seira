@@ -27,6 +27,7 @@ import type {
   AssignStmt,
   BinaryExpr,
   BindingStmt,
+  BorrowExpr,
   Block,
   BlockExpr,
   BreakStmt,
@@ -760,6 +761,10 @@ export class Evaluator {
         return this.evaluateBinaryExpr(expr as BinaryExpr, env);
       case 'UnaryExpr':
         return this.evaluateUnaryExpr(expr as UnaryExpr, env);
+      case 'BorrowExpr':
+        // The initial runtime erases reference wrappers: dereference and mutation-through-reference
+        // syntax are not implemented yet, while static borrow checking runs before evaluation.
+        return this.evaluateExpr((expr as BorrowExpr).operand, env);
       case 'PipelineExpr':
         return this.evaluatePipelineExpr(expr as PipelineExpr, env);
       case 'OptionFallbackExpr':
