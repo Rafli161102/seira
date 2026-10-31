@@ -1,12 +1,12 @@
 /**
  * Seira CLI Help Command
- * Categorizes commands by current implementation status (0.0.1-s Seed vs Reserved).
+ * Categorizes commands by current implementation status across Seed and Development releases.
  */
 
 import { SEIRA_VERSION } from './version.ts';
 
 export function runHelp(): void {
-  console.log(`Seira ${SEIRA_VERSION} — Standard Library & Core Contract Foundation
+  console.log(`Seira ${SEIRA_VERSION} — Runtime Struct Values & Field References (Development Series)
 Simple to write. Predictable to run.
 
 USAGE:
