@@ -209,31 +209,13 @@ class FunctionLowerer {
     return result;
   }
 
-  private resolveLocalSymbolId(target: Extract<HIRExpr, { kind: 'HIRLocalExpr' }>): string {
-    if (this.locals.has(target.symbolId)) return target.symbolId;
-
-    // Synthetic HIR assignment blocks can carry a different symbol id for
-    // the same lexical local. Prefer the most recently introduced active
-    // binding with the same name, preserving normal lexical shadowing.
-    const entries = [...this.locals.entries()];
-    for (let index = entries.length - 1; index >= 0; index--) {
-      const [symbolId, value] = entries[index];
-      if (value.name === target.name) return symbolId;
-    }
-    return target.symbolId;
-  }
-
   private lowerStmt(stmt: HIRStmt): void {
     this.registerNode(stmt);
     switch (stmt.kind) {
       case 'HIRLetStmt': {
         const init = stmt.initializer ? this.lowerExpr(stmt.initializer) :
           this.emit('undef', [], stmt.type, stmt.id, { symbol: stmt.name });
-        // Retain the source binding identity/name on the current SSA value.
-        // HIR may synthesize assignment blocks whose target symbol id differs
-        // from the original local id; the name lets the lowering resolve that
-        // alias without losing the loop-carried value.
-        this.locals.set(stmt.symbolId, { ...init, symbolId: stmt.symbolId, name: stmt.name });
+        this.locals.set(stmt.symbolId, init);
         if (stmt.isMut) this.mutableSymbols.add(stmt.symbolId);
         return;
       }
@@ -247,11 +229,10 @@ class FunctionLowerer {
           })();
           this.emit('deref.store', [reference.id, value.id], stmt.target.type, stmt.id, { operator: stmt.operator });
         } else if (stmt.target.kind === 'HIRLocalExpr') {
-          const symbolId = this.resolveLocalSymbolId(stmt.target);
-          const previous = this.locals.get(symbolId);
+          const previous = this.locals.get(stmt.target.symbolId);
           const value = stmt.operator === '=' || !previous ? rhs :
             this.emit('binary', [previous.id, rhs.id], stmt.target.type, stmt.id, { operator: stmt.operator.slice(0, -1) });
-          this.locals.set(symbolId, { ...value, symbolId, name: stmt.target.name });
+          this.locals.set(stmt.target.symbolId, value);
         } else {
           const target = this.lowerExpr(stmt.target);
           this.emit('store', [target.id, rhs.id], stmt.value.type, stmt.id, { operator: stmt.operator });
