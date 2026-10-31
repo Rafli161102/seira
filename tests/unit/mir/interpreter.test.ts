@@ -56,6 +56,16 @@ test('MIR interpreter executes loop-carried SSA block parameters', () => {
   `, 'mir-loop.sr');
 });
 
+test('MIR interpreter executes compound assignment through loop-carried SSA values', () => {
+  assertDifferential(`
+    fn main() -> Int {
+      let mut count = 0;
+      while count < 5 { count += 1; }
+      return count;
+    }
+  `, 'mir-compound-loop.sr');
+});
+
 test('MIR interpreter executes conditional branches with strict Bool semantics', () => {
   assertDifferential(`
     fn main() -> Int {
