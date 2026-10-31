@@ -443,7 +443,7 @@ class FunctionLowerer {
           const borrowPlace = isReborrow ? undefined : this.lowerPlace(expr.operand);
           const borrowSource = isReborrow ? expr.operand.operand : expr.operand;
           const operand = borrowPlace?.root ?? this.lowerExpr(borrowSource);
-          const attributes = isReborrow
+          const attributes: Record<string, string | number | boolean | null> | undefined = isReborrow
             ? { reborrow: true }
             : borrowPlace && borrowPlace.path.length > 0
               ? { placePath: borrowPlace.path.join('.') }
