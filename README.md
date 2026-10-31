@@ -1,7 +1,7 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.17-d](https://img.shields.io/badge/Release-0.0.17--d%20Development-orange.svg)](CHANGELOG.md)
+[![Release: 0.0.18-d](https://img.shields.io/badge/Release-0.0.17--d%20Development-orange.svg)](CHANGELOG.md)
 [![Status: Development](https://img.shields.io/badge/Status-Development-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Development Series.
@@ -14,7 +14,7 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Development (0.0.17-d) — MIR Optimization Foundation**  
+> **Current Status: Development (0.0.18-d) — Compiler Conformance & Deterministic Testing**  
 > Seira is an experimental programming language in the first Development Series release, building on the completed Seed compiler, package, standard-library, I/O, and resource foundations.  
 > **Seira is NOT production-ready, and Alpha has not yet been released.**  
 > This release adds a conservative MIR optimization foundation after typed MIR lowering and verification. At optLevel 1, Seira folds safe constants, simplifies constant branches, removes unreachable blocks, and eliminates dead pure operations. Calls, resource operations, dereferences, potentially trapping division, and unknown operations are preserved. Optimization levels 2 and 3 currently reuse the same conservative pass set. The initial explicit effect boundary from P1.15 remains supported: calls to functions declared with `!` are rejected inside pure functions (`E8001`), while effectful callers may invoke them. Effect markers are checked on function types and trait method implementations. Top-level calls remain an explicit host boundary. Built-in host capabilities are not yet fully classified, and general effect inference/handlers remain future work. Seira remains experimental; no operational native or WebAssembly code generator exists.
@@ -32,6 +32,7 @@ The existing `develop` branch contains post-Seed compiler and language work. The
 
 ### Recent Development Updates (`develop`)
 
+- **P1.17 — Compiler Conformance & Deterministic Testing:** added a Development semantic conformance matrix for generics, mutable references, effects, and stable diagnostics, plus deterministic bounded lexer fuzz coverage.
 - **P1.16 — MIR Optimization Foundation:** added conservative constant folding, constant-branch simplification, unreachable-block removal, dead pure-operation elimination, and MIR verification after optimization. Optimization remains disabled by default in the development profile (`optLevel: 0`).
 - **P1.15 — Effect System Foundation:** effectful function calls (`fn name!`) are checked against caller effect boundaries; pure callers receive `E8001`; function type and trait method effect markers are validated; top-level execution remains the host boundary.
 - **P1.14 — Type System Hardening:** transactional generic unification, strict repeated-variable matching, effect-aware function unification, and invariant callback parameter compatibility.
@@ -204,7 +205,7 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.15-d` — Type System Hardening:** strict repeated generic inference, transactional substitution rollback, effect-aware function unification, and invariant function parameter compatibility.
 
 - **`0.0.16-d` — Effect System Foundation:** initial pure/effectful call checking, effect-aware function types, trait method effect compatibility, and the compiler EffectCheck checkpoint.
-- **`0.0.17-d` — MIR Optimization Foundation:** conservative constant folding, constant-branch simplification, unreachable block removal, dead pure-operation elimination, and verifier-gated pass execution after every optimization pass.
+- **`0.0.18-d` — MIR Optimization Foundation:** conservative constant folding, constant-branch simplification, unreachable block removal, dead pure-operation elimination, and verifier-gated pass execution after every optimization pass.
 
 ## Architecture Overview
 
@@ -237,7 +238,7 @@ HIR Lowering         [IMPLEMENTED on develop]
   ↓
 MIR Lowering         [IMPLEMENTED on develop]
   ↓
-MIR Optimization     [IMPLEMENTED (0.0.17-d, conservative O1)]
+MIR Optimization     [IMPLEMENTED (0.0.18-d, conservative O1)]
   ↓
 Backend Emitter      [Architectural Contract (0.0.2-s)]
   ↓
@@ -266,14 +267,14 @@ PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [COMPLETED MILESTONE: 0.0.10-s]
   ├── 0.0.9-s: Standard Library Foundation (Complete)
   └── 0.0.10-s: I/O & Resource Boundary Foundation (Complete)
 
-PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.17-d]
+PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.18-d]
   ├── 0.0.11-d: Runtime Struct Values & Field References (Complete)
   ├── 0.0.12-d: Runtime List Index References & Alias Safety (Complete)
   ├── 0.0.13-d: Runtime Map Key References & Collection Safety (Complete)
   ├── 0.0.14-d: Ownership & Borrow Checker Hardening (P1.13)
   ├── 0.0.15-d: Type System Hardening (P1.14)
   ├── 0.0.16-d: Effect System Foundation (P1.15 — Complete)
-  └── 0.0.17-d: MIR Optimization Foundation (P1.16 — current)
+  └── 0.0.18-d: MIR Optimization Foundation (P1.16 — current)
 
 PHASE 3: ALPHA (0.1.0-alpha.x)
   └── Native (LLVM) code generation, WebAssembly backend, and executable binaries.
@@ -306,6 +307,7 @@ PHASE 7: PRODUCTION (1.1+)
 - [Backend Boundary Architecture](docs/architecture/backend-boundary.md)
 - [Current Architecture Status](docs/architecture/current-state.md)
 - [MIR Optimization Foundation](docs/architecture/mir-optimization.md)
+- [Compiler Conformance & Testing](docs/architecture/conformance.md)
 - [Backend Readiness Contract](docs/architecture/backend-readiness.md)
 - [P1.13–P1.18 Roadmap](docs/roadmap/P1.13-P1.18.md)
 - [Language Specification](docs/language/overview.md)
@@ -330,7 +332,7 @@ npm ci
 ```bash
 # Check version (canonical sr command)
 ./bin/sr --version
-# Output: Seira 0.0.17-d
+# Output: Seira 0.0.18-d
 
 # Inspect environment and active pipeline stages
 ./bin/sr info
