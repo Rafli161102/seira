@@ -2,7 +2,7 @@
 
 **As of:** 2026-10-31  
 **Published release baseline:** main / 0.0.16-d  
-**Development baseline:** develop / 0.0.17-d  
+**Development baseline:** develop / 0.0.18-d  
 **Candidate milestone:** P1.18 — Backend Readiness Contract  
 **Project status:** Experimental; not production-ready; Alpha has not been released.
 
@@ -18,7 +18,7 @@ This document supersedes stale implementation-status tables in historical Seed a
 | Ownership/resource analysis | Initial implementation, P1.13 CFG join hardening merged | NLL foundation, reborrows, projected places; reference escapes and general interprocedural alias propagation deferred |
 | Effect checking | Initial explicit call-boundary enforcement, P1.15 | Not a complete algebraic effect system |
 | MIR optimization | P1.16 merged | Named verifier-gated passes; conservative O1 only |
-| Conformance testing | P1.17 candidate | Semantic matrix, stable diagnostics, deterministic bounded lexer fuzz; CI pending |
+| Conformance testing | P1.17 merged | Semantic matrix, stable diagnostics, deterministic bounded lexer fuzz; true AST-vs-MIR differential execution deferred |
 | Backend ABI contract | P1.18 candidate | Versioned target/runtime contract and MIR input validation |
 | Native LLVM code generation | Not implemented | No native emitter; E9001 for valid MIR |
 | WebAssembly code generation | Not implemented | No WASM emitter; E9001 for valid MIR |
