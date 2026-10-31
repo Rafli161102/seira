@@ -686,3 +686,52 @@ test('Ownership: replacing a Map while an entry borrow is live is rejected', () 
   assert.equal(result.success, false);
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005' || error.code === 'E7006'));
 });
+
+
+test('Ownership: CFG joins preserve every possible loan owner conservatively', () => {
+  const BOOL = { id: 'type:Bool', kind: 'Primitive', name: 'Bool' };
+  const REF = { id: 'type:&mut Int', kind: 'Reference', name: '&mut Int', isMutableReference: true };
+  const result = analyzeOwnership({
+    name: 'ownership-cfg-join',
+    functions: [{
+      name: 'choose_owner',
+      functionId: 'fn:choose_owner',
+      parameters: [
+        { id: 1, type: BOOL, typeName: 'Bool' },
+        { id: 2, type: INT, typeName: 'Int' },
+        { id: 3, type: INT, typeName: 'Int' },
+      ],
+      returnType: UNIT,
+      entry: 0,
+      blocks: [
+        {
+          id: 0, name: 'entry', parameters: [], operations: [], resourceOps: [],
+          terminator: { kind: 'CondBranch', condition: 1, trueTarget: 1, trueArgs: [], falseTarget: 2, falseArgs: [] },
+        },
+        {
+          id: 1, name: 'left', parameters: [], operations: [operation('borrow.mutable', [2], 4)], resourceOps: [],
+          terminator: { kind: 'Branch', target: 3, args: [4] },
+        },
+        {
+          id: 2, name: 'right', parameters: [], operations: [operation('borrow.mutable', [3], 5)], resourceOps: [],
+          terminator: { kind: 'Branch', target: 3, args: [5] },
+        },
+        {
+          id: 3, name: 'merge',
+          parameters: [{ id: 6, type: REF, typeName: '&mut Int' }],
+          operations: [
+            operation('borrow.mutable', [3], 7),
+            operation('deref.load', [6], 8),
+            operation('deref.load', [7], 9),
+          ],
+          resourceOps: [],
+          terminator: { kind: 'Return', value: 8 },
+        },
+      ],
+    }],
+  } as any);
+
+  assert.equal(result.success, false);
+  assert.ok(result.issues.some((issue) => issue.code === 'E7005'),
+    'a reference merged from two predecessors must conflict with either possible owner');
+});

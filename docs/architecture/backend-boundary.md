@@ -63,7 +63,10 @@ export interface BackendEmitter {
 
 ---
 
-## 3. Implementation Status
+## 3. Current Implementation Status
+
+As of Development 0.0.14-d, `compiler/backend/index.ts` remains an explicit skeleton. Invocation reports `E9001`; no LLVM IR, native executable, WebAssembly module, object file or AOT output is produced. P1.18 formalizes backend ABI, target data layout, runtime imports and MIR acceptance criteria. It is a readiness milestone, not operational code generation.
+
 
 | Component | Status | Milestone | Description |
 |---|---|---|---|

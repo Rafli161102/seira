@@ -1,5 +1,8 @@
 # Seira Compiler Architecture Specification
 
+> **Historical baseline:** this specification records the 0.0.10-s Seed architecture as of 2026-10-01. HIR, MIR, MIR verification and initial MIR-based ownership/borrow analysis have since been implemented in Development. Old version labels below are historical; consult [Current Architecture Status](status.md) for current capability boundaries.
+
+
 | Field | Value |
 |---|---|
 | Specification | Seira 0.0.10-s Compiler Architecture |
@@ -55,9 +58,9 @@ compiler/
 ├── driver/          # Pipeline orchestrator, CompilerContext [IMPLEMENTED]
 ├── resolver/        # Lexical scoping, Symbol resolution, Shadowing, Visibility [IMPLEMENTED]
 ├── typecheck/       # Static type inference, Semantic validator, Cross-module types [IMPLEMENTED]
-├── hir/             # High-Level IR [ARCHITECTURAL SKELETON — DEFERRED]
-├── mir/             # Mid-Level IR & CFG [ARCHITECTURAL SKELETON — DEFERRED]
-└── backend/         # Native LLVM & Wasm emitters [ARCHITECTURAL SKELETON — DEFERRED]
+├── hir/             # High-Level IR [IMPLEMENTED IN DEVELOPMENT SERIES]
+├── mir/             # Mid-Level IR, SSA & CFG [IMPLEMENTED IN DEVELOPMENT SERIES]
+└── backend/         # Native LLVM & Wasm emitters [CONTRACT ONLY — NOT IMPLEMENTED]
 ```
 
 ---

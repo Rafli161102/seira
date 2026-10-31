@@ -84,3 +84,14 @@ Altering a locked decision requires an extraordinary threshold:
 - Compelling real-world evidence demonstrating an irreconcilable defect or catastrophic limitation in the locked design.
 - Comprehensive RFC demonstrating that the replacement preserves Seira's core axioms.
 - Unanimous consensus among Core Maintainers.
+
+
+## 5. Permanent Branches & Promotion
+
+The repository uses three permanent branches:
+
+- `main`: published/release baseline only.
+- `develop`: language and compiler development/integration.
+- `dev-infra`: CI, repository automation, developer tooling, and infrastructure changes.
+
+Temporary work uses `feature/*`, `fix/*`, or `docs/*` branches and is merged by pull request. Infrastructure work uses `infra/*` and targets `dev-infra`. Compiler features target `develop`. Promotion to `main` is a separate release PR from a reviewed, green `develop` head. Permanent branches must not be force-pushed to hide divergence. See [Branching Strategy](docs/contributing/branching.md).

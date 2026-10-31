@@ -21,3 +21,10 @@ Provide a concise explanation of the changes introduced by this pull request.
 
 ## Related Issue / RFC
 Closes # (or RFC: docs/rfcs/...)
+
+
+## Branch & Release Policy
+- [ ] Feature/fix/documentation PRs target `develop`; infrastructure PRs target `dev-infra`; release promotion targets `main`.
+- [ ] Branch naming follows [the Seira branching strategy](../docs/contributing/branching.md).
+- [ ] The PR is based on the current target branch head; permanent branch history is preserved.
+- [ ] Temporary feature branches are deleted after merge when repository permissions/settings allow.

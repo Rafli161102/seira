@@ -39,8 +39,12 @@ A runtime reference stores the owning RuntimeEnvironment, binding name, mutabili
 
 ## Deliberate limitations
 
-This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections, positional tuple projections, and List element index projections. Struct, tuple, and List references are executable at runtime. References cannot be returned or escape the defining function. Map index borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
+This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections, positional tuple projections, List element index projections, and Map value projections through literal or dynamic keys. Struct, tuple, List, and Map references are executable in the tree-walking runtime. References cannot be returned or escape the defining function. Map key mutation, arbitrary pointer/address expressions, closure-capture ownership, reference escapes, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
 
+
+## CFG alias joins (P1.13)
+
+When predecessor branches merge references that may point to different root owners or parent reborrows, the checker retains an unknown alias identity. This overlaps conservatively instead of choosing one predecessor owner. It prevents a branch-merged mutable reference from bypassing a conflict for one possible owner.
 
 ## NLL boundary (P1.6)
 
