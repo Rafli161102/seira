@@ -78,6 +78,11 @@ test('Ownership: source-level shared borrow is lowered and ended at lexical scop
   assert.ok(operations.some((op) => op.opcode === 'borrow.end'));
 });
 
+test('Ownership: temporary call-argument borrows end after the call', () => {
+  const result = new CompilerDriver().compile(`fn inspect(value: &Int) {} fn update(value: &mut Int) {} fn main() { mut count = 7; inspect(&count); update(&mut count); }`, 'borrow-call-lifetime.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+});
+
 test('Ownership: rejects conflicting mutable and shared source-level borrows', () => {
   const result = new CompilerDriver().compile(`fn main() { mut count = 7; shared = &count; exclusive = &mut count; }`, 'borrow-conflict.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);

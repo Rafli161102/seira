@@ -384,6 +384,24 @@ class FunctionLowerer {
     this.current = exit;
   }
 
+  private endImmediateArgumentBorrows(expressions: ReadonlyArray<HIRExpr>, values: ReadonlyArray<MIRValue>): void {
+    for (let index = 0; index < expressions.length; index++) {
+      const expression = expressions[index];
+      if (expression.kind !== 'HIRUnaryExpr' || (expression.operator !== 'borrow.shared' && expression.operator !== 'borrow.mutable')) continue;
+      const valueId = values[index]?.id;
+      if (valueId === undefined) continue;
+      for (let scopeIndex = this.borrowScopes.length - 1; scopeIndex >= 0; scopeIndex--) {
+        const scope = this.borrowScopes[scopeIndex];
+        const borrowIndex = scope.findIndex((borrow) => borrow.valueId === valueId);
+        if (borrowIndex >= 0) {
+          const [borrow] = scope.splice(borrowIndex, 1);
+          this.emitBorrowEnd(borrow);
+          break;
+        }
+      }
+    }
+  }
+
   private lowerExpr(expr: HIRExpr): MIRValue {
     this.registerNode(expr);
     switch (expr.kind) {
@@ -433,20 +451,26 @@ class FunctionLowerer {
       case 'HIRCallExpr': {
         const args = expr.args.map((arg) => this.lowerExpr(arg));
         const callee = this.lowerExpr(expr.callee);
-        return this.emit('call', [callee.id, ...args.map((v) => v.id)], expr.type, expr.id, { functionId: expr.functionId, argumentCount: args.length });
+        const result = this.emit('call', [callee.id, ...args.map((v) => v.id)], expr.type, expr.id, { functionId: expr.functionId, argumentCount: args.length });
+        this.endImmediateArgumentBorrows(expr.args, args);
+        return result;
       }
       case 'HIRFunctionValueCallExpr': {
         const callee = this.lowerExpr(expr.callee);
         const args = expr.args.map((arg) => this.lowerExpr(arg));
-        return this.emit('call.indirect', [callee.id, ...args.map((v) => v.id)], expr.type, expr.id, { argumentCount: args.length });
+        const result = this.emit('call.indirect', [callee.id, ...args.map((v) => v.id)], expr.type, expr.id, { argumentCount: args.length });
+        this.endImmediateArgumentBorrows(expr.args, args);
+        return result;
       }
       case 'HIRMethodCallExpr': {
         const receiver = this.lowerExpr(expr.receiver);
         const args = expr.args.map((arg) => this.lowerExpr(arg));
-        return this.emit('call.method', [receiver.id, ...args.map((v) => v.id)], expr.type, expr.id, {
+        const result = this.emit('call.method', [receiver.id, ...args.map((v) => v.id)], expr.type, expr.id, {
           method: expr.method, dispatch: expr.dispatch.kind,
           implId: expr.dispatch.implId ?? null, methodId: expr.dispatch.methodId,
         });
+        this.endImmediateArgumentBorrows(expr.args, args);
+        return result;
       }
       case 'HIRFieldAccessExpr': {
         const target = this.lowerExpr(expr.target);
