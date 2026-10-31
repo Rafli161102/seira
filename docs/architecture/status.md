@@ -2,7 +2,7 @@
 
 **As of:** 2026-10-31  
 **Development baseline:** ce8005c983c30852251470bf758997e48f118404 (P1.14 merged)  
-**Current milestone branch:** P1.15 — Effect System Foundation  
+**Current milestone branch:** P1.16 — MIR Optimization Foundation  
 **Project status:** Experimental; not production-ready; Alpha has not been released.
 
 This document supersedes stale implementation-status tables in historical Seed architecture documents. Those documents remain design-history records, not statements of current implementation.
@@ -19,7 +19,7 @@ This document supersedes stale implementation-status tables in historical Seed a
 | Effect checking | Initial call-boundary enforcement | Explicit fn name!; pure-to-effectful calls rejected with E8001; effectful caller propagation, function-type effect markers, trait method effect signature checks; host primitives not all classified |
 | Runtime execution | Implemented as tree-walking | runtime/execution; HIR/MIR are not yet the execution engine |
 | Standard Library Seed foundation | Implemented | std/src and std packages |
-| MIR optimization | Not implemented | No production optimization pass pipeline |
+| MIR optimization | Conservative P1.16 foundation implemented | Constant folding, constant branch simplification, unreachable-block removal, dead pure-operation elimination; optLevel 2/3 currently reuse the same pass set |
 | Native LLVM code generation | Not implemented | Backend returns E9001 |
 | WebAssembly code generation | Not implemented | Backend returns E9001 |
 | AOT build artifacts | Not implemented | CLI build remains reserved |
@@ -42,6 +42,10 @@ Function declarations marked with ! are represented as effectful function types.
 
 This is not a complete algebraic effect system. Built-in print, println, filesystem, networking and runtime host operations are not all assigned explicit effect signatures. Effect inference, effect polymorphism, capability-derived effect tracking, effect rows, and effect-handler syntax/runtime remain future work.
 
+## MIR optimization boundary — P1.16
+
+The current optimizer operates on typed MIR. It folds supported constant arithmetic/comparisons, simplifies constant conditional branches, removes unreachable blocks, and eliminates only operations classified as pure and non-trapping. Calls, resource events, dereferences, potentially trapping division, and unknown operations are retained. The driver verifies optimized MIR before proceeding to ownership analysis. Optimization defaults to disabled at optLevel 0; levels 2 and 3 currently reuse the conservative O1 pass set and do not imply additional optimization families.
+
 ## Backend truth — P1.18 readiness target
 
 The backend contract accepts MIR and describes native/WASM targets, but current emission is a skeleton that deliberately reports E9001. No LLVM IR, native executable, WebAssembly module, object file, or AOT artifact is currently produced. P1.18 formalizes ABI, target layout, runtime imports and backend acceptance criteria only. Operational code generation must remain marked unimplemented until a real emitter and target-specific end-to-end tests exist.
@@ -56,6 +60,7 @@ Permanent branches are main (release), develop (compiler integration), and dev-i
 
 ## Next milestones
 
-- P1.16 / 0.0.17-d — MIR Optimization Foundation
+- P1.17 / 0.0.18-d — Compiler Conformance & Differential Testing
+- P1.18 / 0.0.19-d — Backend Readiness
 - P1.17 / 0.0.18-d — Compiler Conformance & Differential Testing
 - P1.18 / 0.0.19-d — Backend Readiness
