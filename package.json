@@ -1,7 +1,7 @@
 {
   "name": "seira",
-  "version": "0.0.17-d",
-  "description": "The Seira Programming Language — MIR Optimization Foundation (Development Release)",
+  "version": "0.0.18-d",
+  "description": "The Seira Programming Language — Compiler Conformance & Deterministic Testing (Development Release)",
   "type": "module",
   "bin": {
     "seira": "./bin/seira",
