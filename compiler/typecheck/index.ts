@@ -988,9 +988,11 @@ export class TypeChecker {
         const operandType = this.checkExpression(borrow.operand);
         const dereference = borrow.operand.kind === 'UnaryExpr' ? borrow.operand as UnaryExpr : undefined;
         const isDereferenceReborrow = dereference?.operator === '*';
+        let referenceInnerType = operandType;
         const rootOfPlace = (place: Expr): Identifier | undefined => {
           if (place.kind === 'Identifier') return place as Identifier;
           if (place.kind === 'MemberExpr') return rootOfPlace((place as MemberExpr).object);
+          if (place.kind === 'IndexExpr') return rootOfPlace((place as IndexExpr).object);
           return undefined;
         };
         if (isDereferenceReborrow && dereference) {
@@ -1002,17 +1004,40 @@ export class TypeChecker {
           }
         } else {
           const root = rootOfPlace(borrow.operand);
-          const isNamedPlace = root !== undefined && (borrow.operand.kind === 'Identifier' || borrow.operand.kind === 'MemberExpr');
+          const isIndexPlace = borrow.operand.kind === 'IndexExpr';
+          const isNamedPlace = root !== undefined && (
+            borrow.operand.kind === 'Identifier' ||
+            borrow.operand.kind === 'MemberExpr' ||
+            isIndexPlace
+          );
+
+          if (isIndexPlace) {
+            const indexedObjectType = this.checkExpression((borrow.operand as IndexExpr).object);
+            if (indexedObjectType.kind === 'List') {
+              // A borrowed list slot is the element itself, not the Option<T>
+              // returned by ordinary safe indexing.
+              referenceInnerType = indexedObjectType.element;
+            } else {
+              this.diagnostics.reportError(
+                'E3008',
+                'Only List index projections can be borrowed in this language edition.',
+                borrow.operand.span,
+                this.currentFile,
+                'Bind a List before borrowing one of its indexed elements. Map index references are not supported yet.',
+              );
+            }
+          }
+
           if (!isNamedPlace) {
-            this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding or one of its fields.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
+            this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding or one of its fields or List elements.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
           } else if (borrow.isMutable) {
             const symbol = this.currentResolverResult?.resolvedSymbols.get(root!);
             if (!symbol?.isMut) {
-              this.diagnostics.reportError('E3008', `Cannot mutably borrow field of immutable binding '${root!.name}'.`, root!.span, this.currentFile, `Declare the root binding as mutable with 'mut ${root!.name}' before using '&mut'.`);
+              this.diagnostics.reportError('E3008', `Cannot mutably borrow a place in immutable binding '${root!.name}'.`, root!.span, this.currentFile, `Declare the root binding as mutable with 'mut ${root!.name}' before using '&mut'.`);
             }
           }
         }
-        resultType = { kind: 'Reference', inner: operandType, mutable: borrow.isMutable };
+        resultType = { kind: 'Reference', inner: referenceInnerType, mutable: borrow.isMutable };
         break;
       }
       case 'UnaryExpr': {

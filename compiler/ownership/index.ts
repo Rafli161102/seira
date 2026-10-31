@@ -148,7 +148,25 @@ function activeChildren(state: FlowState, parentId: ValueId): Array<[ValueId, Lo
 
 function placesOverlap(left = '', right = ''): boolean {
   if (!left || !right) return true;
-  return left === right || left.startsWith(right + '.') || right.startsWith(left + '.');
+  const leftParts = left.split('.');
+  const rightParts = right.split('.');
+  const sharedLength = Math.min(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < sharedLength; index++) {
+    const a = leftParts[index];
+    const b = rightParts[index];
+    if (a === b) continue;
+
+    // A runtime/dynamic list index can refer to any position. It therefore
+    // aliases every constant or dynamic list index at the same path depth.
+    if ((a === '@*' && b.startsWith('@')) || (b === '@*' && a.startsWith('@'))) {
+      continue;
+    }
+    return false;
+  }
+
+  // Equal paths and parent/child paths overlap.
+  return true;
 }
 
 function activeLoans(state: FlowState, ownerId: ValueId, placePath = ''): Array<[ValueId, LoanState]> {
@@ -456,6 +474,13 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           const rootId = typeof operation.attributes?.rootId === 'number' ? operation.attributes.rootId : operands[0];
           const placePath = typeof operation.attributes?.placePath === 'string' ? operation.attributes.placePath : '';
           if (rootId !== undefined) checkValueUse(rootId, operation.source, opcode, placePath);
+          return;
+        }
+        if (opcode === 'index.get' && typeof operation.attributes?.rootId === 'number') {
+          const rootId = operation.attributes.rootId;
+          const placePath = typeof operation.attributes?.placePath === 'string' ? operation.attributes.placePath : '';
+          checkValueUse(rootId, operation.source, opcode, placePath);
+          if (operands[1] !== undefined) checkValueUse(operands[1], operation.source, 'index.get index');
           return;
         }
         if (!ownershipManagedOpcodes.has(opcode)) {

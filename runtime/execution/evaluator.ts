@@ -1078,19 +1078,76 @@ export class Evaluator {
 
   /** Resolve a named binding followed only by numeric tuple-member projections. */
   /** Resolve a named binding followed by tuple-position and struct-field projections. */
-  private runtimeBorrowPlace(expr: Expr): { name: string; path: RuntimePlaceProjection[] } | undefined {
+  private runtimeBorrowPlace(
+    expr: Expr,
+    env: RuntimeEnvironment,
+  ):
+    | { name: string; path: RuntimePlaceProjection[] }
+    | { failure: RuntimeOutcome }
+    | undefined {
     if (expr.kind === 'Identifier') return { name: (expr as Identifier).name, path: [] };
-    if (expr.kind !== 'MemberExpr') return undefined;
-    const member = expr as MemberExpr;
-    const parent = this.runtimeBorrowPlace(member.object);
-    if (!parent) return undefined;
 
-    if (/^(0|[1-9][0-9]*)$/.test(member.property)) {
-      const index = Number(member.property);
-      if (!Number.isSafeInteger(index)) return undefined;
-      return { name: parent.name, path: [...parent.path, { kind: 'tuple', index }] };
+    if (expr.kind === 'MemberExpr') {
+      const member = expr as MemberExpr;
+      const parent = this.runtimeBorrowPlace(member.object, env);
+      if (!parent || 'failure' in parent) return parent;
+
+      if (/^(0|[1-9][0-9]*)$/.test(member.property)) {
+        const index = Number(member.property);
+        if (!Number.isSafeInteger(index)) return undefined;
+        return { name: parent.name, path: [...parent.path, { kind: 'tuple', index }] };
+      }
+      return { name: parent.name, path: [...parent.path, { kind: 'field', name: member.property }] };
     }
-    return { name: parent.name, path: [...parent.path, { kind: 'field', name: member.property }] };
+
+    if (expr.kind === 'IndexExpr') {
+      const indexed = expr as IndexExpr;
+      const parent = this.runtimeBorrowPlace(indexed.object, env);
+      if (!parent || 'failure' in parent) return parent;
+
+      const binding = env.lookup(parent.name);
+      const target = binding
+        ? this.readPlaceProjection(binding.value, parent.path)
+        : undefined;
+      if (!target || target.tag !== 'List') return undefined;
+
+      const indexOutcome = this.evaluateExpr(indexed.index, env);
+      if (indexOutcome.kind !== 'Normal') return { failure: indexOutcome };
+      if (indexOutcome.value.tag !== 'Int' && indexOutcome.value.tag !== 'UInt') {
+        return {
+          failure: panicOutcome(invalidStateError(
+            `List index must be an integer, got ${indexOutcome.value.tag}.`,
+            indexed.index.span,
+            this.ctx.config.fileName,
+          )),
+        };
+      }
+
+      const rawIndex = indexOutcome.value.value;
+      if (rawIndex < 0n || rawIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return {
+          failure: panicOutcome(invalidStateError(
+            `List borrow index ${rawIndex.toString()} is outside the supported index range.`,
+            indexed.index.span,
+            this.ctx.config.fileName,
+          )),
+        };
+      }
+      const index = Number(rawIndex);
+      const list = target as ListRuntimeValue;
+      if (index >= list.elements.length) {
+        return {
+          failure: panicOutcome(invalidStateError(
+            `List borrow index ${index} is out of bounds for a list of length ${list.elements.length}.`,
+            indexed.span,
+            this.ctx.config.fileName,
+          )),
+        };
+      }
+      return { name: parent.name, path: [...parent.path, { kind: 'list', index }] };
+    }
+
+    return undefined;
   }
 
   private readPlaceProjection(value: RuntimeValue, path: ReadonlyArray<RuntimePlaceProjection>): RuntimeValue | undefined {
@@ -1099,6 +1156,11 @@ export class Evaluator {
       if (part.kind === 'tuple') {
         if (current.tag !== 'Tuple') return undefined;
         const next = (current as TupleRuntimeValue).elements[part.index];
+        if (next === undefined) return undefined;
+        current = next;
+      } else if (part.kind === 'list') {
+        if (current.tag !== 'List') return undefined;
+        const next = (current as ListRuntimeValue).elements[part.index];
         if (next === undefined) return undefined;
         current = next;
       } else {
@@ -1132,6 +1194,17 @@ export class Evaluator {
       return { ...tuple, elements };
     }
 
+    if (part.kind === 'list') {
+      if (value.tag !== 'List') return undefined;
+      const list = value as ListRuntimeValue;
+      if (part.index < 0 || part.index >= list.elements.length) return undefined;
+      const updatedElement = this.updatePlaceProjection(list.elements[part.index], remaining, replacement);
+      if (updatedElement === undefined) return undefined;
+      const elements = [...list.elements];
+      elements[part.index] = updatedElement;
+      return { ...list, elements };
+    }
+
     if (value.tag !== 'Struct') return undefined;
     const struct = value as StructRuntimeValue;
     const currentField = struct.fields.get(part.name);
@@ -1163,10 +1236,12 @@ export class Evaluator {
       } satisfies ReferenceRuntimeValue);
     }
 
-    const place = this.runtimeBorrowPlace(expr.operand);
+    const resolvedPlace = this.runtimeBorrowPlace(expr.operand, env);
+    if (resolvedPlace && 'failure' in resolvedPlace) return resolvedPlace.failure;
+    const place = resolvedPlace;
     if (!place) {
       return panicOutcome(invalidStateError(
-        'Runtime borrowing supports named bindings and tuple positional projections only.',
+        'Runtime borrowing supports named bindings, tuple positions, struct fields, and List indices only.',
         expr.span,
         this.ctx.config.fileName,
       ));

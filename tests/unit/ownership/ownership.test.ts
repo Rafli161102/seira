@@ -525,3 +525,77 @@ test('Ownership: shared parent can be read while shared child reborrows are live
   `, 'reborrow-shared-parent.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, true, result.diagnostics.format());
 });
+
+
+test('Ownership: mutable borrows of distinct constant List indices are independent', () => {
+  const result = new CompilerDriver().compile(`
+    fn main() {
+      mut items = [10, 20];
+      first_ref = &mut items[0];
+      second_ref = &mut items[1];
+      println(*first_ref);
+      println(*second_ref);
+    }
+  `, 'list-index-disjoint-borrows.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  const loans = operations.filter((op) =>
+    op.opcode === 'borrow.mutable' && typeof op.attributes?.placePath === 'string'
+  );
+  assert.deepEqual(loans.map((op) => op.attributes?.placePath).sort(), ['@0', '@1']);
+});
+
+test('Ownership: mutable borrows of the same constant List index conflict', () => {
+  const result = new CompilerDriver().compile(`
+    fn main() {
+      mut items = [10, 20];
+      first_ref = &mut items[0];
+      second_ref = &mut items[0];
+      println(*first_ref);
+      println(*second_ref);
+    }
+  `, 'list-index-overlap-borrows.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
+});
+
+test('Ownership: dynamic List index loans conservatively overlap constant positions', () => {
+  const result = new CompilerDriver().compile(`
+    fn inspect(mut items: List<Int>, index: Int) {
+      dynamic_ref = &mut items[index];
+      fixed_ref = &mut items[0];
+      println(*dynamic_ref);
+      println(*fixed_ref);
+    }
+    fn main() {}
+  `, 'list-index-dynamic-alias.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  assert.ok(operations.some((op) => op.opcode === 'borrow.mutable' && op.attributes?.placePath === '@*'));
+});
+
+test('Ownership: List reads of disjoint positions remain available during a mutable element loan', () => {
+  const allowed = new CompilerDriver().compile(`
+    fn main() {
+      mut items = [10, 20];
+      first_ref = &mut items[0];
+      other = items[1];
+      println(other);
+      println(*first_ref);
+    }
+  `, 'list-index-disjoint-read.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(allowed.success, true, allowed.diagnostics.format());
+
+  const blocked = new CompilerDriver().compile(`
+    fn main() {
+      mut items = [10, 20];
+      first_ref = &mut items[0];
+      same = items[0];
+      println(same);
+      println(*first_ref);
+    }
+  `, 'list-index-overlapping-read.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(blocked.success, false);
+  assert.ok(blocked.diagnostics.getErrors().some((error) => error.code === 'E7006'));
+});

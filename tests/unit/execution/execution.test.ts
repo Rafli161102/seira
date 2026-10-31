@@ -1077,3 +1077,61 @@ test('Execution: nested struct field references preserve each path segment', () 
   assert.ok(r.success, r.diagnostics.format());
   assert.deepStrictEqual(r.output, ['42', 'Aqua', '42']);
 });
+
+
+test('Execution: shared reference reads a List element selected by a dynamic index', () => {
+  const r = run(`
+    fn main() {
+      values = [7, 8, 9];
+      index = 1;
+      element_ref = &values[index];
+      println(*element_ref);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['8']);
+});
+
+test('Execution: mutable List index reference updates the original list and preserves siblings', () => {
+  const r = run(`
+    fn main() {
+      mut values = [10, 20, 30];
+      index = 1;
+      element_ref = &mut values[index];
+      println(values[0]);
+      *element_ref += 7;
+      println(*element_ref);
+      println(values[1]);
+      println(values[2]);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Some(10)', '27', 'Some(27)', 'Some(30)']);
+});
+
+test('Execution: reborrowing a dynamic List element preserves its projection path', () => {
+  const r = run(`
+    fn main() {
+      mut values = [3, 4];
+      index = 1;
+      parent = &mut values[index];
+      child = &mut *parent;
+      *child += 5;
+      println(*parent);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['9']);
+});
+
+test('Execution: borrowing an out-of-range List index fails safely', () => {
+  const r = run(`
+    fn main() {
+      mut values = [1];
+      missing = &mut values[2];
+      println(*missing);
+    }
+  `);
+  assert.equal(r.success, false);
+  assert.ok(r.diagnostics.getErrors().some((error) => error.code.startsWith('R')));
+});

@@ -501,3 +501,35 @@ test('Typecheck: rejects borrowing computed member expressions as places', () =>
   assert.equal(result.tcResult.success, false);
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
 });
+
+
+test('Typecheck: supports List element references but rejects Map index references', () => {
+  const valid = typecheckSource(`
+    fn update(mut values: List<Int>, index: Int) {
+      shared_ref = &values[index];
+      println(*shared_ref);
+      mutable_ref = &mut values[index];
+      *mutable_ref += 1;
+    }
+    fn main() {}
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+
+  const immutableRoot = typecheckSource(`
+    fn update(values: List<Int>) {
+      mutable_ref = &mut values[0];
+    }
+    fn main() {}
+  `);
+  assert.equal(immutableRoot.tcResult.success, false);
+  assert.ok(immutableRoot.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+
+  const mapIndex = typecheckSource(`
+    fn update(mut values: Map<String, Int>, key: String) {
+      mutable_ref = &mut values[key];
+    }
+    fn main() {}
+  `);
+  assert.equal(mapIndex.tcResult.success, false);
+  assert.ok(mapIndex.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});

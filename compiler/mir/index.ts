@@ -418,6 +418,29 @@ class FunctionLowerer {
       if (!parent) return undefined;
       return { root: parent.root, path: [...parent.path, expr.fieldName] };
     }
+    if (expr.kind === 'HIRIndexExpr' && expr.target.type.kind === 'List') {
+      const parent = this.lowerPlace(expr.target);
+      if (!parent) return undefined;
+
+      let indexSegment = '@*';
+      if (
+        expr.index.kind === 'HIRLiteralExpr' &&
+        (expr.index.literalKind === 'int' || expr.index.literalKind === 'uint')
+      ) {
+        const raw = expr.index.value;
+        if (typeof raw === 'bigint' || typeof raw === 'number' || typeof raw === 'string') {
+          try {
+            const index = BigInt(raw);
+            if (index >= 0n && index <= BigInt(Number.MAX_SAFE_INTEGER)) {
+              indexSegment = `@${index.toString()}`;
+            }
+          } catch {
+            // Non-integral or malformed literal projections remain conservative.
+          }
+        }
+      }
+      return { root: parent.root, path: [...parent.path, indexSegment] };
+    }
     return undefined;
   }
 
@@ -512,6 +535,14 @@ class FunctionLowerer {
         return this.emit('field.get', [target.id], expr.type, expr.id, { fieldId: expr.fieldId, fieldName: expr.fieldName });
       }
       case 'HIRIndexExpr': {
+        const place = this.lowerPlace(expr);
+        if (place) {
+          const index = this.lowerExpr(expr.index);
+          return this.emit('index.get', [place.root.id, index.id], expr.type, expr.id, {
+            rootId: place.root.id,
+            placePath: place.path.join('.'),
+          });
+        }
         const target = this.lowerExpr(expr.target);
         const index = this.lowerExpr(expr.index);
         return this.emit('index.get', [target.id, index.id], expr.type, expr.id);
