@@ -14,8 +14,6 @@
 
 import { DiagnosticBag } from '../diagnostics/index.ts';
 import { validateMIR, type MIRModule } from '../mir/index.ts';
-import { validateBackendContract, type BackendTargetContract } from './contract.ts';
-
 export * from './contract.ts';
 import type { Span } from '../source/span.ts';
 
