@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.0.11-d] - 2026-10-31
+
 ### P1.10 — Runtime Struct Values & Field References
 - Added first-class runtime Struct values with a type name and named field storage.
 - Added positional struct constructor calls following declaration field order (for example, `Person("Mika", 23)`) with constructor arity and field type validation.
