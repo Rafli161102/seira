@@ -27,6 +27,8 @@ export interface MIROptimizationStats {
 export interface MIROptimizationResult {
   readonly module: MIRModule;
   readonly stats: MIROptimizationStats;
+  readonly passesRun: ReadonlyArray<string>;
+  readonly verificationFailures: ReadonlyArray<MIRPassVerificationFailure>;
 }
 
 interface ConstantValue {
