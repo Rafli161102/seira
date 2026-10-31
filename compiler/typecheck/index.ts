@@ -63,6 +63,7 @@ import type {
   ReturnStmt,
   SetLiteral,
   Stmt,
+  StructDecl,
   TraitDecl,
   TupleLiteral,
   TypeAliasDecl,
@@ -170,6 +171,7 @@ export class TypeChecker {
   private currentFunctionReturnType?: Type;
 
   private readonly traits = new Map<string, TraitDecl>();
+  private readonly structDeclarations = new Map<string, StructDecl>();
   private readonly implementations = new Map<string, Set<string>>();
   private readonly typeAliases = new Map<string, TypeAliasDecl>();
   private currentGenericParams?: Map<string, GenericParamType>;
@@ -202,6 +204,7 @@ export class TypeChecker {
     this.currentFile = targetFile;
 
     this.traits.clear();
+    this.structDeclarations.clear();
     this.implementations.clear();
     this.typeAliases.clear();
     this.currentGenericParams = undefined;
@@ -217,6 +220,8 @@ export class TypeChecker {
       for (const [name, sym] of resolverResult.globalScope.getLocalSymbols()) {
         if (sym.declNode?.kind === 'TraitDecl') {
           this.traits.set(name, sym.declNode as TraitDecl);
+        } else if (sym.declNode?.kind === 'StructDecl') {
+          this.structDeclarations.set(name, sym.declNode as StructDecl);
         } else if (sym.declNode?.kind === 'TypeAliasDecl') {
           this.typeAliases.set(name, sym.declNode as TypeAliasDecl);
         }
@@ -225,7 +230,10 @@ export class TypeChecker {
 
     // Pass 1a: collect traits, type aliases, and trait implementations
     for (const item of program.items) {
-      if (item.kind === 'TraitDecl') {
+      if (item.kind === 'StructDecl') {
+        const struct = item as StructDecl;
+        this.structDeclarations.set(struct.name, struct);
+      } else if (item.kind === 'TraitDecl') {
         const trait = item as TraitDecl;
         this.traits.set(trait.name, trait);
       } else if (item.kind === 'TypeAliasDecl') {
@@ -1200,6 +1208,20 @@ export class TypeChecker {
             this.diagnostics.reportError(
               'E3002',
               `Tuple index '${mem.property}' is out of bounds for tuple with ${objType.elements.length} elements.`,
+              mem.span,
+              this.currentFile
+            );
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && this.structDeclarations.has(objType.name)) {
+          const struct = this.structDeclarations.get(objType.name)!;
+          const field = struct.fields.find((candidate) => candidate.name === mem.property);
+          if (field) {
+            resultType = this.resolveTypeAnnotation(field.type);
+          } else {
+            this.diagnostics.reportError(
+              'E3002',
+              `Struct '${objType.name}' has no field named '${mem.property}'.`,
               mem.span,
               this.currentFile
             );
@@ -2499,6 +2521,35 @@ export class TypeChecker {
     if (call.callee.kind === 'Identifier') {
       const id = call.callee as Identifier;
       calleeName = id.name;
+
+      const calleeSymbol = this.currentResolverResult?.resolvedSymbols.get(id);
+      const structDecl = calleeSymbol?.kind === 'struct' && calleeSymbol.declNode?.kind === 'StructDecl'
+        ? calleeSymbol.declNode as StructDecl
+        : this.structDeclarations.get(calleeName);
+      if (structDecl) {
+        if (call.args.length !== structDecl.fields.length) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Struct constructor '${calleeName}' expects ${structDecl.fields.length} positional fields, but got ${call.args.length}.`,
+            call.span,
+            this.currentFile
+          );
+        }
+        for (let index = 0; index < call.args.length; index++) {
+          const field = structDecl.fields[index];
+          const expectedFieldType = field ? this.resolveTypeAnnotation(field.type) : undefined;
+          const actualType = this.checkExpression(call.args[index], expectedFieldType);
+          if (field && expectedFieldType && !isTypeAssignable(expectedFieldType, actualType) && !isUnknown(actualType)) {
+            this.diagnostics.reportError(
+              'E3001',
+              `Field '${field.name}' of '${calleeName}' expects '${formatType(expectedFieldType)}', but found '${formatType(actualType)}'.`,
+              call.args[index].span,
+              this.currentFile
+            );
+          }
+        }
+        return { kind: 'Custom', name: calleeName };
+      }
 
       // Built-in constructors with contextual expected type propagation
       if (calleeName === 'Some' && call.args.length === 1) {

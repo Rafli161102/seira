@@ -34,6 +34,7 @@ export const RuntimeTag = {
   Result: 'Result',
   List: 'List',
   Tuple: 'Tuple',
+  Struct: 'Struct',
   Map: 'Map',
   Set: 'Set',
   Function: 'Function',
@@ -92,14 +93,18 @@ export interface ByteRuntimeValue {
   readonly value: number; // 0–255
 }
 
-/** Runtime reference to a lexical binding cell. */
+export type RuntimePlaceProjection =
+  | { readonly kind: 'tuple'; readonly index: number }
+  | { readonly kind: 'field'; readonly name: string };
+
+/** Runtime reference to a lexical binding or a projected place within it. */
 export interface ReferenceRuntimeValue {
   readonly tag: 'Reference';
   readonly environment: RuntimeEnvironment;
   readonly name: string;
   readonly mutable: boolean;
-  /** Nested tuple positions projected from the referenced lexical binding. */
-  readonly tuplePath?: ReadonlyArray<number>;
+  /** Ordered tuple/struct-field projections from the root lexical binding. */
+  readonly placePath?: ReadonlyArray<RuntimePlaceProjection>;
 }
 
 export interface OptionRuntimeValue {
@@ -122,6 +127,13 @@ export interface ListRuntimeValue {
 export interface TupleRuntimeValue {
   readonly tag: 'Tuple';
   readonly elements: ReadonlyArray<RuntimeValue>;
+}
+
+/** User-defined struct value with named fields. */
+export interface StructRuntimeValue {
+  readonly tag: 'Struct';
+  readonly name: string;
+  readonly fields: ReadonlyMap<string, RuntimeValue>;
 }
 
 export interface MapEntryRuntime {
@@ -254,6 +266,7 @@ export type RuntimeValue =
   | ResultRuntimeValue
   | ListRuntimeValue
   | TupleRuntimeValue
+  | StructRuntimeValue
   | MapRuntimeValue
   | SetRuntimeValue
   | FunctionRuntimeValue
@@ -325,6 +338,10 @@ export function rtList(elements: RuntimeValue[]): ListRuntimeValue {
 
 export function rtTuple(elements: ReadonlyArray<RuntimeValue>): TupleRuntimeValue {
   return { tag: 'Tuple', elements };
+}
+
+export function rtStruct(name: string, fields: ReadonlyMap<string, RuntimeValue>): StructRuntimeValue {
+  return { tag: 'Struct', name, fields: new Map(fields) };
 }
 
 export function rtMap(entries: ReadonlyArray<MapEntryRuntime>): MapRuntimeValue {
@@ -906,7 +923,9 @@ export function formatRuntimeValue(v: RuntimeValue): string {
     case 'Byte':
       return `${v.value}b`;
     case 'Reference': {
-      const projection = (v.tuplePath ?? []).map((index) => `.${index}`).join('');
+      const projection = (v.placePath ?? []).map((part) =>
+        part.kind === 'tuple' ? `.${part.index}` : `.${part.name}`
+      ).join('');
       return `${v.mutable ? '&mut ' : '&'}${v.name}${projection}`;
     }
     case 'Option':
@@ -919,6 +938,8 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return `[${v.elements.map(formatRuntimeValue).join(', ')}]`;
     case 'Tuple':
       return `(${v.elements.map(formatRuntimeValue).join(', ')})`;
+    case 'Struct':
+      return `${v.name} { ${[...v.fields.entries()].map(([name, value]) => `${name}: ${formatRuntimeValue(value)}`).join(', ')} }`;
     case 'Map':
       return `{${v.entries.map((e) => `${formatRuntimeValue(e.key)}: ${formatRuntimeValue(e.value)}`).join(', ')}}`;
     case 'Set':
@@ -975,13 +996,19 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       return a.value === (b as ByteRuntimeValue).value;
     case 'Reference': {
       const other = b as ReferenceRuntimeValue;
-      const leftPath = a.tuplePath ?? [];
-      const rightPath = other.tuplePath ?? [];
+      const leftPath = a.placePath ?? [];
+      const rightPath = other.placePath ?? [];
       return a.environment === other.environment &&
         a.name === other.name &&
         a.mutable === other.mutable &&
         leftPath.length === rightPath.length &&
-        leftPath.every((index, position) => index === rightPath[position]);
+        leftPath.every((part, position) => {
+          const otherPart = rightPath[position];
+          return otherPart !== undefined && part.kind === otherPart.kind &&
+            (part.kind === 'tuple'
+              ? otherPart.kind === 'tuple' && part.index === otherPart.index
+              : otherPart.kind === 'field' && part.name === otherPart.name);
+        });
     }
     case 'Option': {
       const bOpt = b as OptionRuntimeValue;
@@ -1003,6 +1030,15 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       const bTup = b as TupleRuntimeValue;
       if (a.elements.length !== bTup.elements.length) return false;
       return a.elements.every((el, idx) => runtimeValuesEqual(el, bTup.elements[idx]));
+    }
+    case 'Struct': {
+      const other = b as StructRuntimeValue;
+      if (a.name !== other.name || a.fields.size !== other.fields.size) return false;
+      for (const [fieldName, fieldValue] of a.fields) {
+        const otherValue = other.fields.get(fieldName);
+        if (otherValue === undefined || !runtimeValuesEqual(fieldValue, otherValue)) return false;
+      }
+      return true;
     }
     case 'Map': {
       const bMap = b as MapRuntimeValue;
@@ -1094,7 +1130,7 @@ export class RuntimeEnvironment {
   public borrow(
     name: string,
     mutable: boolean,
-    tuplePath: ReadonlyArray<number> = [],
+    placePath: ReadonlyArray<RuntimePlaceProjection> = [],
   ): ReferenceRuntimeValue | undefined {
     const owner = this.findBindingEnvironment(name);
     if (!owner) return undefined;
@@ -1105,7 +1141,7 @@ export class RuntimeEnvironment {
       environment: owner,
       name,
       mutable,
-      ...(tuplePath.length > 0 ? { tuplePath: [...tuplePath] } : {}),
+      ...(placePath.length > 0 ? { placePath: [...placePath] } : {}),
     };
   }
 

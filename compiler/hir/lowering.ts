@@ -1294,9 +1294,32 @@ export class HIRLowering {
       };
     }
 
-    // Direct Named Function Call: fn_name(...)
+    // Positional user-defined struct constructor: Person(name, age).
     if (call.callee.kind === 'Identifier') {
       const id = call.callee as Identifier;
+      const symbol = this.resolverResult?.resolvedSymbols.get(id);
+      const structDecl = symbol?.kind === 'struct' && symbol.declNode?.kind === 'StructDecl'
+        ? symbol.declNode as StructDecl
+        : this.structDeclarations.get(id.name);
+      if (structDecl) {
+        return {
+          kind: 'HIRConstructExpr',
+          id: this.allocId(),
+          constructKind: 'Struct',
+          name: structDecl.name,
+          fields: structDecl.fields.flatMap((field, index) => {
+            const value = args[index];
+            return value ? [{
+              fieldId: createFieldId(structDecl.name, field.name),
+              fieldName: field.name,
+              value,
+            }] : [];
+          }),
+          type: callType,
+          source: origin,
+        };
+      }
+
       const fnId = createFunctionId('', id.name);
       const calleeExpr = this.lowerExpr(call.callee);
 
