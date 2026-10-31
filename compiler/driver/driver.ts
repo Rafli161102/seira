@@ -398,8 +398,13 @@ export class CompilerDriver {
 
     // Stage 7: Conservative MIR Optimization
     if (mir && isStageAtLeast(effectiveStop, CompilerStage.Optimize)) {
-      const optimized = optimizeMIR(mir, context.config.optLevel);
+      const optimized = optimizeMIR(mir, context.config.optLevel, (candidate) => validateMIR(candidate).errors);
       mir = optimized.module;
+      for (const failure of optimized.verificationFailures) {
+        for (const error of failure.errors) {
+          context.diagnostics.reportError('E4005', `MIR Optimization Verification Error after ${failure.passName}: ${error}`, hir!.source.span, hir!.source.file);
+        }
+      }
       const optimizedValidation = validateMIR(mir);
       for (const error of optimizedValidation.errors) {
         context.diagnostics.reportError('E4005', `Optimized MIR Validation Error: ${error}`, hir!.source.span, hir!.source.file);
