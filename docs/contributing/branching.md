@@ -15,7 +15,7 @@
 - `docs/short-description` for documentation-only work.
 - `infra/short-description` for infrastructure changes based on `dev-infra`.
 
-Temporary branches should be deleted after merge. A merged branch must not be reused for unrelated work.
+Temporary branches are automatically deleted by the Branch Governance workflow after a verified merge. For older merged branches, maintainers can dispatch the same workflow manually; it checks that the branch head is an ancestor of its permitted target before deleting it. A merged branch must not be reused for unrelated work.
 
 ## Promotion rules
 
@@ -27,4 +27,4 @@ Temporary branches should be deleted after merge. A merged branch must not be re
 
 ## Branch protection
 
-GitHub branch protection/rulesets should require pull requests, successful CI, and prohibit force pushes on the three permanent branches. The repository PR workflow validates source/target policy but cannot replace GitHub-hosted branch protection settings; maintainers must enable those settings in repository configuration.
+GitHub branch protection/rulesets should require pull requests, successful CI, and prohibit force pushes on the three permanent branches. The repository PR workflow validates source/target policy and cleans up merged temporary branches, but cannot replace GitHub-hosted branch protection settings; maintainers must enable those settings in repository configuration.

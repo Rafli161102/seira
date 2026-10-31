@@ -1,7 +1,7 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.16-d](https://img.shields.io/badge/Release-0.0.16--d%20Development-orange.svg)](CHANGELOG.md)
+[![Release: 0.0.17-d](https://img.shields.io/badge/Release-0.0.17--d%20Development-orange.svg)](CHANGELOG.md)
 [![Status: Development](https://img.shields.io/badge/Status-Development-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Development Series.
@@ -14,10 +14,10 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Development (0.0.16-d) — Effect System Foundation**  
+> **Current Status: Development (0.0.17-d) — MIR Optimization Foundation**  
 > Seira is an experimental programming language in the first Development Series release, building on the completed Seed compiler, package, standard-library, I/O, and resource foundations.  
 > **Seira is NOT production-ready, and Alpha has not yet been released.**  
-> This release adds an initial explicit effect boundary: calls to functions declared with `!` are rejected inside pure functions (`E8001`), while effectful callers may invoke them. Effect markers are checked on function types and trait method implementations. Top-level calls remain an explicit host boundary. Built-in host capabilities are not yet fully classified, and general effect inference/handlers remain future work. Seira remains experimental; no operational native or WebAssembly code generator exists.
+> This release adds a conservative MIR optimization foundation after typed MIR lowering and verification. At optLevel 1, Seira folds safe constants, simplifies constant branches, removes unreachable blocks, and eliminates dead pure operations. Calls, resource operations, dereferences, potentially trapping division, and unknown operations are preserved. Optimization levels 2 and 3 currently reuse the same conservative pass set. The initial explicit effect boundary from P1.15 remains supported: calls to functions declared with `!` are rejected inside pure functions (`E8001`), while effectful callers may invoke them. Effect markers are checked on function types and trait method implementations. Top-level calls remain an explicit host boundary. Built-in host capabilities are not yet fully classified, and general effect inference/handlers remain future work. Seira remains experimental; no operational native or WebAssembly code generator exists.
 
 Previously implemented P1.10–P1.13 collection, reference, and ownership capabilities remain supported:
 > - **Runtime List Index References**: shared and mutable references can target list elements using constant or dynamic indices (for example, `&mut values[index]`).
@@ -32,6 +32,7 @@ The existing `develop` branch contains post-Seed compiler and language work. The
 
 ### Recent Development Updates (`develop`)
 
+- **P1.16 — MIR Optimization Foundation:** added conservative constant folding, constant-branch simplification, unreachable-block removal, dead pure-operation elimination, and MIR verification after optimization. Optimization remains disabled by default in the development profile (`optLevel: 0`).
 - **P1.15 — Effect System Foundation:** effectful function calls (`fn name!`) are checked against caller effect boundaries; pure callers receive `E8001`; function type and trait method effect markers are validated; top-level execution remains the host boundary.
 - **P1.14 — Type System Hardening:** transactional generic unification, strict repeated-variable matching, effect-aware function unification, and invariant callback parameter compatibility.
 - **P1.13 — Ownership & Borrow Checker Hardening:** CFG loan joins preserve possible owners and parent reborrows conservatively; a regression covers different predecessor owners.
@@ -175,7 +176,7 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 
 | Category | Definition | Subsystems / Features |
 | :--- | :--- | :--- |
-| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix, Unicode scalar code points<br>• Pratt precedence parser (`compiler/parser/`) with error recovery and visibility markers<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Module and package subsystem (`compiler/module/`) with filesystem mapping, deterministic discovery, package manifest (`Seira.toml`), SHA-256 lockfile (`Seira.lock`), path dependencies, workspace foundation, and circular dependency prevention<br>• Name resolution & lexical scoping (`compiler/resolver/`) with cross-module symbols, `import`, `use`, aliases, `pub use` re-exports, canonical built-in trait registry (`BUILTIN_TRAIT_MAP`), and `pub` visibility boundaries<br>• Static type inference, collection typing, generic types, generic functions, type aliases, union types, function/reference types, trait declarations, trait implementations, trait constraints, static trait resolution, shared/mutable borrow validation, tuple-position, List-index, and Map-key borrow typing, dereference typing, resource validation for `with`, and cross-module type checking (`compiler/typecheck/`)<br>• HIR lowering and validation (`compiler/hir/`)<br>• MIR construction, SSA/CFG lowering and verification (`compiler/mir/`)<br>• MIR resource/ownership analysis (`compiler/ownership/`) including conservative P1.13 CFG loan joins<br>• Initial explicit effect call checking (`compiler/typecheck/`) with pure-to-effectful rejection (`E8001`)<br>• Standard Library Foundation (`std/src/`) and Prelude with `Option`, `Result`, traits, collections, and lazy iterator pipelines<br>• I/O & Resource Boundary Foundation (`0.0.10-s`): composable capabilities (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`), strict Byte/Text boundary (`Byte`, `Bytes`, `Char`, `String`), encoding foundation (UTF-8, ASCII, UTF-16, UTF-32), immutable `Path`, safe `File` lifecycle (open → use → close), and capability-separated memory streams (`MemoryReader`, `MemoryWriter`, `MemoryStream`)<br>• Deterministic resource management: first-class `with` statement with guaranteed strict LIFO cleanup across scope exits, returns, and panics<br>• Structured diagnostics engine (`compiler/diagnostics/`) with active `E1xxx`–`E7xxx` error families and runtime panics `R0xxx`<br>• Structured control flow (`if`/`else` values, `while`, `for`, `loop`, `break`, `continue`)<br>• Pattern matching (`match` with literals, wildcards, bindings, Option, Result, and static exhaustiveness validation)<br>• Seira Collections (`List`, `Tuple`, `Map`, `Set`) with safe indexing and structural value equality<br>• First-class lambdas, lexical closures, higher-order generic functions, and pipeline composition<br>• Tree-walking execution engine & Seira Value Model v1.0 (`runtime/execution/`) with multi-module execution, runtime reference cells for named bindings and nested tuple/struct-field/List-index/Map-key paths, dereference reads/writes, dedicated runtime diagnostics (`R0xxx`), single-entry convention, and UInt underflow panic (`R0005`)<br>• Canonical `sr` CLI tool (`bin/sr`) and `.sr` extension supporting both standalone single-file mode (`sr run script.sr`) and project package mode (`sr run`) |
+| **Implemented** | Built, integrated, and validated by automated tests | • Source management (`compiler/source/`) with coordinate mapping and spans<br>• Lexical scanner (`compiler/lexer/`) with full literal and token matrix, Unicode scalar code points<br>• Pratt precedence parser (`compiler/parser/`) with error recovery and visibility markers<br>• Source-aware AST node hierarchy (`compiler/ast/`)<br>• Module and package subsystem (`compiler/module/`) with filesystem mapping, deterministic discovery, package manifest (`Seira.toml`), SHA-256 lockfile (`Seira.lock`), path dependencies, workspace foundation, and circular dependency prevention<br>• Name resolution & lexical scoping (`compiler/resolver/`) with cross-module symbols, `import`, `use`, aliases, `pub use` re-exports, canonical built-in trait registry (`BUILTIN_TRAIT_MAP`), and `pub` visibility boundaries<br>• Static type inference, collection typing, generic types, generic functions, type aliases, union types, function/reference types, trait declarations, trait implementations, trait constraints, static trait resolution, shared/mutable borrow validation, tuple-position, List-index, and Map-key borrow typing, dereference typing, resource validation for `with`, and cross-module type checking (`compiler/typecheck/`)<br>• HIR lowering and validation (`compiler/hir/`)<br>• MIR construction, SSA/CFG lowering and verification (`compiler/mir/`)<br>• Conservative MIR optimization (`compiler/mir/optimizer.ts`) with constant folding, branch simplification, reachability cleanup, and dead pure-operation elimination<br>• MIR resource/ownership analysis (`compiler/ownership/`) including conservative P1.13 CFG loan joins<br>• Initial explicit effect call checking (`compiler/typecheck/`) with pure-to-effectful rejection (`E8001`)<br>• Standard Library Foundation (`std/src/`) and Prelude with `Option`, `Result`, traits, collections, and lazy iterator pipelines<br>• I/O & Resource Boundary Foundation (`0.0.10-s`): composable capabilities (`Reader`, `Writer`, `Seekable`, `Flushable`, `Sized`, `Resource`), strict Byte/Text boundary (`Byte`, `Bytes`, `Char`, `String`), encoding foundation (UTF-8, ASCII, UTF-16, UTF-32), immutable `Path`, safe `File` lifecycle (open → use → close), and capability-separated memory streams (`MemoryReader`, `MemoryWriter`, `MemoryStream`)<br>• Deterministic resource management: first-class `with` statement with guaranteed strict LIFO cleanup across scope exits, returns, and panics<br>• Structured diagnostics engine (`compiler/diagnostics/`) with active `E1xxx`–`E7xxx` error families and runtime panics `R0xxx`<br>• Structured control flow (`if`/`else` values, `while`, `for`, `loop`, `break`, `continue`)<br>• Pattern matching (`match` with literals, wildcards, bindings, Option, Result, and static exhaustiveness validation)<br>• Seira Collections (`List`, `Tuple`, `Map`, `Set`) with safe indexing and structural value equality<br>• First-class lambdas, lexical closures, higher-order generic functions, and pipeline composition<br>• Tree-walking execution engine & Seira Value Model v1.0 (`runtime/execution/`) with multi-module execution, runtime reference cells for named bindings and nested tuple/struct-field/List-index/Map-key paths, dereference reads/writes, dedicated runtime diagnostics (`R0xxx`), single-entry convention, and UInt underflow panic (`R0005`)<br>• Canonical `sr` CLI tool (`bin/sr`) and `.sr` extension supporting both standalone single-file mode (`sr run script.sr`) and project package mode (`sr run`) |
 | **Architecturally Prepared** | Formal contracts, interfaces, and boundary types defined | • Backend emitter interface (`compiler/backend/`); native and WASM emitters remain unimplemented<br>• Runtime session and service boundaries (`runtime/context.ts`, `services/`) |
 | **Specified** | Formally documented in locked architecture specifications | • Full algebraic effects, effect handlers, capability/effect inference, and effect declarations for all host operations (P1.15 implements only explicit `!` call-boundary checks; built-in host operations are not all classified)<br>• Complete lifetime analysis and borrow checking (current `develop` supports shared/mutable borrows, dereference, mutable-reference writes, initial MIR-based NLL, shared/mutable reborrowing, compiler field-sensitive struct and tuple projections, runtime tuple/struct/List references, and conservative alias handling for dynamic List indices; reference escapes and general interprocedural alias propagation remain future work)<br>• Concurrency model (structured concurrency, channels, event loop)<br>• Standard library API contracts for network, system, and process |
 | **Planned** | Scheduled in the multi-phase project roadmap | • LLVM native code generation backend<br>• WebAssembly (WASM) emission backend<br>• Ahead-of-time compilation (`sr build`)<br>• Package manager registry and dependency resolution |
@@ -203,6 +204,7 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.15-d` — Type System Hardening:** strict repeated generic inference, transactional substitution rollback, effect-aware function unification, and invariant function parameter compatibility.
 
 - **`0.0.16-d` — Effect System Foundation:** initial pure/effectful call checking, effect-aware function types, trait method effect compatibility, and the compiler EffectCheck checkpoint.
+- **`0.0.17-d` — MIR Optimization Foundation:** conservative constant folding, constant-branch simplification, unreachable block removal, dead pure-operation elimination, and verifier-gated pass execution after every optimization pass.
 
 ## Architecture Overview
 
@@ -235,6 +237,8 @@ HIR Lowering         [IMPLEMENTED on develop]
   ↓
 MIR Lowering         [IMPLEMENTED on develop]
   ↓
+MIR Optimization     [IMPLEMENTED (0.0.17-d, conservative O1)]
+  ↓
 Backend Emitter      [Architectural Contract (0.0.2-s)]
   ↓
 Native / WebAssembly [Planned: Alpha Series]
@@ -262,13 +266,14 @@ PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [COMPLETED MILESTONE: 0.0.10-s]
   ├── 0.0.9-s: Standard Library Foundation (Complete)
   └── 0.0.10-s: I/O & Resource Boundary Foundation (Complete)
 
-PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.16-d]
+PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.17-d]
   ├── 0.0.11-d: Runtime Struct Values & Field References (Complete)
   ├── 0.0.12-d: Runtime List Index References & Alias Safety (Complete)
   ├── 0.0.13-d: Runtime Map Key References & Collection Safety (Complete)
   ├── 0.0.14-d: Ownership & Borrow Checker Hardening (P1.13)
   ├── 0.0.15-d: Type System Hardening (P1.14)
-  └── 0.0.16-d: Effect System Foundation (P1.15 — current)
+  ├── 0.0.16-d: Effect System Foundation (P1.15 — Complete)
+  └── 0.0.17-d: MIR Optimization Foundation (P1.16 — current)
 
 PHASE 3: ALPHA (0.1.0-alpha.x)
   └── Native (LLVM) code generation, WebAssembly backend, and executable binaries.
@@ -299,6 +304,10 @@ PHASE 7: PRODUCTION (1.1+)
 - [Runtime Boundary Architecture](docs/architecture/runtime-boundary.md)
 - [Reference & Borrow Architecture](docs/architecture/references.md)
 - [Backend Boundary Architecture](docs/architecture/backend-boundary.md)
+- [Current Architecture Status](docs/architecture/current-state.md)
+- [MIR Optimization Foundation](docs/architecture/mir-optimization.md)
+- [Backend Readiness Contract](docs/architecture/backend-readiness.md)
+- [P1.13–P1.18 Roadmap](docs/roadmap/P1.13-P1.18.md)
 - [Language Specification](docs/language/overview.md)
 - [RFC Process & Templates](docs/rfcs/README.md)
 - [Development Setup & Guidelines](docs/contributing/development-setup.md)
@@ -321,7 +330,7 @@ npm ci
 ```bash
 # Check version (canonical sr command)
 ./bin/sr --version
-# Output: Seira 0.0.13-d
+# Output: Seira 0.0.17-d
 
 # Inspect environment and active pipeline stages
 ./bin/sr info

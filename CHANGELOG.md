@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Repository Engineering
+- Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.17-d candidate.
+- Marked Seed-era architecture documents as historical baselines.
+- Added ancestry-checked automatic cleanup for merged temporary branches and a guarded manual cleanup workflow.
+- Added a P1.18 backend readiness contract without claiming operational native or WASM emission.
+
+
+
+## [0.0.17-d] - 2026-10-31
+
+### P1.16 — MIR Optimization Foundation
+- Added conservative typed-MIR constant folding for supported integer/float arithmetic, comparisons, and selected unary operations.
+- Simplified constant conditional branches and removed unreachable basic blocks.
+- Added dead pure-operation elimination while retaining calls, resource events, dereferences, potentially trapping division, and unknown operations.
+- Preserved and remapped resource event positions when preceding pure operations are removed.
+- Added an Optimize compiler checkpoint, a named MIR pass manager, and MIR verification after every optimization pass.
+- Kept optimization disabled by default at optLevel 0; optLevel 2/3 currently reuse the conservative pass set.
+
 ## [0.0.16-d] - 2026-10-31
 
 ### P1.15 — Effect System Foundation
