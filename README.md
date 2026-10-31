@@ -208,6 +208,7 @@ To maintain technical honesty and clear engineering boundaries, repository capab
 - **`0.0.16-d` — Effect System Foundation:** initial pure/effectful call checking, effect-aware function types, trait method effect compatibility, and the compiler EffectCheck checkpoint.
 - **`0.0.17-d` — MIR Optimization Foundation:** conservative constant folding, constant-branch simplification, unreachable block removal, dead pure-operation elimination, and verifier-gated pass execution after every optimization pass.
 - **`0.0.18-d` — Compiler Conformance & Deterministic Testing:** Development semantic conformance matrix, stable diagnostic comparison, and deterministic bounded lexer token fuzzing.
+- **`0.0.19-d` — Backend Readiness Contract:** versioned backend/runtime ABI contracts, target-layout validation, and invalid-MIR rejection before the still-unimplemented emitter boundary.
 
 ## Architecture Overview
 
