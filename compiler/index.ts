@@ -22,6 +22,7 @@ export * from './hir/index.ts';
 export * from './lexer/lexer.ts';
 export * from './lexer/token.ts';
 export * from './mir/index.ts';
+export * from './mir/interpreter.ts';
 export * from './mir/optimizer.ts';
 export * from './ownership/index.ts';
 export * from './parser/parser.ts';
