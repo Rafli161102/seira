@@ -16,7 +16,13 @@ function compileToMIR(source: string, file: string): MIRModule {
   return result.mir;
 }
 function assertDifferential(source: string, file: string): void {
-  const compiled = compileToMIR(source, file);
+  const compilation = new CompilerDriver().compile(source, file, {
+    stopAfter: CompilerStage.Optimize,
+    config: { optLevel: 0 },
+  });
+  assert.equal(compilation.success, true, compilation.diagnostics.format());
+  assert.ok(compilation.mir);
+  const compiled = compilation.mir;
   const ast = new ExecutionEngine().executeSource(source, file, { enableOutput: false });
   assert.equal(ast.success, true, ast.diagnostics.format());
   const mir = new MIRInterpreter(compiled).execute();
@@ -32,7 +38,7 @@ function assertDifferential(source: string, file: string): void {
       terminator: block.terminator,
     })),
   }));
-  const hirDump = compiled.hir?.topLevelItems?.map((item: any) => item.kind === 'HIRFunction'
+  const hirDump = compilation.hir?.topLevelItems?.map((item) => item.kind === 'HIRFunction'
     ? { name: item.name, body: item.body }
     : { kind: item.kind, name: item.name });
   assert.equal(mir.success, true, (mir.error?.message ?? '') + '\nHIR=' + JSON.stringify(hirDump) + '\nMIR=' + JSON.stringify(mirDump));
