@@ -35,6 +35,10 @@ type MoveStatus = 'moved' | 'maybe-moved';
 type LoanKind = 'shared' | 'mutable';
 type LoanStatus = 'active' | 'ended' | 'maybe';
 
+// A CFG-merged reference may point to more than one owner/parent. -1 is a
+// reserved conservative sentinel; MIR ValueIds are non-negative integers.
+const UNKNOWN_VALUE_ID = -1;
+
 interface LoanState {
   readonly ownerId: ValueId;
   readonly kind: LoanKind;
@@ -85,11 +89,15 @@ function joinLoan(a: LoanState | undefined, b: LoanState | undefined): LoanState
     return { ...loan, status: 'maybe' };
   }
   return {
-    ownerId: a.ownerId === b.ownerId ? a.ownerId : Math.min(a.ownerId, b.ownerId),
+    // Choosing one predecessor's owner is unsound: the joined reference may
+    // alias either owner. Unknown must conservatively overlap every owner.
+    ownerId: a.ownerId === b.ownerId ? a.ownerId : UNKNOWN_VALUE_ID,
     kind: a.kind === b.kind ? a.kind : 'mutable',
     status: a.status === b.status && a.ownerId === b.ownerId && a.kind === b.kind && a.parentId === b.parentId && a.placePath === b.placePath ? a.status : 'maybe',
     external: a.external === true && b.external === true,
-    parentId: a.parentId === b.parentId ? a.parentId : undefined,
+    // A joined child may descend from different parent references. Treat an
+    // unknown parent conservatively so no potentially suspended parent is used.
+    parentId: a.parentId === b.parentId ? a.parentId : UNKNOWN_VALUE_ID,
     placePath: a.placePath === b.placePath ? a.placePath : undefined,
     expiredByLiveness: a.expiredByLiveness === true && b.expiredByLiveness === true,
   };
@@ -143,7 +151,9 @@ function statesEqual(a: FlowState | undefined, b: FlowState): boolean {
 }
 
 function activeChildren(state: FlowState, parentId: ValueId): Array<[ValueId, LoanState]> {
-  return [...state.loans.entries()].filter(([, loan]) => loan.parentId === parentId && loan.status !== 'ended');
+  return [...state.loans.entries()].filter(([, loan]) =>
+    (loan.parentId === parentId || loan.parentId === UNKNOWN_VALUE_ID) && loan.status !== 'ended'
+  );
 }
 
 function placesOverlap(left = '', right = ''): boolean {
@@ -174,7 +184,8 @@ function placesOverlap(left = '', right = ''): boolean {
 
 function activeLoans(state: FlowState, ownerId: ValueId, placePath = ''): Array<[ValueId, LoanState]> {
   return [...state.loans.entries()].filter(([, loan]) =>
-    loan.ownerId === ownerId && loan.status !== 'ended' && placesOverlap(loan.placePath ?? '', placePath)
+    (loan.ownerId === ownerId || loan.ownerId === UNKNOWN_VALUE_ID) &&
+    loan.status !== 'ended' && placesOverlap(loan.placePath ?? '', placePath)
   );
 }
 

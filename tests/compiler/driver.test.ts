@@ -109,3 +109,17 @@ test('Config: createDefaultConfig returns sound defaults', () => {
   assert.strictEqual(config.optLevel, 0);
   assert.strictEqual(config.debug, true);
 });
+
+
+test('Driver EffectCheck: rejects pure-to-effectful calls and reports the effect stage', () => {
+  const driver = new CompilerDriver();
+  const res = driver.compile(
+    'fn write!() {} fn refresh() { write(); }',
+    'effects.sr',
+    { stopAfter: CompilerStage.EffectCheck }
+  );
+
+  assert.equal(res.success, false);
+  assert.equal(res.stage, CompilerStage.EffectCheck);
+  assert.ok(res.diagnostics.getErrors().some((error) => error.code === 'E8001'));
+});

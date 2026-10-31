@@ -1,5 +1,8 @@
 # Seira Testing Architecture
 
+> **Historical baseline:** this specification records the 0.0.10-s Seed architecture as of 2026-10-01. HIR, MIR, MIR verification and initial MIR-based ownership/borrow analysis have since been implemented in Development. Old version labels below are historical; consult [Current Architecture Status](status.md) for current capability boundaries.
+
+
 | Field | Value |
 |---|---|
 | Subsystem | `tests/` |
@@ -56,6 +59,9 @@ npm test
 ---
 
 ## 3. Implementation Status
+
+> The 388-test table below is a historical `0.0.10-s` snapshot only. It is not the current Development Series test total. Use the CI run for the exact commit under review.
+
 
 | Test Suite | Tests | Status | Milestone |
 |---|---|---|---|

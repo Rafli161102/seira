@@ -1,0 +1,32 @@
+name: Branch Governance
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: [main, develop, dev-infra]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-branch-policy:
+    name: Validate source and target branch policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce permanent branch promotion rules
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          case "$HEAD_REF:$BASE_REF" in
+            feature/*:develop|fix/*:develop|docs/*:develop) exit 0 ;;
+            infra/*:dev-infra|fix/*:dev-infra|docs/*:dev-infra) exit 0 ;;
+            develop:main|dev-infra:main) exit 0 ;;
+            *)
+              echo "Disallowed PR direction: $HEAD_REF -> $BASE_REF"
+              echo "See docs/contributing/branching.md for branch promotion rules."
+              exit 1
+              ;;
+          esac

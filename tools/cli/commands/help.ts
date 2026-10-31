@@ -6,7 +6,7 @@
 import { SEIRA_VERSION } from './version.ts';
 
 export function runHelp(): void {
-  console.log(`Seira ${SEIRA_VERSION} — Runtime Map Key References & Collection Safety (Development Series)
+  console.log(`Seira ${SEIRA_VERSION} — Type System Hardening (Development Series)
 Simple to write. Predictable to run.
 
 USAGE:

@@ -17,6 +17,12 @@ The current language front end emits MIRResourceOp acquire/release events for wi
 
 **Current front-end support:** Seira exposes `&T` / `&mut T` type annotations and `&value` / `&mut value` borrow expressions. P1.5 adds dereference read/write operations (`deref.load`, `deref.store`) and passes reference parameters into callee MIR as external loans. Runtime reference values point to the original lexical binding cell. The checker verifies that only mutable loans permit dereference stores. P1.7 adds child loans for reborrows, blocks parent use while an exclusive child is live, permits compatible shared children, and requires a mutable parent for a mutable child.
 
+## P1.13 — CFG join alias hardening
+
+A reference merged from predecessor blocks must not be assigned an arbitrary single owner. When predecessor states disagree about the owner or parent reference, the checker records an unknown identity and treats it as potentially overlapping every owner or parent. This is intentionally conservative: it can reject some programs that a future points-to analysis could prove disjoint, but it must not accept a conflicting mutable access by forgetting one predecessor's alias.
+
+The regression suite includes a branch where each predecessor borrows a different owner, references merge through a block parameter, and a new mutable borrow attempts to access one possible owner. The merge must report `E7005`. This does not provide interprocedural points-to propagation, reference escapes, closure-capture lifetime analysis, or partial-move analysis.
+
 ## Resource event ordering
 
 Every MIRResourceOp carries an optional position, the number of ordinary MIR operations already emitted when the event occurs. This preserves event ordering within a basic block:

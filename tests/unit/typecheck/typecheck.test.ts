@@ -565,3 +565,61 @@ test('Typecheck: supports Map value references with key type checking', () => {
   assert.equal(badKey.tcResult.success, false);
   assert.ok(badKey.diagnostics.getErrors().some((error) => error.code === 'E3002'));
 });
+
+
+test('Effects: pure functions cannot call explicitly effectful functions', () => {
+  const result = typecheckSource(`
+    fn write!() {}
+    fn refresh() {
+      write();
+    }
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E8001'));
+});
+
+test('Effects: effectful functions can call effectful functions', () => {
+  const result = typecheckSource(`
+    fn write!() {}
+    fn refresh!() {
+      write();
+    }
+  `);
+  assert.equal(result.tcResult.success, true, result.diagnostics.format());
+});
+
+test('Effects: top-level host boundary can invoke an effectful function', () => {
+  const result = typecheckSource(`
+    fn write!() {}
+    write();
+  `);
+  assert.equal(result.tcResult.success, true, result.diagnostics.format());
+});
+
+test('Effects: trait implementations must preserve method effect markers', () => {
+  const result = typecheckSource(`
+    trait Task {
+      fn execute!()
+    }
+    struct Job {}
+    impl Job: Task {
+      fn execute() {}
+    }
+    fn main() {}
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E4006'));
+});
+
+test('Effects: effectful function types allow effectful callback bodies', () => {
+  const result = typecheckSource(`
+    fn run!() -> Int { 1 }
+    fn accept!(callback: ()! -> Int) -> Int {
+      callback()
+    }
+    fn main!() {
+      accept(run);
+    }
+  `);
+  assert.equal(result.tcResult.success, true, result.diagnostics.format());
+});

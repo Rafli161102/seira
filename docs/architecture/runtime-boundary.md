@@ -1,5 +1,8 @@
 # Seira Runtime Boundary Architecture
 
+> **Historical baseline:** this specification records the 0.0.10-s Seed architecture as of 2026-10-01. HIR, MIR, MIR verification and initial MIR-based ownership/borrow analysis have since been implemented in Development. Old version labels below are historical; consult [Current Architecture Status](status.md) for current capability boundaries.
+
+
 | Field | Value |
 |---|---|
 | Subsystem | `runtime/` |
@@ -19,9 +22,9 @@ Compiler Core (compiler/)   ≠   Runtime System (runtime/)
 
 - **The Compiler** does NOT import or execute runtime implementation code during compilation.
 - **The Runtime** does NOT depend on compiler internal structures, AST, or CLI tooling.
-- For the Seed Series, program execution is provided by the tree-walking evaluator in `runtime/execution/`.
-- For native binary targets, runtime services are compiled into target object files or static libraries.
-- For WebAssembly targets, runtime services are supplied through WASI host adapters or JavaScript bindings.
+- The current executable path remains the tree-walking evaluator in `runtime/execution/`; HIR/MIR are compiler analysis representations, not yet the execution engine.
+- Native runtime services for compiled binaries remain future work and are not currently emitted.
+- WebAssembly runtime adapters remain future work and are not currently emitted.
 
 ---
 

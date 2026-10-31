@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.13-d Runtime Map Key References & Collection Safety
+# Specification: 0.0.16-d Effect System Foundation
 
 [package]
 name = "seira"
-version = "0.0.13-d"
+version = "0.0.16-d"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — Runtime Map Key References & Collection Safety (Development Release)"
+description = "The Seira Programming Language — Type System Hardening (Development Release)"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 
