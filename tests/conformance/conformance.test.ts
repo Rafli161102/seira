@@ -129,13 +129,13 @@ const DEVELOPMENT_CONFORMANCE_CASES: ReadonlyArray<DevelopmentConformanceCase> =
   },
   {
     id: 'DEV-CONF-003',
-    source: 'fn write!() {} fn caller!() { write!(); }',
+    source: 'fn write!() {} fn caller!() { write(); }',
     stage: CompilerStage.EffectCheck,
     succeeds: true,
   },
   {
     id: 'DEV-CONF-004',
-    source: 'fn write!() {} fn pure_caller() { write!(); }',
+    source: 'fn write!() {} fn pure_caller() { write(); }',
     stage: CompilerStage.EffectCheck,
     succeeds: false,
     expectedCode: 'E8001',
