@@ -66,13 +66,14 @@ jobs:
             infra/*) test "$BASE_BRANCH" = "dev-infra" ;;
             *) echo "Refusing to delete a permanent or unknown branch"; exit 1 ;;
           esac
-          BRANCH_SHA="$(gh api "repos/$REPOSITORY/branches/$BRANCH_NAME" --jq '.commit.sha')"
+          BRANCH_ESCAPED="${BRANCH_NAME//\//%2F}"
+          BRANCH_SHA="$(gh api "repos/$REPOSITORY/branches/$BRANCH_ESCAPED" --jq '.commit.sha')"
           git init verify-repo
           cd verify-repo
           git remote add origin "https://github.com/$REPOSITORY.git"
-          git fetch --no-tags --depth=100 origin "$BASE_BRANCH"
-          git fetch --no-tags --depth=100 origin "$BRANCH_SHA"
-          git merge-base --is-ancestor "$BRANCH_SHA" "FETCH_HEAD" || {
+          git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          git fetch --no-tags origin "$BRANCH_SHA"
+          git merge-base --is-ancestor "$BRANCH_SHA" "refs/remotes/origin/$BASE_BRANCH" || {
             echo "Branch head is not contained in the PR target; refusing deletion."
             exit 1
           }
@@ -99,13 +100,14 @@ jobs:
             infra/*) BASE_BRANCH="dev-infra" ;;
             *) echo "Refusing to delete a permanent or unknown branch"; exit 1 ;;
           esac
-          BRANCH_SHA="$(gh api "repos/$REPOSITORY/branches/$BRANCH_NAME" --jq '.commit.sha')"
+          BRANCH_ESCAPED="${BRANCH_NAME//\//%2F}"
+          BRANCH_SHA="$(gh api "repos/$REPOSITORY/branches/$BRANCH_ESCAPED" --jq '.commit.sha')"
           git init verify-repo
           cd verify-repo
           git remote add origin "https://github.com/$REPOSITORY.git"
-          git fetch --no-tags --depth=100 origin "$BASE_BRANCH"
-          git fetch --no-tags --depth=100 origin "$BRANCH_SHA"
-          git merge-base --is-ancestor "$BRANCH_SHA" "FETCH_HEAD" || {
+          git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          git fetch --no-tags origin "$BRANCH_SHA"
+          git merge-base --is-ancestor "$BRANCH_SHA" "refs/remotes/origin/$BASE_BRANCH" || {
             echo "Branch head is not contained in $BASE_BRANCH; refusing deletion."
             exit 1
           }
