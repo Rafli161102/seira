@@ -96,8 +96,7 @@ export interface ByteRuntimeValue {
 export type RuntimePlaceProjection =
   | { readonly kind: 'tuple'; readonly index: number }
   | { readonly kind: 'list'; readonly index: number }
-  | { readonly kind: 'field'; readonly name: string }
-  | { readonly kind: 'map'; readonly key: RuntimeValue };
+  | { readonly kind: 'field'; readonly name: string };
 
 /** Runtime reference to a lexical binding or a projected place within it. */
 export interface ReferenceRuntimeValue {
@@ -928,8 +927,7 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       const projection = (v.placePath ?? []).map((part) =>
         part.kind === 'tuple' ? `.${part.index}`
           : part.kind === 'list' ? `[${part.index}]`
-            : part.kind === 'field' ? `.${part.name}`
-              : `[${formatRuntimeValue(part.key)}]`
+            : `.${part.name}`
       ).join('');
       return `${v.mutable ? '&mut ' : '&'}${v.name}${projection}`;
     }
@@ -1014,9 +1012,7 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
               ? otherPart.kind === 'tuple' && part.index === otherPart.index
               : part.kind === 'list'
                 ? otherPart.kind === 'list' && part.index === otherPart.index
-                : part.kind === 'field'
-                  ? otherPart.kind === 'field' && part.name === otherPart.name
-                  : otherPart.kind === 'map' && runtimeValuesEqual(part.key, otherPart.key));
+                : otherPart.kind === 'field' && part.name === otherPart.name);
         });
     }
     case 'Option': {

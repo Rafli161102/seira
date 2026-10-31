@@ -2,17 +2,6 @@
 
 ## [Unreleased]
 
-## [0.0.12-d] - 2026-10-31
-
-### P1.11 — Runtime List Index References & Alias Safety
-- Added shared and mutable references to List elements through constant and dynamic index expressions.
-- Kept ordinary safe List indexing unchanged: `values[index]` still returns `Option<T>`, while `&values[index]` and `&mut values[index]` refer to the element `T`.
-- Added runtime List index projections to reference paths, including nested List/Tuple/Struct paths and copy-on-write mutation that preserves sibling values.
-- Added MIR List place projections: constant positions use distinct path segments, while dynamic positions use a conservative wildcard that aliases any List index at the same path depth.
-- Made indexed List reads place-sensitive in ownership analysis so disjoint constant positions remain accessible during another position's mutable loan.
-- Added typecheck, ownership, and execution regressions for shared/mutable indexed references, dynamic alias conflicts, disjoint constant positions, reborrowing, and out-of-range access.
-- Deliberately deferred Map index references, reference escapes, and general interprocedural alias propagation.
-
 ## [0.0.11-d] - 2026-10-31
 
 ### P1.10 — Runtime Struct Values & Field References

@@ -39,7 +39,7 @@ A runtime reference stores the owning RuntimeEnvironment, binding name, mutabili
 
 ## Deliberate limitations
 
-This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections, positional tuple projections, and List element index projections. Struct, tuple, and List references are executable at runtime. References cannot be returned or escape the defining function. Map index borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
+This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections, and positional tuple projections. Struct and tuple field references are executable at runtime. References cannot be returned or escape the defining function. Dynamic list/map index borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
 
 
 ## NLL boundary (P1.6)
@@ -63,13 +63,4 @@ Only constant positional tuple members are supported by this runtime path. List/
 
 A struct declaration is instantiated by a positional constructor call whose arguments follow declaration field order: `Person("Mika", 23)`. The evaluator stores the value as a Struct runtime value containing its type name and named field map. Member reads retrieve declared fields by name.
 
-Reference paths use ordered projections of tuple positions and struct field names. Thus `&mut player.stats.score` retains the root binding and every nested segment. Dereference mutation reconstructs the nested Struct/Tuple values from the leaf outward and writes the new root value to its original mutable binding. Reborrowing preserves the full path. List index references are added in P1.11; Map index references and named-argument constructor syntax remain deferred.
-
-
-## Runtime List index references (P1.11)
-
-A List element can be borrowed through an index expression, including a variable index: `element = &values[index]` or `element = &mut values[index]`. The referred value is the List element type `T`, not the `Option<T>` returned by ordinary `values[index]` reads. The runtime reference carries the original lexical binding plus a List-position projection. Nested paths may combine List positions with tuple positions and struct fields. Dereference assignment updates the selected slot by rebuilding immutable containers back to the original mutable binding; sibling elements remain unchanged.
-
-For ownership analysis, a literal index is represented as `@N`, allowing distinct constant positions to be borrowed independently. An index expression whose value is not a compile-time integer literal is represented as `@*`; it conservatively aliases every List position at that path depth. This rule prevents unsound assumptions about two runtime indices being different. A dynamic out-of-range borrow fails at runtime with a structured diagnostic. Safe non-borrowing indexing retains its existing `Option<T>` semantics.
-
-Map index references are deliberately unsupported in this increment. The model does not yet define stable projected places or alias checks for arbitrary map keys. References still cannot escape their defining function, and general interprocedural alias propagation remains deferred.
+Reference paths use ordered projections of two kinds: tuple positions and struct field names. Thus `&mut player.stats.score` retains the root binding and every nested segment. Dereference mutation reconstructs the nested Struct/Tuple values from the leaf outward and writes the new root value to its original mutable binding. Reborrowing preserves the full path. Dynamic list/map index references and named-argument constructor syntax remain deferred.

@@ -1174,7 +1174,7 @@ test('Execution: nested Map entry references preserve the complete projection pa
       mut players = {"aqua": Stats(40)};
       score_ref = &mut players["aqua"].score;
       *score_ref += 2;
-      println(players["aqua"].score);
+      println(*score_ref);
     }
   `);
   assert.ok(r.success, r.diagnostics.format());

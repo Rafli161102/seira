@@ -1109,26 +1109,10 @@ export class Evaluator {
       const target = binding
         ? this.readPlaceProjection(binding.value, parent.path)
         : undefined;
-      if (!target || (target.tag !== 'List' && target.tag !== 'Map')) return undefined;
+      if (!target || target.tag !== 'List') return undefined;
 
       const indexOutcome = this.evaluateExpr(indexed.index, env);
       if (indexOutcome.kind !== 'Normal') return { failure: indexOutcome };
-
-      if (target.tag === 'Map') {
-        const map = target as MapRuntimeValue;
-        const entry = map.entries.find((candidate) => runtimeValuesEqual(candidate.key, indexOutcome.value));
-        if (!entry) {
-          return {
-            failure: panicOutcome(invalidStateError(
-              `Cannot borrow missing Map key '${formatRuntimeValue(indexOutcome.value)}'.`,
-              indexed.span,
-              this.ctx.config.fileName,
-            )),
-          };
-        }
-        return { name: parent.name, path: [...parent.path, { kind: 'map', key: entry.key }] };
-      }
-
       if (indexOutcome.value.tag !== 'Int' && indexOutcome.value.tag !== 'UInt') {
         return {
           failure: panicOutcome(invalidStateError(
@@ -1179,11 +1163,6 @@ export class Evaluator {
         const next = (current as ListRuntimeValue).elements[part.index];
         if (next === undefined) return undefined;
         current = next;
-      } else if (part.kind === 'map') {
-        if (current.tag !== 'Map') return undefined;
-        const entry = (current as MapRuntimeValue).entries.find((candidate) => runtimeValuesEqual(candidate.key, part.key));
-        if (!entry) return undefined;
-        current = entry.value;
       } else {
         if (current.tag !== 'Struct') return undefined;
         const next = (current as StructRuntimeValue).fields.get(part.name);
@@ -1224,19 +1203,6 @@ export class Evaluator {
       const elements = [...list.elements];
       elements[part.index] = updatedElement;
       return { ...list, elements };
-    }
-
-    if (part.kind === 'map') {
-      if (value.tag !== 'Map') return undefined;
-      const map = value as MapRuntimeValue;
-      const entryIndex = map.entries.findIndex((entry) => runtimeValuesEqual(entry.key, part.key));
-      if (entryIndex < 0) return undefined;
-      const currentEntry = map.entries[entryIndex];
-      const updatedValue = this.updatePlaceProjection(currentEntry.value, remaining, replacement);
-      if (updatedValue === undefined) return undefined;
-      const entries = [...map.entries];
-      entries[entryIndex] = { key: currentEntry.key, value: updatedValue };
-      return { ...map, entries };
     }
 
     if (value.tag !== 'Struct') return undefined;

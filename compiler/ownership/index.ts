@@ -477,13 +477,26 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           const rootId = typeof operation.attributes?.rootId === 'number' ? operation.attributes.rootId : operands[0];
           const placePath = typeof operation.attributes?.placePath === 'string' ? operation.attributes.placePath : '';
           if (rootId !== undefined) checkValueUse(rootId, operation.source, opcode, placePath);
+          const projectionIndexCount = typeof operation.attributes?.projectionIndexCount === 'number'
+            ? operation.attributes.projectionIndexCount
+            : 0;
+          for (let index = 0; index < projectionIndexCount; index++) {
+            const indexId = operands[index + 1];
+            if (indexId !== undefined) checkValueUse(indexId, operation.source, 'field.get projection index');
+          }
           return;
         }
         if (opcode === 'index.get' && typeof operation.attributes?.rootId === 'number') {
           const rootId = operation.attributes.rootId;
           const placePath = typeof operation.attributes?.placePath === 'string' ? operation.attributes.placePath : '';
           checkValueUse(rootId, operation.source, opcode, placePath);
-          if (operands[1] !== undefined) checkValueUse(operands[1], operation.source, 'index.get index');
+          const projectionIndexCount = typeof operation.attributes?.projectionIndexCount === 'number'
+            ? operation.attributes.projectionIndexCount
+            : (operands.length - 1);
+          for (let index = 0; index < projectionIndexCount; index++) {
+            const indexId = operands[index + 1];
+            if (indexId !== undefined) checkValueUse(indexId, operation.source, 'index.get projection index');
+          }
           return;
         }
         if (!ownershipManagedOpcodes.has(opcode)) {
@@ -518,6 +531,13 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
             return;
           }
           checkValueUse(ownerId, operation.source, opcode, placePath);
+          const projectionIndexCount = typeof operation.attributes?.projectionIndexCount === 'number'
+            ? operation.attributes.projectionIndexCount
+            : 0;
+          for (let index = 0; index < projectionIndexCount; index++) {
+            const indexId = operands[index + 1];
+            if (indexId !== undefined) checkValueUse(indexId, operation.source, 'borrow projection index');
+          }
           const existing = activeLoans(state, ownerId, placePath);
           if (kind === 'mutable' && existing.length) {
             emitIssue('E7005', 'Mutable borrow of %' + ownerId + ' conflicts with an existing active borrow.', ownerId, operation.source);
