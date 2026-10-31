@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### P1.9 — Runtime Tuple-Projection References
+- Added runtime shared and mutable references to positional tuple places, including nested projections such as `&pair.0` and `&mut pair.1.0`.
+- Preserved tuple projection paths through reference values and shared/mutable reborrows.
+- Made dereference reads resolve the projected tuple element and mutable dereference writes rebuild tuples from the modified leaf to the root binding, retaining sibling values.
+- Included tuple projection paths in runtime reference formatting and structural reference equality.
+- Added execution regressions for shared tuple reads, nested mutable tuple updates, sibling preservation, and reborrow path retention.
+- Added compiler/ownership regressions proving disjoint tuple positions lower to independent MIR places while overlapping borrows of the same position are rejected.
+- Kept dynamic list/map index borrowing and runtime references to user-defined struct fields deferred.
+
 ### P1.8 — Place-Sensitive & Field-Sensitive Borrowing
 - Added MIR place-path metadata for borrows of named struct fields and nested field projections.
 - Added overlap-aware loan conflict analysis: disjoint field paths can be borrowed independently, while identical and parent/nested paths conflict.

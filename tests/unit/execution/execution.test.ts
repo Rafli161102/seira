@@ -989,3 +989,44 @@ test('Execution: shared reborrow reads through the original reference target', (
   assert.ok(r.success, r.diagnostics.format());
   assert.deepStrictEqual(r.output, ['9', '9']);
 });
+
+test('Execution: mutable reference updates a nested tuple projection and preserves siblings', () => {
+  const r = run(`
+    fn main() {
+      mut pair = (10, (20, 30));
+      nested = &mut pair.1.0;
+      *nested += 7;
+      println(*nested);
+      println(pair.0);
+      println(pair.1.1);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['27', '10', '30']);
+});
+
+test('Execution: shared reference reads a tuple projection', () => {
+  const r = run(`
+    fn main() {
+      pair = (4, 9);
+      second = &pair.1;
+      println(*second);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['9']);
+});
+
+test('Execution: mutable tuple projection is preserved across reborrowing', () => {
+  const r = run(`
+    fn main() {
+      mut pair = (5, 10);
+      parent = &mut pair.1;
+      child = &mut *parent;
+      *child += 1;
+      println(*parent);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['11']);
+});

@@ -84,4 +84,11 @@ The analysis is intentionally limited to named-reference dereference reborrows (
 
 A field borrow carries a root SSA value and a dot-separated place path in MIR attributes. An empty path means the whole value. Two non-empty paths are disjoint when neither path equals nor prefixes the other; otherwise the places overlap. Thus `pair.left` and `pair.right` can be borrowed independently, while `pair.profile` overlaps `pair.profile.name`. Field-read MIR operations carry the same root/path metadata, allowing the checker to permit reads from disjoint fields but reject reads overlapping an active mutable loan. Mutable field borrows require a mutable root binding.
 
-This increment is limited to named local struct-field projections. Tuple/index projections, dynamic indices, union/enum payload projections, writes directly to field places, and runtime references to user-defined struct fields are deferred. The tree-walking runtime does not yet provide an executable user-defined struct value model, so P1.8 claims compiler/MIR ownership support only.
+P1.8 is limited to named local struct-field projections in compiler/MIR ownership analysis. P1.9 adds runtime references to constant positional tuple projections, including nested tuple paths. Dynamic list/map indices, union/enum payload projections, writes directly to user-defined struct fields, and runtime references to user-defined struct fields remain deferred. The tree-walking runtime still does not provide an executable user-defined struct value model.
+
+
+## Runtime tuple projections (P1.9)
+
+Runtime references may carry an optional tuple path alongside the root lexical binding name. Each path component is a zero-based tuple position; nested tuple positions are represented as an ordered path (for example, pair.1.0). Dereference reads walk that path. Mutable dereference writes rebuild the affected tuple chain from the leaf outward and assign the resulting tuple to the original mutable binding, preserving all untouched sibling elements.
+
+This runtime representation is deliberately narrower than the compiler's place model: numeric tuple-member projections are executable, while named user-defined struct fields remain compiler/MIR-only. Dynamic list/map index borrowing, index alias analysis, and references to union/enum payloads are not included in P1.9.

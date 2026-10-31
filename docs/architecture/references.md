@@ -35,11 +35,11 @@ HIR represents borrow and dereference using typed unary nodes. MIR lowers refere
 
 ## Runtime representation
 
-A runtime reference stores the owning \`RuntimeEnvironment\`, binding name, and mutability. It points to the original lexical binding cell instead of copying the current value. Therefore, passing \`&mut value\` to a function preserves the link to the caller's binding; dereference assignment updates that same binding. Reference return values and other escapes are rejected by the front end.
+A runtime reference stores the owning RuntimeEnvironment, binding name, mutability, and an optional tuple-position path. With no path it points to the complete lexical binding cell. With a path such as [1, 0], it points to a nested tuple element within that binding. Passing a reference to a function preserves the root binding and projection path. Mutable dereference assignment rebuilds the tuple chain and writes the updated value back to the root binding. Reference return values and other escapes are rejected by the front end.
 
 ## Deliberate limitations
 
-This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings and named struct-field projections rooted at a local binding. Runtime reference cells still point to whole lexical bindings; runtime references to user-defined struct fields are not yet implemented. References cannot be returned or escape the defining function. field-sensitive borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
+This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections for compiler/MIR analysis, and positional tuple projections for runtime references. Runtime references to user-defined struct fields are not yet implemented. References cannot be returned or escape the defining function. Dynamic list/map index borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
 
 
 ## NLL boundary (P1.6)
@@ -50,3 +50,10 @@ Liveness is computed over SSA values and reachable CFG edges. Branch arguments a
 ## Reborrowing boundary (P1.7)
 
 The supported reborrow places are named references behind one dereference: `&*r` and `&mut *r`. Shared children can coexist; mutable children require a mutable parent and exclude sibling children. A mutable parent reference is unavailable while any child is live, while a shared parent remains readable alongside shared children. Parent access becomes available again when a child expires under NLL or reaches its borrow-end marker. Runtime reborrows preserve the original environment and binding name, so child reads and writes target the same binding cell.
+
+
+## Tuple projection references (P1.9)
+
+The runtime reference value has an optional tuplePath: number[] projection. Borrow expressions such as pair.0 and pair.1.0 resolve to the lexical root binding plus the ordered tuple positions. Reborrowing through a dereference retains this path. Dereference reads select the nested element; mutable writes copy the tuple chain outward and replace the root binding from the evaluator.
+
+Only constant positional tuple members are supported by this runtime path. List/map indexing, dynamic indices, and user-defined struct-field references remain outside this increment.

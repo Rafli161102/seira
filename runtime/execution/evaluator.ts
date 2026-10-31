@@ -1063,6 +1063,53 @@ export class Evaluator {
 
   // ─── Unary Expression ─────────────────────────────────────────────────────
 
+  /** Resolve a named binding followed only by numeric tuple-member projections. */
+  private tupleBorrowPlace(expr: Expr): { name: string; path: number[] } | undefined {
+    if (expr.kind === 'Identifier') {
+      return { name: (expr as Identifier).name, path: [] };
+    }
+    if (expr.kind !== 'MemberExpr') return undefined;
+
+    const member = expr as MemberExpr;
+    const parent = this.tupleBorrowPlace(member.object);
+    if (!parent || !/^(0|[1-9][0-9]*)$/.test(member.property)) return undefined;
+    const index = Number(member.property);
+    if (!Number.isSafeInteger(index)) return undefined;
+    return { name: parent.name, path: [...parent.path, index] };
+  }
+
+  /** Read a nested tuple position without changing the original tuple value. */
+  private readTupleProjection(value: RuntimeValue, path: ReadonlyArray<number>): RuntimeValue | undefined {
+    let current = value;
+    for (const index of path) {
+      if (current.tag !== 'Tuple') return undefined;
+      const next = (current as TupleRuntimeValue).elements[index];
+      if (next === undefined) return undefined;
+      current = next;
+    }
+    return current;
+  }
+
+  /** Rebuild tuples from the leaf outward, preserving all unmodified siblings. */
+  private updateTupleProjection(
+    value: RuntimeValue,
+    path: ReadonlyArray<number>,
+    replacement: RuntimeValue,
+  ): RuntimeValue | undefined {
+    if (path.length === 0) return replacement;
+    if (value.tag !== 'Tuple') return undefined;
+
+    const tuple = value as TupleRuntimeValue;
+    const [index, ...remaining] = path;
+    if (index === undefined || index < 0 || index >= tuple.elements.length) return undefined;
+
+    const updatedChild = this.updateTupleProjection(tuple.elements[index], remaining, replacement);
+    if (updatedChild === undefined) return undefined;
+    const elements = [...tuple.elements];
+    elements[index] = updatedChild;
+    return { ...tuple, elements };
+  }
+
   private evaluateBorrowExpr(expr: BorrowExpr, env: RuntimeEnvironment): RuntimeOutcome {
     if (expr.operand.kind === 'UnaryExpr' && expr.operand.operator === '*' && expr.operand.operand.kind === 'Identifier') {
       const parentOutcome = this.evaluateExpr(expr.operand.operand, env);
@@ -1075,17 +1122,40 @@ export class Evaluator {
         return panicOutcome(invalidStateError('A shared reference cannot be reborrowed as mutable.', expr.span, this.ctx.config.fileName));
       }
       return normalOutcome({
-        tag: 'Reference', environment: parent.environment, name: parent.name, mutable: expr.isMutable,
+        tag: 'Reference',
+        environment: parent.environment,
+        name: parent.name,
+        mutable: expr.isMutable,
+        ...(parent.tuplePath && parent.tuplePath.length > 0 ? { tuplePath: [...parent.tuplePath] } : {}),
       } satisfies ReferenceRuntimeValue);
     }
-    if (expr.operand.kind !== 'Identifier') {
-      return panicOutcome(invalidStateError('A borrow must target a named local binding or reborrow through dereference.', expr.span, this.ctx.config.fileName));
+
+    const place = this.tupleBorrowPlace(expr.operand);
+    if (!place) {
+      return panicOutcome(invalidStateError(
+        'Runtime borrowing supports named bindings and tuple positional projections only.',
+        expr.span,
+        this.ctx.config.fileName,
+      ));
     }
-    const reference = env.borrow(expr.operand.name, expr.isMutable);
+
+    const reference = env.borrow(place.name, expr.isMutable, place.path);
     if (!reference) {
       return panicOutcome(invalidStateError(
-        expr.isMutable ? `Cannot mutably borrow '${expr.operand.name}': binding is missing or immutable.` : `Cannot borrow '${expr.operand.name}': binding was not found.`,
-        expr.span, this.ctx.config.fileName
+        expr.isMutable
+          ? `Cannot mutably borrow '${place.name}': binding is missing or immutable.`
+          : `Cannot borrow '${place.name}': binding was not found.`,
+        expr.span,
+        this.ctx.config.fileName,
+      ));
+    }
+
+    const binding = reference.environment.lookup(reference.name);
+    if (!binding || this.readTupleProjection(binding.value, reference.tuplePath ?? []) === undefined) {
+      return panicOutcome(invalidStateError(
+        `Tuple projection for reference '${place.name}' is not valid at runtime.`,
+        expr.span,
+        this.ctx.config.fileName,
       ));
     }
     return normalOutcome(reference);
@@ -1105,7 +1175,15 @@ export class Evaluator {
         if (!binding) {
           return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, expr.span, this.ctx.config.fileName));
         }
-        return normalOutcome(binding.value);
+        const projected = this.readTupleProjection(binding.value, reference.tuplePath ?? []);
+        if (projected === undefined) {
+          return panicOutcome(invalidStateError(
+            `Tuple projection for reference '${reference.name}' is no longer valid.`,
+            expr.span,
+            this.ctx.config.fileName,
+          ));
+        }
+        return normalOutcome(projected);
       }
       case 'not':
         // Strict Bool semantics — 'not' requires a Bool, never an integer/other
@@ -2301,13 +2379,34 @@ export class Evaluator {
     if (!binding) {
       return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, span, this.ctx.config.fileName));
     }
+
+    const tuplePath = reference.tuplePath ?? [];
+    const currentValue = this.readTupleProjection(binding.value, tuplePath);
+    if (currentValue === undefined) {
+      return panicOutcome(invalidStateError(
+        `Tuple projection for reference '${reference.name}' is no longer valid.`,
+        span,
+        this.ctx.config.fileName,
+      ));
+    }
+
     let nextValue = value;
     if (operator !== '=') {
-      const compound = this.applyCompoundOperator(operator, binding.value, value, span);
+      const compound = this.applyCompoundOperator(operator, currentValue, value, span);
       if (isPanic(compound)) return compound;
       nextValue = (compound as NormalOutcome).value;
     }
-    const assigned = reference.environment.assign(reference.name, nextValue);
+
+    const updatedRoot = this.updateTupleProjection(binding.value, tuplePath, nextValue);
+    if (updatedRoot === undefined) {
+      return panicOutcome(invalidStateError(
+        `Cannot update tuple projection through reference to '${reference.name}'.`,
+        span,
+        this.ctx.config.fileName,
+      ));
+    }
+
+    const assigned = reference.environment.assign(reference.name, updatedRoot);
     if (assigned !== 'ok') {
       return panicOutcome(invalidStateError(`Cannot assign through reference to '${reference.name}'.`, span, this.ctx.config.fileName));
     }

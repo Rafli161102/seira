@@ -98,6 +98,8 @@ export interface ReferenceRuntimeValue {
   readonly environment: RuntimeEnvironment;
   readonly name: string;
   readonly mutable: boolean;
+  /** Nested tuple positions projected from the referenced lexical binding. */
+  readonly tuplePath?: ReadonlyArray<number>;
 }
 
 export interface OptionRuntimeValue {
@@ -903,8 +905,10 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return v.value;
     case 'Byte':
       return `${v.value}b`;
-    case 'Reference':
-      return `${v.mutable ? '&mut ' : '&'}${v.name}`;
+    case 'Reference': {
+      const projection = (v.tuplePath ?? []).map((index) => `.${index}`).join('');
+      return `${v.mutable ? '&mut ' : '&'}${v.name}${projection}`;
+    }
     case 'Option':
       return v.isSome ? `Some(${formatRuntimeValue(v.inner!)})` : 'None';
     case 'Result':
@@ -971,7 +975,13 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       return a.value === (b as ByteRuntimeValue).value;
     case 'Reference': {
       const other = b as ReferenceRuntimeValue;
-      return a.environment === other.environment && a.name === other.name && a.mutable === other.mutable;
+      const leftPath = a.tuplePath ?? [];
+      const rightPath = other.tuplePath ?? [];
+      return a.environment === other.environment &&
+        a.name === other.name &&
+        a.mutable === other.mutable &&
+        leftPath.length === rightPath.length &&
+        leftPath.every((index, position) => index === rightPath[position]);
     }
     case 'Option': {
       const bOpt = b as OptionRuntimeValue;
@@ -1081,12 +1091,22 @@ export class RuntimeEnvironment {
   }
 
   /** Creates a reference to the exact lexical binding that currently owns the name. */
-  public borrow(name: string, mutable: boolean): ReferenceRuntimeValue | undefined {
+  public borrow(
+    name: string,
+    mutable: boolean,
+    tuplePath: ReadonlyArray<number> = [],
+  ): ReferenceRuntimeValue | undefined {
     const owner = this.findBindingEnvironment(name);
     if (!owner) return undefined;
     const binding = owner.bindings.get(name);
     if (!binding || (mutable && !binding.isMut)) return undefined;
-    return { tag: 'Reference', environment: owner, name, mutable };
+    return {
+      tag: 'Reference',
+      environment: owner,
+      name,
+      mutable,
+      ...(tuplePath.length > 0 ? { tuplePath: [...tuplePath] } : {}),
+    };
   }
 
   private findBindingEnvironment(name: string): RuntimeEnvironment | undefined {

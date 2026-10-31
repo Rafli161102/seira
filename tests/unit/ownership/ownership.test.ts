@@ -183,6 +183,38 @@ test('Ownership: source field borrows lower to independent MIR places', () => {
   assert.deepEqual(fieldLoans.map((op) => op.attributes?.placePath).sort(), ['left', 'right']);
 });
 
+test('Ownership: source tuple-position borrows lower to independent MIR places', () => {
+  const result = new CompilerDriver().compile(`
+    fn main() {
+      mut pair = (1, 2);
+      left_ref = &mut pair.0;
+      right_ref = &mut pair.1;
+      println(*left_ref);
+      println(*right_ref);
+    }
+  `, 'tuple-projection-borrows.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  const tupleLoans = operations.filter((op) =>
+    op.opcode === 'borrow.mutable' && typeof op.attributes?.placePath === 'string'
+  );
+  assert.deepEqual(tupleLoans.map((op) => op.attributes?.placePath).sort(), ['0', '1']);
+});
+
+test('Ownership: mutable borrows of the same tuple position conflict', () => {
+  const result = new CompilerDriver().compile(`
+    fn main() {
+      mut pair = (1, 2);
+      first_ref = &mut pair.0;
+      second_ref = &mut pair.0;
+      println(*first_ref);
+      println(*second_ref);
+    }
+  `, 'tuple-projection-conflict.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
+});
+
 test('Ownership: detects direct owner reads during an active mutable borrow', () => {
   const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); *exclusive += 1; }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);
