@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.0.16-d] - 2026-10-31
+
+### P1.15 — Effect System Foundation
+- Added an initial effect boundary for explicit `fn name!` declarations and effectful function types.
+- Pure functions calling effectful callees now receive `E8001`; effectful callers may invoke effectful callees.
+- Preserved top-level script calls as the explicit host boundary.
+- Included effect markers in trait method implementation compatibility checks (`E4006`).
+- Added an EffectCheck compiler checkpoint after effect-aware type checking and regression coverage for pure/effectful calls, function types, trait signatures, and the driver stage.
+- Deferred full effect inference, algebraic effect handlers, capability-to-effect classification for built-in host operations, and effect polymorphism.
+
 ## [0.0.15-d] - 2026-10-31
 
 ### P1.14 — Type System Hardening

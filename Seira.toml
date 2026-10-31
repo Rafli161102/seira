@@ -1,9 +1,9 @@
 # Seira Project Manifest
-# Specification: 0.0.15-d Type System Hardening
+# Specification: 0.0.16-d Effect System Foundation
 
 [package]
 name = "seira"
-version = "0.0.15-d"
+version = "0.0.16-d"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"

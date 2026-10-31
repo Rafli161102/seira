@@ -332,11 +332,11 @@ export class CompilerDriver {
       const typeChecker = new TypeChecker(context.diagnostics);
       typecheckResult = typeChecker.check(ast, resolverResult, filePath);
 
-      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Typecheck) {
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Typecheck || effectiveStop === CompilerStage.EffectCheck) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),
-          stage: CompilerStage.Typecheck,
+          stage: effectiveStop === CompilerStage.EffectCheck ? CompilerStage.EffectCheck : CompilerStage.Typecheck,
           tokens,
           ast,
           diagnostics: context.diagnostics,
