@@ -55,10 +55,19 @@ export function validateBackendContract(contract: BackendTargetContract): Backen
   if (!contract.callingConvention.trim()) add('Calling convention must not be empty.');
 
   const layout = contract.dataLayout;
-  if (layout.maxAlignment <= 0 || (layout.maxAlignment & (layout.maxAlignment - 1)) !== 0) {
-    add('Maximum data alignment must be a positive power of two.');
+  if (!Number.isInteger(layout.maxAlignment) || layout.maxAlignment <= 0 || (layout.maxAlignment & (layout.maxAlignment - 1)) !== 0) {
+    add('Maximum data alignment must be a positive integer power of two.');
   }
   if (layout.integerWidths.length === 0) add('At least one integer width must be declared.');
+  if (layout.integerWidths.some((width) => ![8, 16, 32, 64].includes(width))) {
+    add('Integer widths must be one of 8, 16, 32, or 64 bits.');
+  }
+  if (!['elf', 'macho', 'coff', 'wasm'].includes(contract.objectFormat)) {
+    add('Object format must be one of elf, macho, coff, or wasm.');
+  }
+  if (!['little', 'big'].includes(layout.endianness)) {
+    add('Data endianness must be little or big.');
+  }
   if (new Set(layout.integerWidths).size !== layout.integerWidths.length) {
     add('Integer widths must not contain duplicates.');
   }
@@ -68,12 +77,14 @@ export function validateBackendContract(contract: BackendTargetContract): Backen
     if (contract.objectFormat !== 'wasm') add('wasm32 target contracts must use the wasm object format.');
     if (layout.endianness !== 'little') add('wasm32 target contracts must use little-endian data layout.');
     if (!contract.triple.startsWith('wasm32')) add('wasm32 target triple must start with wasm32.');
-  } else {
+  } else if (contract.target === 'native') {
     if (layout.pointerWidth !== 32 && layout.pointerWidth !== 64) {
       add('Native target pointer width must be 32 or 64.');
     }
     if (contract.objectFormat === 'wasm') add('Native target contracts cannot use the wasm object format.');
     if (contract.triple.startsWith('wasm32')) add('Native target triple cannot use the wasm32 architecture.');
+  } else {
+    add('Backend target must be native or wasm32.');
   }
 
   if (contract.runtime.version !== contract.abiVersion) {
