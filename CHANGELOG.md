@@ -2,10 +2,8 @@
 
 ## [Unreleased]
 
-
-
 ### Repository Engineering
-- Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.17-d candidate.
+- Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.19-d baseline.
 - Marked Seed-era architecture documents as historical baselines.
 - Added ancestry-checked automatic cleanup for merged temporary branches and a guarded manual cleanup workflow.
 - Added a P1.18 backend readiness contract without claiming operational native or WASM emission.
