@@ -41,9 +41,9 @@ function wasmContract(): BackendTargetContract {
     ...nativeContract(),
     target: 'wasm32',
     triple: 'wasm32-unknown-unknown',
-    objectFormat: 'wasm',
+    objectFormat: 'elf',
     dataLayout: {
-      pointerWidth: 32,
+      pointerWidth: 64,
       endianness: 'little',
       maxAlignment: 16,
       integerWidths: [8, 16, 32, 64],
@@ -82,6 +82,8 @@ test('Backend contract: rejects ABI mismatch, invalid wasm pointer width, and du
   assert.ok(result.issues.some((issue) => issue.message.includes('ABI version')));
   assert.ok(result.issues.some((issue) => issue.message.includes('32-bit pointer')));
   assert.ok(result.issues.some((issue) => issue.message.includes('must be unique')));
+  assert.ok(result.issues.some((issue) => issue.message.includes('power of two')));
+  assert.ok(result.issues.some((issue) => issue.message.includes('wasm32 target contracts must use the wasm object format')));
 });
 
 test('Backend request: rejects invalid MIR before any emitter can run', () => {
