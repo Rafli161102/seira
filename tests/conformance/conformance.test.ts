@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import { compileSource } from '../../compiler/index.ts';
+import { compileSource, CompilerDriver, CompilerStage } from '../../compiler/index.ts';
 
 /**
  * Conformance Test Suite Foundation
@@ -103,4 +103,85 @@ test('Conformance: Seed language syntax test cases', () => {
       );
     }
   }
+});
+
+
+interface DevelopmentConformanceCase {
+  readonly id: string;
+  readonly source: string;
+  readonly stage: CompilerStage;
+  readonly succeeds: boolean;
+  readonly expectedCode?: string;
+}
+
+const DEVELOPMENT_CONFORMANCE_CASES: ReadonlyArray<DevelopmentConformanceCase> = [
+  {
+    id: 'DEV-CONF-001',
+    source: 'fn identity<T>(value: T) -> T { return value; } fn answer() -> Int { return identity(42); }',
+    stage: CompilerStage.Typecheck,
+    succeeds: true,
+  },
+  {
+    id: 'DEV-CONF-002',
+    source: 'fn increment(value: &mut Int) { *value += 1; } fn main() { mut count = 0; increment(&mut count); }',
+    stage: CompilerStage.Typecheck,
+    succeeds: true,
+  },
+  {
+    id: 'DEV-CONF-003',
+    source: 'fn write!() {} fn caller!() { write!(); }',
+    stage: CompilerStage.EffectCheck,
+    succeeds: true,
+  },
+  {
+    id: 'DEV-CONF-004',
+    source: 'fn write!() {} fn pure_caller() { write!(); }',
+    stage: CompilerStage.EffectCheck,
+    succeeds: false,
+    expectedCode: 'E8001',
+  },
+  {
+    id: 'DEV-CONF-005',
+    source: 'fn invalid() -> Int { return "not an integer"; }',
+    stage: CompilerStage.Typecheck,
+    succeeds: false,
+    expectedCode: 'E3004',
+  },
+  {
+    id: 'DEV-CONF-006',
+    source: 'fn invalid() { counter++ }',
+    stage: CompilerStage.Parse,
+    succeeds: false,
+  },
+];
+
+test('Conformance: Development semantic matrix across type, ownership syntax, and effects', () => {
+  for (const tc of DEVELOPMENT_CONFORMANCE_CASES) {
+    const result = new CompilerDriver().compile(tc.source, `${tc.id}.sr`, { stopAfter: tc.stage });
+    assert.equal(
+      result.success,
+      tc.succeeds,
+      `${tc.id} expected success=${tc.succeeds}; diagnostics:\n${result.diagnostics.format(tc.source)}`,
+    );
+    if (tc.expectedCode) {
+      assert.ok(
+        result.diagnostics.getErrors().some((diagnostic) => diagnostic.code === tc.expectedCode),
+        `${tc.id} expected diagnostic ${tc.expectedCode}`,
+      );
+    }
+  }
+});
+
+test('Conformance: diagnostics remain deterministic across repeated compilation', () => {
+  const source = 'fn invalid() -> Int { return "wrong"; }';
+  const compile = () => new CompilerDriver().compile(source, 'stable-diagnostic.sr', { stopAfter: CompilerStage.Typecheck });
+  const first = compile();
+  const second = compile();
+  const fingerprint = (result: ReturnType<CompilerDriver['compile']>) =>
+    result.diagnostics.getErrors().map((diagnostic) => [
+      diagnostic.code,
+      diagnostic.span.start,
+      diagnostic.span.end,
+    ]);
+  assert.deepEqual(fingerprint(first), fingerprint(second));
 });
