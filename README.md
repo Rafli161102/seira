@@ -237,6 +237,8 @@ HIR Lowering         [IMPLEMENTED on develop]
   ↓
 MIR Lowering         [IMPLEMENTED on develop]
   ↓
+MIR Optimization     [IMPLEMENTED (0.0.17-d, conservative O1)]
+  ↓
 Backend Emitter      [Architectural Contract (0.0.2-s)]
   ↓
 Native / WebAssembly [Planned: Alpha Series]
