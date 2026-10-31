@@ -38,7 +38,12 @@ function assertDifferential(source: string, file: string): void {
       terminator: block.terminator,
     })),
   }));
-  assert.equal(mir.success, true, (mir.error?.message ?? '') + '\nMIR=' + JSON.stringify(mirDump));
+  const hirDump = compilation.hir?.topLevelItems.map((item) => (
+    item.kind === 'HIRFunction'
+      ? { kind: item.kind, name: item.name, body: item.body }
+      : { kind: item.kind }
+  ));
+  assert.equal(mir.success, true, (mir.error?.message ?? '') + '\nHIR=' + JSON.stringify(hirDump) + '\nMIR=' + JSON.stringify(mirDump));
   assert.equal(mir.displayValue, ast.displayValue);
 }
 
