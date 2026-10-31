@@ -9,6 +9,7 @@
 
 import type {
   BasicBlock,
+  MIRFunction,
   MIRModule,
   MIROperation,
   MIRResourceOp,
