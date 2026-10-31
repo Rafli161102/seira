@@ -26,6 +26,7 @@ import {
   formatType,
   TypeChecker,
 } from '../../../compiler/typecheck/index.ts';
+import { createFunctionType, createTupleType, FLOAT_TYPE, INT_TYPE, isTypeAssignable, unifyTypes } from '../../../compiler/typecheck/types.ts';
 import { ExecutionEngine } from '../../../runtime/execution/engine.ts';
 import { isNormal } from '../../../runtime/execution/outcomes.ts';
 import {
@@ -765,3 +766,65 @@ test('Diagnostics: E4003 error message provides clear constraint context', () =>
   assert.ok(error.message.includes("does not satisfy trait constraint 'Printable'"));
 });
 
+
+
+test('Generics: repeated type variables unify invariantly and roll back failed substitutions', () => {
+  const genericT = { kind: 'GenericParam', name: 'T' } as const;
+  const repeated = createTupleType([genericT, genericT]);
+  const bindings = new Map<string, any>();
+
+  assert.equal(
+    unifyTypes(repeated, createTupleType([INT_TYPE, FLOAT_TYPE]), bindings),
+    false,
+    'one generic variable cannot represent two different concrete types'
+  );
+  assert.equal(bindings.size, 0, 'failed nested unification must not leak partial bindings');
+
+  assert.equal(
+    unifyTypes(repeated, createTupleType([INT_TYPE, INT_TYPE]), bindings),
+    true
+  );
+  assert.equal(bindings.get('T'), INT_TYPE);
+});
+
+test('Type unification: effectful and pure function types do not unify', () => {
+  const genericT = { kind: 'GenericParam', name: 'T' } as const;
+  const purePattern = createFunctionType([genericT], genericT, false);
+  const effectfulArgument = createFunctionType([INT_TYPE], INT_TYPE, true);
+  const bindings = new Map<string, any>();
+
+  assert.equal(unifyTypes(purePattern, effectfulArgument, bindings), false);
+  assert.equal(bindings.size, 0);
+});
+
+test('Function type assignability: parameter types are invariant until variance is specified', () => {
+  const intCallback = createFunctionType([INT_TYPE], INT_TYPE);
+  const floatCallback = createFunctionType([FLOAT_TYPE], INT_TYPE);
+
+  assert.equal(isTypeAssignable(intCallback, floatCallback), false);
+  assert.equal(isTypeAssignable(floatCallback, intCallback), false);
+});
+
+test('Generics: conflicting repeated arguments produce a type diagnostic', () => {
+  const source = `
+    fn first<T>(left: T, right: T) -> T { left }
+    fn main() {
+      value = first(1, 2.0);
+    }
+  `;
+  const { diagnostics, tcResult } = typecheckSource(source);
+  assert.equal(tcResult.success, false);
+  assert.ok(diagnostics.getErrors().some((error) => error.code === 'E3003'));
+});
+
+
+test('Generics: unknown inference is provisional and can be refined by a later concrete argument', () => {
+  const genericT = { kind: 'GenericParam', name: 'T' } as const;
+  const bindings = new Map<string, any>();
+
+  assert.equal(unifyTypes(genericT, { kind: 'Primitive', name: 'Unknown' }, bindings), true);
+  assert.equal(bindings.get('T')?.name, 'Unknown');
+
+  assert.equal(unifyTypes(genericT, INT_TYPE, bindings), true);
+  assert.equal(bindings.get('T'), INT_TYPE);
+});

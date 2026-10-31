@@ -417,48 +417,65 @@ export function substituteType(type: Type, substitutions: Map<string, Type>): Ty
  * Unifies a parameter type (which may contain GenericParams) with an argument type.
  * Populates bindings with resolved generic arguments.
  */
-export function unifyTypes(paramType: Type, argType: Type, bindings: Map<string, Type>): boolean {
+function unifyTypesInto(paramType: Type, argType: Type, bindings: Map<string, Type>): boolean {
   if (paramType.kind === 'GenericParam') {
+    // Unknown is provisional: later arguments can refine it to a concrete type.
+    if (isUnknown(argType)) {
+      if (!bindings.has(paramType.name)) bindings.set(paramType.name, UNKNOWN_TYPE);
+      return true;
+    }
     if (bindings.has(paramType.name)) {
       const existing = bindings.get(paramType.name)!;
-      return isTypeAssignable(existing, argType) || isTypeAssignable(argType, existing);
+      if (isUnknown(existing)) {
+        bindings.set(paramType.name, argType);
+        return true;
+      }
+      return areTypesEqual(existing, argType);
     }
     bindings.set(paramType.name, argType);
     return true;
   }
   if (paramType.kind === 'TypeAlias') {
-    return unifyTypes(paramType.target, argType, bindings);
+    return unifyTypesInto(paramType.target, argType, bindings);
   }
   if (argType.kind === 'TypeAlias') {
-    return unifyTypes(paramType, argType.target, bindings);
+    return unifyTypesInto(paramType, argType.target, bindings);
   }
   if (paramType.kind === 'Option' && argType.kind === 'Option') {
-    return unifyTypes(paramType.inner, argType.inner, bindings);
+    return unifyTypesInto(paramType.inner, argType.inner, bindings);
   }
   if (paramType.kind === 'Result' && argType.kind === 'Result') {
-    return unifyTypes(paramType.ok, argType.ok, bindings) && unifyTypes(paramType.err, argType.err, bindings);
+    return unifyTypesInto(paramType.ok, argType.ok, bindings) &&
+      unifyTypesInto(paramType.err, argType.err, bindings);
   }
   if (paramType.kind === 'List' && argType.kind === 'List') {
-    return unifyTypes(paramType.element, argType.element, bindings);
+    return unifyTypesInto(paramType.element, argType.element, bindings);
   }
   if (paramType.kind === 'Tuple' && argType.kind === 'Tuple') {
     if (paramType.elements.length !== argType.elements.length) return false;
-    return paramType.elements.every((elem, idx) => unifyTypes(elem, argType.elements[idx], bindings));
+    return paramType.elements.every((elem, idx) =>
+      unifyTypesInto(elem, argType.elements[idx], bindings)
+    );
   }
   if (paramType.kind === 'Map' && argType.kind === 'Map') {
-    return unifyTypes(paramType.key, argType.key, bindings) && unifyTypes(paramType.value, argType.value, bindings);
+    return unifyTypesInto(paramType.key, argType.key, bindings) &&
+      unifyTypesInto(paramType.value, argType.value, bindings);
   }
   if (paramType.kind === 'Set' && argType.kind === 'Set') {
-    return unifyTypes(paramType.element, argType.element, bindings);
+    return unifyTypesInto(paramType.element, argType.element, bindings);
   }
   if (paramType.kind === 'Reference' && argType.kind === 'Reference') {
-    return paramType.mutable === argType.mutable && unifyTypes(paramType.inner, argType.inner, bindings);
+    return paramType.mutable === argType.mutable &&
+      unifyTypesInto(paramType.inner, argType.inner, bindings);
   }
   if (paramType.kind === 'Function' && argType.kind === 'Function') {
     if (paramType.params.length !== argType.params.length) return false;
+    if (paramType.isEffectful !== argType.isEffectful) return false;
     return (
-      paramType.params.every((p, idx) => unifyTypes(p, argType.params[idx], bindings)) &&
-      unifyTypes(paramType.returnType, argType.returnType, bindings)
+      paramType.params.every((p, idx) =>
+        unifyTypesInto(p, argType.params[idx], bindings)
+      ) &&
+      unifyTypesInto(paramType.returnType, argType.returnType, bindings)
     );
   }
   if (paramType.kind === 'Custom' && argType.kind === 'Custom') {
@@ -466,9 +483,23 @@ export function unifyTypes(paramType: Type, argType: Type, bindings: Map<string,
     const pArgs = paramType.typeArguments ?? [];
     const aArgs = argType.typeArguments ?? [];
     if (pArgs.length !== aArgs.length) return false;
-    return pArgs.every((p, idx) => unifyTypes(p, aArgs[idx], bindings));
+    return pArgs.every((p, idx) => unifyTypesInto(p, aArgs[idx], bindings));
   }
   return isTypeAssignable(paramType, argType);
+}
+
+/**
+ * Unifies a parameter type (which may contain GenericParams) with an argument
+ * type. Unification is strict for repeated variables and transactional: a failed
+ * nested match never leaves partial substitutions in the caller's map.
+ */
+export function unifyTypes(paramType: Type, argType: Type, bindings: Map<string, Type>): boolean {
+  const candidate = new Map(bindings);
+  if (!unifyTypesInto(paramType, argType, candidate)) return false;
+
+  bindings.clear();
+  for (const [name, resolved] of candidate) bindings.set(name, resolved);
+  return true;
 }
 
 export function isPrimitive(t: Type, name?: PrimitiveTypeName): boolean {

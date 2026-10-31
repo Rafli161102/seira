@@ -1,8 +1,8 @@
-# Current Architecture Status — Seira 0.0.14-d
+# Current Architecture Status — Seira 0.0.15-d
 
 **As of:** 2026-10-31  
 **Development baseline:** `2640cda8c193b9ef09733be2cfbc6fa6dc05ee1a`  
-**Current milestone:** P1.13 — Ownership & Borrow Checker Hardening  
+**Current milestone:** P1.14 — Type System Hardening  
 **Project status:** Experimental; not production-ready; Alpha has not been released.
 
 This document supersedes stale implementation-status tables in historical Seed architecture documents. Those documents remain design-history records, not statements of current implementation.
@@ -11,7 +11,7 @@ This document supersedes stale implementation-status tables in historical Seed a
 
 | Area | Current status | Evidence / boundary |
 |---|---|---|
-| Lexer, parser, AST, resolver, type checker | Implemented | `compiler/lexer`, `parser`, `ast`, `resolver`, `typecheck` |
+| Lexer, parser, AST, resolver, type checker | Implemented and hardened | `compiler/lexer`, `parser`, `ast`, `resolver`, `typecheck`; generic inference uses strict repeated-variable matching and transactional substitutions |
 | HIR lowering and validation | Implemented | AST to typed, source-aware HIR |
 | MIR lowering and verification | Implemented | HIR to typed CFG/SSA with block parameters, edge arguments, dominance/use validation |
 | Resource lifecycle analysis | Implemented | MIR acquire/release events and CFG data-flow |
@@ -23,6 +23,18 @@ This document supersedes stale implementation-status tables in historical Seed a
 | Native LLVM code generation | Not implemented | Backend returns `E9001` |
 | WebAssembly code generation | Not implemented | Backend returns `E9001` |
 | AOT build artifacts | Not implemented | CLI build remains reserved |
+
+## Type system boundary
+
+P1.14 makes generic unification transactional and strict for repeated generic parameters. A failed nested match leaves the caller's substitution map unchanged. Unknown argument types do not prematurely bind a generic variable, allowing later arguments to infer it. Function unification includes the effect marker. Function parameter compatibility is invariant until Seira defines a formal subtype/variance model; this avoids silently accepting callbacks with incompatible input contracts.
+
+This is not a complete type-system overhaul. Recursive type aliases, richer trait solver coherence, associated types, higher-kinded types, and formal variance/subtyping remain outside this milestone.
+
+## Type system boundary
+
+P1.14 makes generic unification transactional and strict for repeated generic parameters. Failed nested matches do not leak partial substitutions. Unknown argument types may provisionally bind a generic variable and can be refined by a later concrete argument; when no concrete argument is available, the unresolved placeholder preserves existing trait-constrained inference behavior. Function unification includes the effect marker. Function parameter compatibility is invariant until Seira defines a formal subtype/variance model.
+
+This is not a complete type-system overhaul. Recursive type aliases, a richer trait solver/coherence model, associated types, higher-kinded types and formal variance/subtyping remain outside this milestone.
 
 ## Ownership boundary
 
@@ -44,7 +56,6 @@ Permanent branches are `main` (release), `develop` (compiler integration), and `
 
 ## Next milestones
 
-- P1.14 / 0.0.15-d — Type System Hardening
 - P1.15 / 0.0.16-d — Effect System Foundation
 - P1.16 / 0.0.17-d — MIR Optimization Foundation
 - P1.17 / 0.0.18-d — Compiler Conformance & Differential Testing
