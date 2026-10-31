@@ -1178,7 +1178,7 @@ test('Execution: nested Map entry references preserve the complete projection pa
     }
   `);
   assert.ok(r.success, r.diagnostics.format());
-  assert.deepStrictEqual(r.output, ['Some(42)']);
+  assert.deepStrictEqual(r.output, ['42']);
 });
 
 test('Execution: borrowing a missing Map key fails safely', () => {

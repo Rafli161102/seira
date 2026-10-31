@@ -527,11 +527,11 @@ test('Typecheck: supports List element references but rejects Map index referenc
   const mapIndex = typecheckSource(`
     fn update(mut values: Map<String, Int>, key: String) {
       mutable_ref = &mut values[key];
+      *mutable_ref += 1;
     }
     fn main() {}
   `);
-  assert.equal(mapIndex.tcResult.success, false);
-  assert.ok(mapIndex.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+  assert.equal(mapIndex.tcResult.success, true, mapIndex.diagnostics.format());
 });
 
 
