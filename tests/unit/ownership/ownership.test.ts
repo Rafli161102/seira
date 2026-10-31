@@ -70,6 +70,26 @@ test('Ownership: ResourceCheck stage accepts a resource with a complete with lif
   assert.deepEqual(result.ownership?.issues, []);
 });
 
+test('Ownership: source-level shared borrow is lowered and ended at lexical scope exit', () => {
+  const result = new CompilerDriver().compile(`fn inspect(value: &Int) {} fn main() { let count = 7; inspect(&count); }`, 'shared-borrow.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  assert.ok(operations.some((op) => op.opcode === 'borrow.shared'));
+  assert.ok(operations.some((op) => op.opcode === 'borrow.end'));
+});
+
+test('Ownership: rejects conflicting mutable and shared source-level borrows', () => {
+  const result = new CompilerDriver().compile(`fn main() { mut count = 7; shared = &count; exclusive = &mut count; }`, 'borrow-conflict.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
+});
+
+test('Ownership: detects direct owner reads during an active mutable borrow', () => {
+  const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7006'));
+});
+
 test('Ownership: detects use after release using ordered MIR resource events', () => {
   const result = ownershipModule([
     operation('call.method', [11], 21),

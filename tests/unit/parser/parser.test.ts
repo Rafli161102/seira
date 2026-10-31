@@ -26,6 +26,30 @@ function parseSource(src: string) {
   return { ast: parser.parse(), diagnostics: parser.getDiagnostics() };
 }
 
+test('Parser: parses shared and mutable reference types and borrow expressions', () => {
+  const { ast, diagnostics } = parseSource(`
+    fn inspect(value: &Int, mut_value: &mut Int) {}
+    fn main() {
+      let count = 1;
+      shared = &count;
+      exclusive = &mut count;
+    }
+  `);
+  assert.equal(diagnostics.hasErrors(), false);
+  const inspect = ast.items[0] as FunctionDecl;
+  assert.equal(inspect.params[0].typeAnnotation?.name, 'Reference');
+  assert.equal(inspect.params[0].typeAnnotation?.isMutableReference, false);
+  assert.equal(inspect.params[1].typeAnnotation?.name, 'Reference');
+  assert.equal(inspect.params[1].typeAnnotation?.isMutableReference, true);
+  const main = ast.items[1] as FunctionDecl;
+  const shared = main.body.statements[1] as BindingStmt;
+  const exclusive = main.body.statements[2] as BindingStmt;
+  assert.equal(shared.initializer?.kind, 'BorrowExpr');
+  assert.equal((shared.initializer as any).isMutable, false);
+  assert.equal(exclusive.initializer?.kind, 'BorrowExpr');
+  assert.equal((exclusive.initializer as any).isMutable, true);
+});
+
 test('Parser: parses standard function declaration', () => {
   const source = `
     fn main() {

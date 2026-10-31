@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — P1.4 Reference Types & Borrow Syntax
+
+- Added `&T` and `&mut T` reference annotations plus `&value` and `&mut value` borrow expressions.
+- Added reference-aware structural type checking and HIR type lowering.
+- Lowered shared/mutable borrows into MIR and emitted lexical `borrow.end` operations.
+- Connected MIR operand reads to ownership analysis so an active mutable loan blocks direct owner access.
+- Added `E3008` diagnostics for unsupported borrow places, mutable borrowing of immutable bindings, and reference escapes. Full lifetime inference/NLL and dereference syntax remain future work.
+
+
 All notable changes to the Seira programming language will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

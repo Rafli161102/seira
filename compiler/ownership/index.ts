@@ -270,6 +270,10 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
       const processOperation = (operation: MIROperation): void => {
         const opcode = operation.opcode;
         const operands = operation.operands;
+        const ownershipManagedOpcodes = new Set(['borrow.shared', 'borrow.mutable', 'borrow.end', 'ownership.move', 'ownership.drop', 'ownership.write']);
+        if (!ownershipManagedOpcodes.has(opcode)) {
+          for (const operand of operands) checkValueUse(operand, operation.source, opcode);
+        }
 
         if (opcode === 'borrow.shared' || opcode === 'borrow.mutable') {
           const ownerId = operands[0];

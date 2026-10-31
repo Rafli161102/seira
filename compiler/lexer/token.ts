@@ -68,6 +68,7 @@ export const TokenType = {
   DotDotLess: '..<',
   Pipeline: '|>',
   Pipe: '|',
+  Ampersand: '&',
   Question: '?',
   QuestionDot: '?.',
   OptionFallback: '??',

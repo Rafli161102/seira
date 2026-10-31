@@ -19,6 +19,7 @@ export type HIRTypeKind =
   | 'Tuple'
   | 'Map'
   | 'Set'
+  | 'Reference'
   | 'Function'
   | 'GenericParam'
   | 'Custom'
@@ -33,6 +34,7 @@ export interface HIRType {
   readonly paramTypes?: ReadonlyArray<HIRType>;
   readonly returnType?: HIRType;
   readonly isEffectful?: boolean;
+  readonly isMutableReference?: boolean;
 }
 
 export function makePrimitiveHIRType(name: string): HIRType {
@@ -137,6 +139,11 @@ export function typeToHIRType(t: Type): HIRType {
       };
     }
 
+    case 'Reference': {
+      const inner = typeToHIRType(t.inner);
+      return { id, kind: 'Reference', name: formatted, typeArguments: [inner], isMutableReference: t.mutable };
+    }
+
     case 'Function': {
       const paramTypes = t.params.map(typeToHIRType);
       const returnType = typeToHIRType(t.returnType);
@@ -187,6 +194,12 @@ export function typeToHIRType(t: Type): HIRType {
 
 export function typeAnnotationToHIRType(ann: TypeAnnotation): HIRType {
   if (!ann) return HIR_UNKNOWN_TYPE;
+
+  if (ann.name === 'Reference') {
+    const inner = ann.generics && ann.generics.length > 0 ? typeAnnotationToHIRType(ann.generics[0]) : HIR_UNKNOWN_TYPE;
+    const name = `${ann.isMutableReference ? '&mut ' : '&'}${inner.name}`;
+    return { id: createTypeId(name), kind: 'Reference', name, typeArguments: [inner], isMutableReference: ann.isMutableReference ?? false };
+  }
 
   // Union type
   if (ann.unionTypes && ann.unionTypes.length > 0) {

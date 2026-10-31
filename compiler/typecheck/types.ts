@@ -88,6 +88,12 @@ export interface SetType {
   readonly element: Type;
 }
 
+export interface ReferenceType {
+  readonly kind: 'Reference';
+  readonly inner: Type;
+  readonly mutable: boolean;
+}
+
 export type Type =
   | PrimitiveType
   | OptionType
@@ -96,6 +102,7 @@ export type Type =
   | TupleType
   | MapType
   | SetType
+  | ReferenceType
   | FunctionType
   | GenericParamType
   | TypeAliasType
@@ -192,6 +199,8 @@ export function formatType(type: Type): string {
       return `Map<${formatType(type.key)}, ${formatType(type.value)}>`;
     case 'Set':
       return `Set<${formatType(type.element)}>`;
+    case 'Reference':
+      return `${type.mutable ? '&mut ' : '&'}${formatType(type.inner)}`;
     case 'Function': {
       const effectMarker = type.isEffectful ? '!' : '';
       const generics =
@@ -258,6 +267,10 @@ export function areTypesEqual(a: Type, b: Type): boolean {
     }
     case 'Set':
       return areTypesEqual(a.element, (b as SetType).element);
+    case 'Reference': {
+      const bRef = b as ReferenceType;
+      return a.mutable === bRef.mutable && areTypesEqual(a.inner, bRef.inner);
+    }
     case 'Function': {
       const bFn = b as FunctionType;
       if (a.params.length !== bFn.params.length) return false;
@@ -301,6 +314,10 @@ export function isTypeAssignable(target: Type, source: Type): boolean {
 
   if (target.kind === 'TypeAlias') return isTypeAssignable(target.target, source);
   if (source.kind === 'TypeAlias') return isTypeAssignable(target, source.target);
+
+  if (target.kind === 'Reference' && source.kind === 'Reference') {
+    return target.mutable === source.mutable && isTypeAssignable(target.inner, source.inner);
+  }
 
   // Union sources require every variant to be assignable to the target
   if (source.kind === 'Union') {
@@ -368,6 +385,8 @@ export function substituteType(type: Type, substitutions: Map<string, Type>): Ty
       );
     case 'Set':
       return createSetType(substituteType(type.element, substitutions));
+    case 'Reference':
+      return { kind: 'Reference', inner: substituteType(type.inner, substitutions), mutable: type.mutable };
     case 'Function':
       return createFunctionType(
         type.params.map((p) => substituteType(p, substitutions)),
@@ -431,6 +450,9 @@ export function unifyTypes(paramType: Type, argType: Type, bindings: Map<string,
   }
   if (paramType.kind === 'Set' && argType.kind === 'Set') {
     return unifyTypes(paramType.element, argType.element, bindings);
+  }
+  if (paramType.kind === 'Reference' && argType.kind === 'Reference') {
+    return paramType.mutable === argType.mutable && unifyTypes(paramType.inner, argType.inner, bindings);
   }
   if (paramType.kind === 'Function' && argType.kind === 'Function') {
     if (paramType.params.length !== argType.params.length) return false;

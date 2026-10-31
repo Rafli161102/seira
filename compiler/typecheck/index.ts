@@ -28,6 +28,7 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BorrowExpr,
   BreakStmt,
   CallExpr,
   ConstStmt,
@@ -527,6 +528,10 @@ export class TypeChecker {
       ? this.resolveTypeAnnotation(fn.returnType)
       : UNIT_TYPE;
 
+    if (declaredReturn.kind === 'Reference') {
+      this.diagnostics.reportError('E3008', 'Reference return types are not supported until explicit lifetime annotations are available.', fn.returnType?.span ?? fn.span, this.currentFile);
+    }
+
     // Register parameter types on their declared symbols
     for (const param of fn.params) {
       const paramType = param.typeAnnotation
@@ -543,6 +548,9 @@ export class TypeChecker {
 
     if (fn.isExpressionBody && fn.bodyExpr) {
       const exprType = this.checkExpression(fn.bodyExpr, declaredReturn);
+      if (exprType.kind === 'Reference') {
+        this.diagnostics.reportError('E3008', 'A borrowed reference cannot escape its defining function in this language edition.', fn.bodyExpr.span, this.currentFile);
+      }
       if (fn.returnType && !isTypeAssignable(declaredReturn, exprType) && !isUnknown(exprType)) {
         this.diagnostics.reportError(
           'E3004',
@@ -554,6 +562,9 @@ export class TypeChecker {
       }
     } else {
       const bodyType = this.checkBlock(fn.body);
+      if (bodyType.kind === 'Reference') {
+        this.diagnostics.reportError('E3008', 'A borrowed reference cannot escape its defining function in this language edition.', fn.body.statements[fn.body.statements.length - 1]?.span ?? fn.span, this.currentFile);
+      }
       const hasExplicitTrailingReturn =
         fn.body.statements.length > 0 &&
         fn.body.statements[fn.body.statements.length - 1].kind === 'ReturnStmt';
@@ -748,6 +759,10 @@ export class TypeChecker {
     const valType = stmt.value
       ? this.checkExpression(stmt.value, this.currentFunctionReturnType)
       : UNIT_TYPE;
+
+    if (valType.kind === 'Reference') {
+      this.diagnostics.reportError('E3008', 'A borrowed reference cannot escape its defining function in this language edition.', stmt.value?.span ?? stmt.span, this.currentFile);
+    }
 
     if (this.currentFunctionReturnType) {
       if (!isTypeAssignable(this.currentFunctionReturnType, valType) && !isUnknown(valType)) {
@@ -944,6 +959,20 @@ export class TypeChecker {
         } else {
           resultType = UNKNOWN_TYPE;
         }
+        break;
+      }
+      case 'BorrowExpr': {
+        const borrow = expr as BorrowExpr;
+        const operandType = this.checkExpression(borrow.operand);
+        if (borrow.operand.kind !== 'Identifier') {
+          this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding in this language edition.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
+        } else if (borrow.isMutable) {
+          const symbol = this.currentResolverResult?.resolvedSymbols.get(borrow.operand);
+          if (!symbol?.isMut) {
+            this.diagnostics.reportError('E3008', `Cannot mutably borrow immutable binding '${borrow.operand.name}'.`, borrow.operand.span, this.currentFile, `Declare the binding as mutable with 'mut ${borrow.operand.name}' before using '&mut'.`);
+          }
+        }
+        resultType = { kind: 'Reference', inner: operandType, mutable: borrow.isMutable };
         break;
       }
       case 'UnaryExpr': {
@@ -3022,6 +3051,10 @@ export class TypeChecker {
       case 'Set': {
         const elem = annotation.generics && annotation.generics.length > 0 ? this.resolveTypeAnnotation(annotation.generics[0]) : UNKNOWN_TYPE;
         return createSetType(elem);
+      }
+      case 'Reference': {
+        const inner = annotation.generics && annotation.generics.length > 0 ? this.resolveTypeAnnotation(annotation.generics[0]) : UNKNOWN_TYPE;
+        return { kind: 'Reference', inner, mutable: annotation.isMutableReference ?? false };
       }
       default: {
         if (annotation.generics && annotation.generics.length > 0) {

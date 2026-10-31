@@ -24,6 +24,7 @@ import type {
   AssignmentExpr,
   AssignStmt,
   BindingStmt,
+  BorrowExpr,
   Block,
   BlockExpr,
   BreakStmt,
@@ -415,6 +416,15 @@ export class Parser {
   }
 
   private parsePrimaryTypeAnnotation(): TypeAnnotation {
+    if (this.match(TokenType.Ampersand)) {
+      const startTok = this.previous();
+      const isMutableReference = this.match(TokenType.Mut);
+      const inner = this.parsePrimaryTypeAnnotation();
+      return {
+        kind: 'TypeAnnotation', name: 'Reference', generics: [inner], isMutableReference,
+        span: { start: startTok.span.start, end: inner.span.end, sourceId: startTok.span.sourceId, line: startTok.span.line, column: startTok.span.column },
+      };
+    }
     if (this.match(TokenType.OpenParen)) {
       const startTok = this.previous();
       const innerTypes: TypeAnnotation[] = [];
@@ -1540,8 +1550,17 @@ export class Parser {
     return expr;
   }
 
-  // Precedence 11: Unary Prefix: not, -
+  // Precedence 11: Unary Prefix: not, -, shared/mutable borrow.
   private parseUnary(): Expr {
+    if (this.match(TokenType.Ampersand)) {
+      const op = this.previous();
+      const isMutable = this.match(TokenType.Mut);
+      const operand = this.parseUnary();
+      return {
+        kind: 'BorrowExpr', operand, isMutable,
+        span: { start: op.span.start, end: operand.span.end, sourceId: op.span.sourceId, line: op.span.line, column: op.span.column },
+      } as BorrowExpr;
+    }
     if (this.match(TokenType.Not, TokenType.Minus)) {
       const op = this.previous();
       const operand = this.parseUnary();

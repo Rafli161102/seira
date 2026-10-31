@@ -59,3 +59,10 @@ Returning an owned resource value is treated as an ownership transfer to the cal
 This is a conservative ownership foundation, not a complete Rust-style borrow checker. In particular, it does not yet perform source-level lifetime inference, field-sensitive borrowing, reborrowing, closure-capture ownership, escape analysis across calls, or alias-aware borrow propagation through arbitrary block parameters. Those capabilities require explicit reference types and ownership-aware call signatures in HIR/MIR.
 
 The next increment should add reference types and source syntax, lower them to the opcodes above, and extend the checker with reborrows, call-boundary effects, and non-lexical lifetimes.
+
+
+## Source-level references (P1.4)
+
+The frontend accepts shared and mutable reference annotations (`&T`, `&mut T`) and borrow expressions (`&value`, `&mut value`). This increment restricts borrow places to named local bindings; a mutable borrow also requires the source binding to be declared with `mut`. HIR carries the reference type, and MIR emits `borrow.shared` / `borrow.mutable` followed by `borrow.end` at lexical scope exit. The ownership pass checks conflicting active loans and direct owner reads while an exclusive mutable loan is active.
+
+This is an initial lexical-borrow model, not a complete lifetime system. Reference return types and borrowed references escaping a function are rejected with `E3008`. Reborrowing, field-sensitive loans, dereference syntax, inferred/NLL lifetimes, closure-capture borrowing, and references to temporaries are not part of this increment.

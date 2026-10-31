@@ -18,6 +18,7 @@ import type {
   AssignmentExpr,
   BinaryExpr,
   BindingStmt,
+  BorrowExpr,
   Block,
   BlockExpr,
   CallExpr,
@@ -1018,6 +1019,11 @@ export class HIRLowering {
           type: exprType,
           source: origin,
         };
+      }
+
+      case 'BorrowExpr': {
+        const borrow = expr as BorrowExpr;
+        return { kind: 'HIRUnaryExpr', id: this.allocId(), operator: borrow.isMutable ? 'borrow.mutable' : 'borrow.shared', operand: this.lowerExpr(borrow.operand), type: exprType, source: origin };
       }
 
       // Canonical desugaring: a |> b

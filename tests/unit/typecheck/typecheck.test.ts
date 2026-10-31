@@ -26,6 +26,24 @@ function typecheckSource(src: string) {
   return { ast, tcResult, diagnostics: tcResult.diagnostics };
 }
 
+test('Typecheck: reference annotations and borrow mutability are checked', () => {
+  const valid = typecheckSource(`
+    fn inspect(value: &Int) {}
+    fn update(value: &mut Int) {}
+    fn main() {
+      let count = 1;
+      inspect(&count);
+      mut total = 2;
+      update(&mut total);
+    }
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+  assert.equal(valid.diagnostics.hasErrors(), false);
+  const invalid = typecheckSource(`fn update(value: &mut Int) {} fn main() { let count = 1; update(&mut count); }`);
+  assert.equal(invalid.tcResult.success, false);
+  assert.ok(invalid.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
 test('Typecheck: static type inference for primitive literals', () => {
   const source = `
     fn main() {

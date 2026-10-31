@@ -18,6 +18,7 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BorrowExpr,
   BreakStmt,
   CallExpr,
   ConstStmt,
@@ -1195,6 +1196,10 @@ export class Resolver {
       case 'UnaryExpr': {
         const un = expr as UnaryExpr;
         this.resolveExpression(un.operand);
+        break;
+      }
+      case 'BorrowExpr': {
+        this.resolveExpression((expr as BorrowExpr).operand);
         break;
       }
       case 'CallExpr': {

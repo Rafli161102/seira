@@ -99,6 +99,7 @@ class FunctionLowerer {
   private locals: Locals = new Map();
   private readonly mutableSymbols = new Set<string>();
   private resourceStack: Array<{ value: MIRValue; cleanup: string; source: MIRSource }> = [];
+  private borrowScopes: Array<Array<{ valueId: ValueId; source?: MIRSource }>> = [];
   private loopTargets: Array<{ breakTarget: number; continueTarget: number; resourceDepth: number; mutableSymbols: ReadonlyArray<string> }> = [];
 
   constructor(fn: HIRFunction) {
@@ -182,6 +183,8 @@ class FunctionLowerer {
 
   private lowerBlock(block: HIRBlock): MIRValue | undefined {
     const outerSymbols = new Set(this.locals.keys());
+    const borrowScope: Array<{ valueId: ValueId; source?: MIRSource }> = [];
+    this.borrowScopes.push(borrowScope);
     for (const stmt of block.statements) {
       if (this.current.terminator) break;
       this.lowerStmt(stmt);
@@ -189,6 +192,15 @@ class FunctionLowerer {
     const result = !this.current.terminator && block.resultExpr
       ? this.lowerExpr(block.resultExpr)
       : undefined;
+    if (!this.current.terminator) {
+      const parentScope = this.borrowScopes.length > 1 ? this.borrowScopes[this.borrowScopes.length - 2] : undefined;
+      for (const borrow of [...borrowScope].reverse()) {
+        if (result?.id === borrow.valueId && parentScope) parentScope.push(borrow);
+        else this.emitBorrowEnd(borrow);
+      }
+      borrowScope.length = 0;
+    }
+    this.borrowScopes.pop();
     // Keep branch-local bindings alive through the block result, but do not
     // leak them into the enclosing lexical scope.
     for (const symbolId of this.locals.keys()) {
@@ -225,6 +237,7 @@ class FunctionLowerer {
         return;
       case 'HIRReturnStmt': {
         const result = stmt.value ? this.lowerExpr(stmt.value) : undefined;
+        this.endActiveBorrows();
         this.releaseResources(0);
         this.terminate({ kind: 'Return', value: result?.id });
         return;
@@ -246,6 +259,7 @@ class FunctionLowerer {
       case 'HIRBreakStmt': {
         const target = this.loopTargets[this.loopTargets.length - 1];
         if (target) {
+          this.endCurrentBorrowScope();
           this.releaseResources(target.resourceDepth);
           const args = target.mutableSymbols.map((symbolId) => this.locals.get(symbolId)?.id).filter((id): id is number => id !== undefined);
           this.terminate({ kind: 'Branch', target: target.breakTarget, args });
@@ -255,12 +269,32 @@ class FunctionLowerer {
       case 'HIRContinueStmt': {
         const target = this.loopTargets[this.loopTargets.length - 1];
         if (target) {
+          this.endCurrentBorrowScope();
           this.releaseResources(target.resourceDepth);
           const args = target.mutableSymbols.map((symbolId) => this.locals.get(symbolId)?.id).filter((id): id is number => id !== undefined);
           this.terminate({ kind: 'Branch', target: target.continueTarget, args });
         }
         return;
       }
+    }
+  }
+
+  private emitBorrowEnd(borrow: { valueId: ValueId; source?: MIRSource }): void {
+    this.current.operations.push({ op: 'borrow.end', opcode: 'borrow.end', operands: [borrow.valueId], source: borrow.source });
+  }
+
+  private endCurrentBorrowScope(): void {
+    const scope = this.borrowScopes[this.borrowScopes.length - 1];
+    if (!scope) return;
+    for (const borrow of [...scope].reverse()) this.emitBorrowEnd(borrow);
+    scope.length = 0;
+  }
+
+  private endActiveBorrows(): void {
+    for (let index = this.borrowScopes.length - 1; index >= 0; index--) {
+      const scope = this.borrowScopes[index];
+      for (const borrow of [...scope].reverse()) this.emitBorrowEnd(borrow);
+      scope.length = 0;
     }
   }
 
@@ -368,6 +402,11 @@ class FunctionLowerer {
         return this.lowerBlock(expr.block) ?? this.emit('unit', [], expr.type, expr.id);
       case 'HIRUnaryExpr': {
         const operand = this.lowerExpr(expr.operand);
+        if (expr.operator === 'borrow.shared' || expr.operator === 'borrow.mutable') {
+          const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id);
+          this.borrowScopes[this.borrowScopes.length - 1]?.push({ valueId: borrow.id, source: this.findOrigin(expr.id) });
+          return borrow;
+        }
         return this.emit('unary', [operand.id], expr.type, expr.id, { operator: expr.operator });
       }
       case 'HIRBinaryExpr': {

@@ -33,6 +33,7 @@ export type NodeKind =
   | 'WithStmt'
   | 'BinaryExpr'
   | 'UnaryExpr'
+  | 'BorrowExpr'
   | 'PipelineExpr'
   | 'OptionFallbackExpr'
   | 'OptionPropagateExpr'
@@ -144,6 +145,7 @@ export interface TypeAnnotation extends BaseNode {
   readonly functionParams?: TypeAnnotation[];
   readonly returnType?: TypeAnnotation;
   readonly unionTypes?: TypeAnnotation[];
+  readonly isMutableReference?: boolean;
 }
 
 export interface Param extends BaseNode {
@@ -330,6 +332,7 @@ export interface ConstructorPattern extends BaseNode {
 export type Expr =
   | BinaryExpr
   | UnaryExpr
+  | BorrowExpr
   | PipelineExpr
   | OptionFallbackExpr
   | OptionPropagateExpr
@@ -360,6 +363,12 @@ export interface UnaryExpr extends BaseNode {
   readonly kind: 'UnaryExpr';
   readonly operator: string; // 'not', '-'
   readonly operand: Expr;
+}
+
+export interface BorrowExpr extends BaseNode {
+  readonly kind: 'BorrowExpr';
+  readonly operand: Expr;
+  readonly isMutable: boolean;
 }
 
 export interface PipelineExpr extends BaseNode {
