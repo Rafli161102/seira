@@ -1192,3 +1192,17 @@ test('Execution: borrowing a missing Map key fails safely', () => {
   assert.equal(r.success, false);
   assert.ok(r.diagnostics.getErrors().some((error) => error.code.startsWith('R')));
 });
+
+
+test('Execution: shared Map key reference reads the stored value without wrapping it in Option', () => {
+  const r = run(`
+    fn main() {
+      scores = {"alpha": 10, "beta": 20};
+      score_ref = &scores["alpha"];
+      println(*score_ref);
+      println(scores["alpha"]);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['10', 'Some(10)']);
+});
