@@ -103,7 +103,7 @@ export class MIRInterpreter {
           values.set(operation.dest, value);
         }
       }
-      this.tick(fn.name + ':' + block.name + ':terminator);
+      this.tick(fn.name + ':' + block.name + ':terminator');
       const term: BasicBlock['terminator'] = block.terminator;
       if (term.kind === 'Return') return term.value === undefined ? null : this.read(values, term.value, 'return');
       if (term.kind === 'Panic') throw new MIRExecutionFault('E9102', term.message);
