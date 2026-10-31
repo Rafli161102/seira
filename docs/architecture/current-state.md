@@ -46,8 +46,9 @@ The AST runtime remains the supported execution path. PR #26 proposes an experim
 
 ## Branch synchronization
 
-- main: 0.0.20-d release baseline.
-- develop: 0.0.20-d integration baseline.
+- main: 0.0.19-d release baseline.
+- develop: 0.0.19-d integration baseline.
+- feature/p1.19-mir-interpreter: proposed 0.0.20-d milestone; PR #26 is open.
 - dev-infra: infrastructure and CI.
 - feature branches: temporary and cleaned after verified merge.
 
