@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### P1.8 — Place-Sensitive & Field-Sensitive Borrowing
+- Added MIR place-path metadata for borrows of named struct fields and nested field projections.
+- Added overlap-aware loan conflict analysis: disjoint field paths can be borrowed independently, while identical and parent/nested paths conflict.
+- Lowered field reads with root binding and projection metadata so ownership checks can permit disjoint field reads while rejecting access to borrowed fields.
+- Extended source borrow validation to permit field projections rooted at named local bindings and to require a mutable root for mutable field borrows.
+- Added typecheck, MIR lowering, and ownership regression tests for disjoint, overlapping, and nested field places.
+- Documented the MIR/compiler scope and deferred tuple/index projections and runtime user-defined struct field references.
+
 ### P1.7 — Reborrowing & Loan Hierarchy
 - Added source syntax for shared and mutable reborrows through dereference (`&*reference`, `&mut *reference`).
 - Extended MIR borrow operations with explicit reborrow metadata so lowering preserves the parent reference instead of loading a copied value.

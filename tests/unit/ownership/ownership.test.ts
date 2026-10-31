@@ -113,6 +113,76 @@ test('Ownership: non-lexical lifetime ends a mutable loan after its last semanti
   assert.equal(result.ownership?.success, true, JSON.stringify(result.ownership?.issues));
 });
 
+
+test('Ownership: mutable borrows of disjoint struct fields are independent', () => {
+  const result = ownershipModule([
+    { ...operation('borrow.mutable', [11], 21), attributes: { placePath: 'left' } },
+    { ...operation('borrow.mutable', [11], 22), attributes: { placePath: 'right' } },
+    operation('deref.load', [21], 31),
+    operation('deref.load', [22], 32),
+  ]);
+  assert.deepEqual(codes(result), []);
+});
+
+test('Ownership: mutable borrows of the same field conflict', () => {
+  const result = ownershipModule([
+    { ...operation('borrow.mutable', [11], 21), attributes: { placePath: 'profile.name' } },
+    { ...operation('borrow.mutable', [11], 22), attributes: { placePath: 'profile.name' } },
+    operation('deref.load', [21], 31),
+    operation('deref.load', [22], 32),
+  ]);
+  assert.ok(codes(result).includes('E7005'));
+});
+
+test('Ownership: parent and nested field places overlap', () => {
+  const result = ownershipModule([
+    { ...operation('borrow.mutable', [11], 21), attributes: { placePath: 'profile' } },
+    { ...operation('borrow.mutable', [11], 22), attributes: { placePath: 'profile.name' } },
+    operation('deref.load', [21], 31),
+    operation('deref.load', [22], 32),
+  ]);
+  assert.ok(codes(result).includes('E7005'));
+});
+
+test('Ownership: disjoint field reads remain available during a field borrow', () => {
+  const allowed = ownershipModule([
+    { ...operation('borrow.mutable', [11], 21), attributes: { placePath: 'name' } },
+    {
+      ...operation('field.get', [11], 31),
+      attributes: { rootId: 11, placePath: 'age', fieldName: 'age' },
+    },
+    operation('deref.load', [21], 32),
+  ]);
+  assert.deepEqual(codes(allowed), []);
+
+  const blocked = ownershipModule([
+    { ...operation('borrow.mutable', [11], 21), attributes: { placePath: 'name' } },
+    {
+      ...operation('field.get', [11], 31),
+      attributes: { rootId: 11, placePath: 'name', fieldName: 'name' },
+    },
+    operation('deref.load', [21], 32),
+  ]);
+  assert.ok(codes(blocked).includes('E7006'));
+});
+
+test('Ownership: source field borrows lower to independent MIR places', () => {
+  const result = new CompilerDriver().compile(`
+    type Pair { left: Int, right: Int }
+    fn main() {
+      mut pair = Pair { left: 1, right: 2 };
+      left_ref = &mut pair.left;
+      right_ref = &mut pair.right;
+      println(*left_ref);
+      println(*right_ref);
+    }
+  `, 'field-sensitive-borrows.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  const fieldLoans = operations.filter((op) => op.opcode === 'borrow.mutable' && typeof op.attributes?.placePath === 'string');
+  assert.deepEqual(fieldLoans.map((op) => op.attributes?.placePath).sort(), ['left', 'right']);
+});
+
 test('Ownership: detects direct owner reads during an active mutable borrow', () => {
   const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); *exclusive += 1; }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);

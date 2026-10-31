@@ -56,7 +56,7 @@ Returning an owned resource value is treated as an ownership transfer to the cal
 
 ## Limitations and next work
 
-This is an initial NLL foundation, not a complete Rust-style borrow checker. Liveness is based on MIR SSA values and CFG edges; it does not yet model field-sensitive places, closure-capture ownership, or arbitrary alias propagation. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
+This is an initial NLL foundation, not a complete Rust-style borrow checker. P1.8 adds place-sensitive analysis for named struct fields, while tuple/index projections, closure-capture ownership, and arbitrary alias propagation remain unsupported. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
 
 
 ## Source-level references (P1.4)
@@ -78,3 +78,10 @@ The backward liveness pass computes per-operation live-after sets. It includes o
 MIR marks reborrow operations explicitly. A reborrow consumes a reference value as its parent, inherits the parent's root owner, and records `parentId` on the child loan. Shared children may coexist unless an exclusive child is already active. Mutable reborrows require a mutable parent and no active child loans. A mutable parent reference is unavailable while any child loan remains live; a shared parent may still be read alongside shared children. Any incompatible parent access produces `E7005`. Child expiration through P1.6 NLL or an explicit `borrow.end` removes the suspension condition, allowing later parent use.
 
 The analysis is intentionally limited to named-reference dereference reborrows (`&*r`, `&mut *r`). It does not yet provide reborrowing of fields, arbitrary places, or interprocedural alias tracking.
+
+
+## Place-sensitive field loans (P1.8)
+
+A field borrow carries a root SSA value and a dot-separated place path in MIR attributes. An empty path means the whole value. Two non-empty paths are disjoint when neither path equals nor prefixes the other; otherwise the places overlap. Thus `pair.left` and `pair.right` can be borrowed independently, while `pair.profile` overlaps `pair.profile.name`. Field-read MIR operations carry the same root/path metadata, allowing the checker to permit reads from disjoint fields but reject reads overlapping an active mutable loan. Mutable field borrows require a mutable root binding.
+
+This increment is limited to named local struct-field projections. Tuple/index projections, dynamic indices, union/enum payload projections, writes directly to field places, and runtime references to user-defined struct fields are deferred. The tree-walking runtime does not yet provide an executable user-defined struct value model, so P1.8 claims compiler/MIR ownership support only.

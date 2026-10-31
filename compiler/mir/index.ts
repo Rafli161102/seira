@@ -409,6 +409,18 @@ class FunctionLowerer {
     }
   }
 
+  private lowerPlace(expr: HIRExpr): { root: MIRValue; path: string[] } | undefined {
+    if (expr.kind === 'HIRLocalExpr' || expr.kind === 'HIRGlobalExpr') {
+      return { root: this.lowerExpr(expr), path: [] };
+    }
+    if (expr.kind === 'HIRFieldAccessExpr') {
+      const parent = this.lowerPlace(expr.target);
+      if (!parent) return undefined;
+      return { root: parent.root, path: [...parent.path, expr.fieldName] };
+    }
+    return undefined;
+  }
+
   private lowerExpr(expr: HIRExpr): MIRValue {
     this.registerNode(expr);
     switch (expr.kind) {
@@ -428,9 +440,15 @@ class FunctionLowerer {
       case 'HIRUnaryExpr': {
         if (expr.operator === 'borrow.shared' || expr.operator === 'borrow.mutable') {
           const isReborrow = expr.operand.kind === 'HIRUnaryExpr' && expr.operand.operator === '*';
+          const borrowPlace = isReborrow ? undefined : this.lowerPlace(expr.operand);
           const borrowSource = isReborrow ? expr.operand.operand : expr.operand;
-          const operand = this.lowerExpr(borrowSource);
-          const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id, isReborrow ? { reborrow: true } : undefined);
+          const operand = borrowPlace?.root ?? this.lowerExpr(borrowSource);
+          const attributes = isReborrow
+            ? { reborrow: true }
+            : borrowPlace && borrowPlace.path.length > 0
+              ? { placePath: borrowPlace.path.join('.') }
+              : undefined;
+          const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id, attributes);
           this.borrowScopes[this.borrowScopes.length - 1]?.push({ valueId: borrow.id, source: this.findOrigin(expr.id) });
           return borrow;
         }
@@ -484,6 +502,12 @@ class FunctionLowerer {
         return result;
       }
       case 'HIRFieldAccessExpr': {
+        const place = this.lowerPlace(expr);
+        if (place) {
+          return this.emit('field.get', [place.root.id], expr.type, expr.id, {
+            fieldId: expr.fieldId, fieldName: expr.fieldName, rootId: place.root.id, placePath: place.path.join('.'),
+          });
+        }
         const target = this.lowerExpr(expr.target);
         return this.emit('field.get', [target.id], expr.type, expr.id, { fieldId: expr.fieldId, fieldName: expr.fieldName });
       }

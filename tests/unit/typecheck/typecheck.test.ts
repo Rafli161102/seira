@@ -437,3 +437,41 @@ test('Typecheck: rejects mutable reborrow through a shared reference', () => {
   assert.equal(result.tcResult.success, false);
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
 });
+
+test('Typecheck: accepts mutable borrows of named struct fields on a mutable root', () => {
+  const result = typecheckSource(`
+    type Pair { left: Int, right: Int }
+    fn main() {
+      mut pair = Pair { left: 1, right: 2 };
+      left_ref = &mut pair.left;
+      right_ref = &mut pair.right;
+      println(*left_ref);
+      println(*right_ref);
+    }
+  `);
+  assert.equal(result.tcResult.success, true, result.diagnostics.format());
+});
+
+test('Typecheck: rejects mutable field borrow through an immutable root', () => {
+  const result = typecheckSource(`
+    type Pair { left: Int }
+    fn main() {
+      pair = Pair { left: 1 };
+      left_ref = &mut pair.left;
+    }
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
+test('Typecheck: rejects borrowing computed member expressions as places', () => {
+  const result = typecheckSource(`
+    fn make_pair() -> Pair { Pair { left: 1 } }
+    type Pair { left: Int }
+    fn main() {
+      ref = &make_pair().left;
+    }
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});

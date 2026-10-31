@@ -42,6 +42,8 @@ interface LoanState {
   /** True when the loan is an incoming reference parameter owned by the caller. */
   readonly external?: boolean;
   readonly parentId?: ValueId;
+  /** Dot-separated field projection; empty string represents the whole value. */
+  readonly placePath?: string;
   /** True when NLL ended this loan before its lexical borrow.end marker. */
   readonly expiredByLiveness?: boolean;
 }
@@ -85,9 +87,10 @@ function joinLoan(a: LoanState | undefined, b: LoanState | undefined): LoanState
   return {
     ownerId: a.ownerId === b.ownerId ? a.ownerId : Math.min(a.ownerId, b.ownerId),
     kind: a.kind === b.kind ? a.kind : 'mutable',
-    status: a.status === b.status && a.ownerId === b.ownerId && a.kind === b.kind && a.parentId === b.parentId ? a.status : 'maybe',
+    status: a.status === b.status && a.ownerId === b.ownerId && a.kind === b.kind && a.parentId === b.parentId && a.placePath === b.placePath ? a.status : 'maybe',
     external: a.external === true && b.external === true,
     parentId: a.parentId === b.parentId ? a.parentId : undefined,
+    placePath: a.placePath === b.placePath ? a.placePath : undefined,
     expiredByLiveness: a.expiredByLiveness === true && b.expiredByLiveness === true,
   };
 }
@@ -134,7 +137,7 @@ function statesEqual(a: FlowState | undefined, b: FlowState): boolean {
   for (const [id, value] of b.moved) if (a.moved.get(id) !== value) return false;
   for (const [id, value] of b.loans) {
     const old = a.loans.get(id);
-    if (!old || old.ownerId !== value.ownerId || old.kind !== value.kind || old.status !== value.status || old.external !== value.external || old.parentId !== value.parentId || old.expiredByLiveness !== value.expiredByLiveness) return false;
+    if (!old || old.ownerId !== value.ownerId || old.kind !== value.kind || old.status !== value.status || old.external !== value.external || old.parentId !== value.parentId || old.placePath !== value.placePath || old.expiredByLiveness !== value.expiredByLiveness) return false;
   }
   return true;
 }
@@ -143,9 +146,14 @@ function activeChildren(state: FlowState, parentId: ValueId): Array<[ValueId, Lo
   return [...state.loans.entries()].filter(([, loan]) => loan.parentId === parentId && loan.status !== 'ended');
 }
 
-function activeLoans(state: FlowState, ownerId: ValueId): Array<[ValueId, LoanState]> {
+function placesOverlap(left = '', right = ''): boolean {
+  if (!left || !right) return true;
+  return left === right || left.startsWith(right + '.') || right.startsWith(left + '.');
+}
+
+function activeLoans(state: FlowState, ownerId: ValueId, placePath = ''): Array<[ValueId, LoanState]> {
   return [...state.loans.entries()].filter(([, loan]) =>
-    loan.ownerId === ownerId && loan.status !== 'ended'
+    loan.ownerId === ownerId && loan.status !== 'ended' && placesOverlap(loan.placePath ?? '', placePath)
   );
 }
 
@@ -393,7 +401,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
         state.owners.set(id, 'released');
       };
 
-      const checkValueUse = (id: ValueId, source: MIRSource | undefined, context: string): void => {
+      const checkValueUse = (id: ValueId, source: MIRSource | undefined, context: string, placePath = ''): void => {
         const loan = state.loans.get(id);
         if (loan) {
           const children = activeChildren(state, id);
@@ -427,7 +435,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           emitIssue('E7001', `Resource %${id} is not live and definitely owned on every path (${context}).`, id, source);
           return;
         }
-        if (activeLoans(state, id).some(([, active]) => active.kind === 'mutable')) {
+        if (activeLoans(state, id, placePath).some(([, active]) => active.kind === 'mutable')) {
           emitIssue('E7006', `Owner %${id} is accessed directly while an exclusive mutable borrow is active (${context}).`, id, source);
         }
       };
@@ -444,6 +452,12 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
         const opcode = operation.opcode;
         const operands = operation.operands;
         const ownershipManagedOpcodes = new Set(['borrow.shared', 'borrow.mutable', 'borrow.end', 'ownership.move', 'ownership.drop', 'ownership.write']);
+        if (opcode === 'field.get') {
+          const rootId = typeof operation.attributes?.rootId === 'number' ? operation.attributes.rootId : operands[0];
+          const placePath = typeof operation.attributes?.placePath === 'string' ? operation.attributes.placePath : '';
+          if (rootId !== undefined) checkValueUse(rootId, operation.source, opcode, placePath);
+          return;
+        }
         if (!ownershipManagedOpcodes.has(opcode)) {
           for (const operand of operands) checkValueUse(operand, operation.source, opcode);
         }
@@ -455,6 +469,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
             return;
           }
           const kind: LoanKind = opcode === 'borrow.mutable' ? 'mutable' : 'shared';
+          const placePath = typeof operation.attributes?.placePath === 'string' ? operation.attributes.placePath : '';
           const isReborrow = operation.attributes?.reborrow === true;
           if (isReborrow) {
             const parent = state.loans.get(ownerId);
@@ -471,17 +486,17 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
             } else if (kind === 'shared' && siblings.some(([, loan]) => loan.kind === 'mutable')) {
               emitIssue('E7005', 'Shared reborrow conflicts with an active mutable child reborrow of %' + ownerId + '.', ownerId, operation.source);
             }
-            state.loans.set(operation.dest, { ownerId: parent.ownerId, parentId: ownerId, kind, status: 'active' });
+            state.loans.set(operation.dest, { ownerId: parent.ownerId, parentId: ownerId, placePath: parent.placePath ?? '', kind, status: 'active' });
             return;
           }
-          checkValueUse(ownerId, operation.source, opcode);
-          const existing = activeLoans(state, ownerId);
+          checkValueUse(ownerId, operation.source, opcode, placePath);
+          const existing = activeLoans(state, ownerId, placePath);
           if (kind === 'mutable' && existing.length) {
             emitIssue('E7005', 'Mutable borrow of %' + ownerId + ' conflicts with an existing active borrow.', ownerId, operation.source);
           } else if (kind === 'shared' && existing.some(([, loan]) => loan.kind === 'mutable')) {
             emitIssue('E7005', 'Shared borrow of %' + ownerId + ' conflicts with an active mutable borrow.', ownerId, operation.source);
           }
-          state.loans.set(operation.dest, { ownerId, kind, status: 'active' });
+          state.loans.set(operation.dest, { ownerId, kind, placePath, status: 'active' });
           return;
         }
 

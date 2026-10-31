@@ -39,7 +39,7 @@ A runtime reference stores the owning \`RuntimeEnvironment\`, binding name, and 
 
 ## Deliberate limitations
 
-This is a first MIR-based NLL foundation, not full lifetime analysis. Borrow places are restricted to named local bindings. References cannot be returned or escape the defining function. field-sensitive borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
+This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings and named struct-field projections rooted at a local binding. Runtime reference cells still point to whole lexical bindings; runtime references to user-defined struct fields are not yet implemented. References cannot be returned or escape the defining function. field-sensitive borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
 
 
 ## NLL boundary (P1.6)

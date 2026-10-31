@@ -972,6 +972,11 @@ export class TypeChecker {
         const operandType = this.checkExpression(borrow.operand);
         const dereference = borrow.operand.kind === 'UnaryExpr' ? borrow.operand as UnaryExpr : undefined;
         const isDereferenceReborrow = dereference?.operator === '*';
+        const rootOfPlace = (place: Expr): Identifier | undefined => {
+          if (place.kind === 'Identifier') return place as Identifier;
+          if (place.kind === 'MemberExpr') return rootOfPlace((place as MemberExpr).object);
+          return undefined;
+        };
         if (isDereferenceReborrow && dereference) {
           const parentType = this.checkExpression(dereference.operand);
           if (dereference.operand.kind !== 'Identifier' || parentType.kind !== 'Reference') {
@@ -979,12 +984,16 @@ export class TypeChecker {
           } else if (borrow.isMutable && !parentType.mutable) {
             this.diagnostics.reportError('E3008', 'A shared reference cannot be reborrowed as mutable.', borrow.span, this.currentFile, 'Use a mutable parent reference before creating a mutable child reborrow.');
           }
-        } else if (borrow.operand.kind !== 'Identifier') {
-          this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding or reborrow through dereference.', borrow.operand.span, this.currentFile);
-        } else if (borrow.isMutable) {
-          const symbol = this.currentResolverResult?.resolvedSymbols.get(borrow.operand);
-          if (!symbol?.isMut) {
-            this.diagnostics.reportError('E3008', `Cannot mutably borrow immutable binding '${borrow.operand.name}'.`, borrow.operand.span, this.currentFile, `Declare the binding as mutable with 'mut ${borrow.operand.name}' before using '&mut'.`);
+        } else {
+          const root = rootOfPlace(borrow.operand);
+          const isNamedPlace = root !== undefined && (borrow.operand.kind === 'Identifier' || borrow.operand.kind === 'MemberExpr');
+          if (!isNamedPlace) {
+            this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding or one of its fields.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
+          } else if (borrow.isMutable) {
+            const symbol = this.currentResolverResult?.resolvedSymbols.get(root!);
+            if (!symbol?.isMut) {
+              this.diagnostics.reportError('E3008', `Cannot mutably borrow field of immutable binding '${root!.name}'.`, root!.span, this.currentFile, `Declare the root binding as mutable with 'mut ${root!.name}' before using '&mut'.`);
+            }
           }
         }
         resultType = { kind: 'Reference', inner: operandType, mutable: borrow.isMutable };
