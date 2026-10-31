@@ -241,9 +241,11 @@ HIR Lowering         [IMPLEMENTED on develop]
   ↓
 MIR Lowering         [IMPLEMENTED on develop]
   ↓
-MIR Optimization     [IMPLEMENTED (0.0.18-d, conservative O1)]
+MIR Optimization     [IMPLEMENTED (0.0.17-d, conservative O1)]
   ↓
-Backend Emitter      [Architectural Contract (0.0.2-s)]
+Backend Contract     [IMPLEMENTED (0.0.19-d; validation only)]
+  ↓
+Backend Emitter      [NOT IMPLEMENTED (E9001)]
   ↓
 Native / WebAssembly [Planned: Alpha Series]
 ```
@@ -274,10 +276,12 @@ PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.19-d]
   ├── 0.0.11-d: Runtime Struct Values & Field References (Complete)
   ├── 0.0.12-d: Runtime List Index References & Alias Safety (Complete)
   ├── 0.0.13-d: Runtime Map Key References & Collection Safety (Complete)
-  ├── 0.0.14-d: Ownership & Borrow Checker Hardening (P1.13)
-  ├── 0.0.15-d: Type System Hardening (P1.14)
+  ├── 0.0.14-d: Ownership & Borrow Checker Hardening (P1.13 — Complete)
+  ├── 0.0.15-d: Type System Hardening (P1.14 — Complete)
   ├── 0.0.16-d: Effect System Foundation (P1.15 — Complete)
-  └── 0.0.18-d: MIR Optimization Foundation (P1.16 — current)
+  ├── 0.0.17-d: MIR Optimization Foundation (P1.16 — Complete)
+  ├── 0.0.18-d: Compiler Conformance & Deterministic Testing (P1.17 — Complete)
+  └── 0.0.19-d: Backend Readiness Contract (P1.18 — Complete)
 
 PHASE 3: ALPHA (0.1.0-alpha.x)
   └── Native (LLVM) code generation, WebAssembly backend, and executable binaries.
@@ -335,7 +339,7 @@ npm ci
 ```bash
 # Check version (canonical sr command)
 ./bin/sr --version
-# Output: Seira 0.0.18-d
+# Output: Seira 0.0.19-d
 
 # Inspect environment and active pipeline stages
 ./bin/sr info
