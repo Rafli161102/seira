@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Published baseline | main / 0.0.19-d |
-| Development baseline | develop / 0.0.19-d |
+| Development baseline | develop / 0.0.20-d |
 | P1.16 merged | 0.0.17-d |
 | P1.17 merged | 0.0.18-d |
 | P1.18 merged | 0.0.19-d |
-| P1.19 feature branch | 0.0.20-d (PR #26 open) |
+| P1.19 merged | 0.0.20-d (PR #26) |
 | Audit date | 2026-10-31 |
 | Project status | Experimental; not production-ready |
 
@@ -17,7 +17,7 @@
 |---|---|---|
 | Frontend, resolver, type checker | Implemented through P1.14 | Further language conformance work remains |
 | HIR/MIR | Typed HIR, CFG/SSA MIR, verifier implemented | P1.16 conservative verified optimizer merged |
-| MIR interpreter | P1.19 proposed experimental interpreter on feature branch | Aggregates, references, resource events, host calls, iterators, closures, methods, and patterns unsupported; six-job CI matrix passes after the loop regression fixture was corrected |
+| MIR interpreter | P1.19 experimental interpreter merged to develop | Aggregates, references, resource events, host calls, iterators, closures, methods, and patterns unsupported; post-merge CI correction restores lexical shadowing; supported subset remains limited |
 | Ownership | P1.13 CFG-join hardening merged; initial NLL/projections available | Reference escapes, general interprocedural alias propagation, closure-capture ownership deferred |
 | Effects | P1.15 explicit effect-call boundary merged | No effect inference, polymorphism, handlers, or complete host-operation classification |
 | Runtime | TypeScript AST tree-walking evaluator remains the default runtime | MIR interpreter is a separate experimental subset; no shared value/runtime layer |
@@ -26,9 +26,9 @@
 | Native backend | Interface and readiness contract only; E9001 for valid MIR | No LLVM/native emitter |
 | WASM backend | Interface and readiness contract only; E9001 for valid MIR | No WASM emitter/artifact execution |
 
-## P1.19 proposed MIR interpreter boundary
+## P1.19 MIR interpreter boundary
 
-The proposed interpreter validates MIR before execution and evaluates constants, scalar arithmetic/comparisons, scalar unary operators, direct calls to functions in the same MIR module, and Return/Branch/CondBranch/Panic terminators. Block parameters are transferred simultaneously on edges. An initial loop fixture used bare binding syntax, which creates a lexical shadow, rather than the compound-assignment operator. The regression fixture now uses `count += 1`; the six-job CI matrix has passed for the updated feature-branch head.
+The interpreter validates MIR before execution and evaluates constants, scalar arithmetic/comparisons, scalar unary operators, direct calls to functions in the same MIR module, and Return/Branch/CondBranch/Panic terminators. Block parameters are transferred simultaneously on edges. The post-merge CI run exposed a resolver regression: nested bare bindings were treated as outer-scope reassignment. The hotfix restores current-scope lookup and uses explicit `count += 1` in loop mutation fixtures.
 
 Unsupported operations fail closed with E9101; invalid MIR is rejected with E9003. Runtime faults and strict-Bool violations produce E9102. The AST tree-walking evaluator remains the default runtime and the MIR interpreter is currently a development conformance tool, not the default execution engine.
 
@@ -42,16 +42,16 @@ Test triples and symbols are illustrative fixtures, not approved production targ
 
 ## Runtime and backend truth
 
-The AST runtime remains the supported execution path. PR #26 proposes an experimental interpreter over a deliberately small MIR subset; it is not yet merged. No native executable, object file, or wasm artifact is produced or executed. P1.18 completes backend readiness contracts only; it does not complete code generation.
+The AST runtime remains the supported execution path. P1.19's bounded MIR interpreter is merged to develop as a development conformance tool, not the default execution engine. Native and WASM artifact generation remain unimplemented. No native executable, object file, or wasm artifact is produced or executed. P1.18 completes backend readiness contracts only; it does not complete code generation.
 
 ## Branch synchronization
 
 - main: 0.0.19-d release baseline.
-- develop: 0.0.19-d integration baseline.
-- feature/p1.19-mir-interpreter: proposed 0.0.20-d milestone; PR #26 is open.
+- develop: 0.0.20-d integration baseline; P1.19 merged by PR #26.
+- fix/p1.19-ci-shadowing-regression: post-merge correction for resolver shadowing regression and loop test fixtures.
 - dev-infra: infrastructure and CI.
 - feature branches: temporary and cleaned after verified merge.
 
-P1.19's latest feature-branch commit passes the six-job matrix on Ubuntu/macOS/Windows × Node 22/24. The PR remains open for integration; do not describe it as merged until develop contains the merge commit.
+PR #26 is merged to develop. The merge-triggered CI run found two related failures in lexical-shadowing tests on macOS/Ubuntu; the fix branch restores block-local binding semantics. Re-run the full OS/Node matrix before closing the correction.
 
 Future milestones must retain the same standard: implementation, regression tests, typecheck, full suite, security audit, CI matrix, README/CHANGELOG/version synchronization, architecture updates, and a reviewable PR.
