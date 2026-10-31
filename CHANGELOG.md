@@ -10,7 +10,7 @@
 - Simplified constant conditional branches and removed unreachable basic blocks.
 - Added dead pure-operation elimination while retaining calls, resource events, dereferences, potentially trapping division, and unknown operations.
 - Preserved and remapped resource event positions when preceding pure operations are removed.
-- Added an Optimize compiler checkpoint and MIR verification after optimization.
+- Added an Optimize compiler checkpoint, a named MIR pass manager, and MIR verification after every optimization pass.
 - Kept optimization disabled by default at optLevel 0; optLevel 2/3 currently reuse the conservative pass set.
 
 ## [0.0.16-d] - 2026-10-31
