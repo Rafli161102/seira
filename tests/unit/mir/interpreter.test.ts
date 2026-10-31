@@ -31,7 +31,7 @@ function assertDifferential(source: string, file: string): void {
     blocks: fn.blocks.map((block) => ({
       id: block.id,
       name: block.name,
-      parameters: block.parameters.map((parameter) => ({ id: parameter.id, symbolId: parameter.symbolId })),
+      parameters: block.parameters.map((parameter) => ({ id: parameter.id, symbolId: parameter.symbolId, name: parameter.name })),
       operations: block.operations.map((operation) => ({
         opcode: operation.opcode, dest: operation.dest, operands: operation.operands, attributes: operation.attributes,
       })),
