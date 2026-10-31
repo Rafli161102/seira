@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 
+
 ### Repository Engineering
 - Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.17-d candidate.
 - Marked Seed-era architecture documents as historical baselines.
@@ -10,6 +11,16 @@
 - Added a P1.18 backend readiness contract without claiming operational native or WASM emission.
 
 
+
+## [0.0.19-d] - 2026-10-31
+
+### P1.18 — Backend Readiness Contract
+- Added a versioned backend ABI contract and explicit target descriptors for native and wasm32 profiles.
+- Added validation for target triple, object format, pointer width, endianness, alignment, integer widths, calling convention, runtime ABI version/symbols, and target capabilities.
+- Added a backend request validator that checks both the target contract and MIR verifier result.
+- Made CompilerBackend reject invalid MIR with E9003 before returning E9001 for the still-unimplemented code generator.
+- Added tests for native/wasm32 contract shape, invalid ABI/layout combinations, invalid MIR rejection, and the explicit unsupported-emitter boundary.
+- No LLVM/native or WASM emitter was added; artifact generation remains unimplemented.
 
 ## [0.0.18-d] - 2026-10-31
 
