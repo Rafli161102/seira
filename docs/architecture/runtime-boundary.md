@@ -1,3 +1,7 @@
+> **Historical baseline notice:** This document was authored for the Seed Series (0.0.10-s) and is retained as a historical architecture record. For current implementation status on `develop`, consult [`current-state.md`](current-state.md) and the [P1.13–P1.18 roadmap](../roadmap/P1.13-P1.18.md). Do not interpret old milestone labels or test counts below as current Development status.
+
+---
+
 # Seira Runtime Boundary Architecture
 
 > **Historical baseline:** this specification records the 0.0.10-s Seed architecture as of 2026-10-01. HIR, MIR, MIR verification and initial MIR-based ownership/borrow analysis have since been implemented in Development. Old version labels below are historical; consult [Current Architecture Status](status.md) for current capability boundaries.
