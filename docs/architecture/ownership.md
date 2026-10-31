@@ -15,7 +15,7 @@ The current language front end emits MIRResourceOp acquire/release events for wi
 | borrow.mutable | Create an exclusive mutable loan from operand 0 into the destination |
 | borrow.end | End the loan referenced by operand 0 |
 
-**Important:** Seira does not yet expose source-level reference/borrow syntax or infer these opcodes from ordinary function signatures. Borrow rules are implemented and tested at the MIR boundary; front-end borrow syntax and alias-aware reference lowering remain subsequent work.
+**Current front-end support:** Seira exposes `&T` / `&mut T` type annotations and `&value` / `&mut value` borrow expressions. P1.5 adds dereference read/write operations (`deref.load`, `deref.store`) and passes reference parameters into callee MIR as external loans. Runtime reference values point to the original lexical binding cell. The checker verifies that only mutable loans permit dereference stores.
 
 ## Resource event ordering
 
@@ -56,13 +56,13 @@ Returning an owned resource value is treated as an ownership transfer to the cal
 
 ## Limitations and next work
 
-This is a conservative ownership foundation, not a complete Rust-style borrow checker. In particular, it does not yet perform source-level lifetime inference, field-sensitive borrowing, reborrowing, closure-capture ownership, escape analysis across calls, or alias-aware borrow propagation through arbitrary block parameters. Those capabilities require explicit reference types and ownership-aware call signatures in HIR/MIR.
-
-The next increment should add reference types and source syntax, lower them to the opcodes above, and extend the checker with reborrows, call-boundary effects, and non-lexical lifetimes.
+This is a conservative ownership foundation, not a complete Rust-style borrow checker. In particular, it does not yet perform source-level lifetime inference, field-sensitive borrowing, reborrowing, closure-capture ownership, or non-lexical lifetimes. Call-boundary checking currently treats reference parameters as loans supplied by the caller; deeper interprocedural alias propagation remains future work.
 
 
 ## Source-level references (P1.4)
 
 The frontend accepts shared and mutable reference annotations (`&T`, `&mut T`) and borrow expressions (`&value`, `&mut value`). This increment restricts borrow places to named local bindings; a mutable borrow also requires the source binding to be declared with `mut`. HIR carries the reference type, and MIR emits `borrow.shared` / `borrow.mutable` followed by `borrow.end` at lexical scope exit. The ownership pass checks conflicting active loans and direct owner reads while an exclusive mutable loan is active.
 
-This is an initial lexical-borrow model, not a complete lifetime system. Reference return types and borrowed references escaping a function are rejected with `E3008`. Reborrowing, field-sensitive loans, dereference syntax, inferred/NLL lifetimes, closure-capture borrowing, and references to temporaries are not part of this increment.
+P1.5 adds dereference reads (`deref.load`) and writes (`deref.store`) through active references. Incoming reference parameters are modelled as external loans within the callee, and a write is accepted only through a mutable loan.
+
+This remains an initial lexical-borrow model, not a complete lifetime system. Reference return types and borrowed references escaping a function are rejected with `E3008`. Reborrowing, field-sensitive loans, inferred/NLL lifetimes, closure-capture borrowing, and references to temporaries are not part of this increment.

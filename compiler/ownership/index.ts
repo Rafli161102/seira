@@ -39,6 +39,8 @@ interface LoanState {
   readonly ownerId: ValueId;
   readonly kind: LoanKind;
   readonly status: LoanStatus;
+  /** True when the loan is an incoming reference parameter owned by the caller. */
+  readonly external?: boolean;
 }
 
 interface FlowState {
@@ -81,6 +83,7 @@ function joinLoan(a: LoanState | undefined, b: LoanState | undefined): LoanState
     ownerId: a.ownerId === b.ownerId ? a.ownerId : Math.min(a.ownerId, b.ownerId),
     kind: a.kind === b.kind ? a.kind : 'mutable',
     status: a.status === b.status && a.ownerId === b.ownerId && a.kind === b.kind ? a.status : 'maybe',
+    external: a.external === true && b.external === true,
   };
 }
 
@@ -123,7 +126,7 @@ function statesEqual(a: FlowState | undefined, b: FlowState): boolean {
   for (const [id, value] of b.moved) if (a.moved.get(id) !== value) return false;
   for (const [id, value] of b.loans) {
     const old = a.loans.get(id);
-    if (!old || old.ownerId !== value.ownerId || old.kind !== value.kind || old.status !== value.status) return false;
+    if (!old || old.ownerId !== value.ownerId || old.kind !== value.kind || old.status !== value.status || old.external !== value.external) return false;
   }
   return true;
 }
@@ -183,9 +186,21 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
     }
 
     const outgoing = new Map<number, FlowState>();
+    const entryState = emptyState();
+    for (const parameter of fn.parameters) {
+      if (parameter.type.kind === 'Reference') {
+        entryState.loans.set(parameter.id, {
+          ownerId: parameter.id,
+          kind: parameter.type.isMutableReference ? 'mutable' : 'shared',
+          status: 'active',
+          external: true,
+        });
+      }
+    }
+
     const incomingFor = (blockId: number): FlowState | undefined => {
       const states: FlowState[] = [];
-      if (blockId === fn.entry) states.push(emptyState());
+      if (blockId === fn.entry) states.push(entryState);
       for (const pred of predecessors.get(blockId) ?? []) {
         const state = outgoing.get(pred);
         if (state && reachable.has(pred)) states.push(state);
@@ -293,6 +308,20 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           return;
         }
 
+        if (opcode === 'deref.store') {
+          const referenceId = operands[0];
+          const loan = referenceId === undefined ? undefined : state.loans.get(referenceId);
+          if (referenceId === undefined || !loan) {
+            emitIssue('E7007', 'Dereference assignment requires an active reference value.', referenceId, operation.source);
+          } else if (loan.status === 'ended' || loan.status === 'maybe') {
+            emitIssue('E7007', `Reference %${referenceId} is not definitely active for mutation.`, referenceId, operation.source);
+          } else if (loan.kind !== 'mutable') {
+            emitIssue('E7005', `Cannot mutate through shared reference %${referenceId}; a mutable borrow is required.`, referenceId, operation.source);
+          }
+          if (operands[1] !== undefined) checkValueUse(operands[1], operation.source, 'deref.store value');
+          return;
+        }
+
         if (opcode === 'borrow.end') {
           const loanId = operands[0];
           const loan = loanId === undefined ? undefined : state.loans.get(loanId);
@@ -385,7 +414,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           }
         }
         for (const [loanId, loan] of state.loans) {
-          if (loan.status === 'active' || loan.status === 'maybe') {
+          if (!loan.external && (loan.status === 'active' || loan.status === 'maybe')) {
             emitIssue('E7007', `Borrow %${loanId} remains active at function return.`, loanId);
           }
         }

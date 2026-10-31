@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — P1.5 Dereference & Borrowed Mutation
+
+- Added prefix dereference syntax (`*reference`) and type-checked it against shared/mutable reference types.
+- Added assignment and compound-assignment through mutable references (`*reference = value`, `*reference += value`); shared-reference writes are rejected with `E3008`.
+- Lowered dereference reads/writes into MIR `deref.load` and `deref.store` operations.
+- Extended ownership analysis to recognize incoming reference parameters and enforce mutable-only dereference stores.
+- Replaced runtime reference erasure with reference values that point to the original lexical binding cell, enabling reads and writes through function parameters.
+- Added parser, type-checker, MIR/ownership, and runtime regression tests for borrowed mutation.
+- Updated README and reference/ownership architecture documentation to reflect the enabled syntax and remaining lifetime limitations.
+
 ## Unreleased — P1.4 Reference Types & Borrow Syntax
 
 - Added `&T` and `&mut T` reference annotations plus `&value` and `&mut value` borrow expressions.

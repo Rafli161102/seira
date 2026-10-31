@@ -89,6 +89,19 @@ test('Ownership: rejects conflicting mutable and shared source-level borrows', (
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
 });
 
+test('Ownership: validates dereference read and write through an incoming mutable reference', () => {
+  const result = new CompilerDriver().compile(`
+    fn read(value: &Int) -> Int { *value }
+    fn increment(value: &mut Int) { *value += 1; }
+    fn main() { mut number = 1; increment(&mut number); result = read(&number); }
+  `, 'borrowed-mutation.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  assert.ok(operations.some((op) => op.opcode === 'deref.load'));
+  assert.ok(operations.some((op) => op.opcode === 'deref.store'));
+  assert.equal(result.ownership?.success, true, JSON.stringify(result.ownership?.issues));
+});
+
 test('Ownership: detects direct owner reads during an active mutable borrow', () => {
   const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);

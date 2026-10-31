@@ -160,6 +160,7 @@ import {
   type OptionRuntimeValue,
   type PathRuntimeValue,
   type ReaderRuntimeValue,
+  type ReferenceRuntimeValue,
   type ResourceRuntimeValue,
   type ResultRuntimeValue,
   type RuntimeValue,
@@ -596,6 +597,16 @@ export class Evaluator {
     if (valOutcome.kind !== 'Normal') return valOutcome;
     const newValue = valOutcome.value;
 
+    if (stmt.target.kind === 'UnaryExpr' && (stmt.target as UnaryExpr).operator === '*') {
+      const referenceOutcome = this.evaluateExpr((stmt.target as UnaryExpr).operand, env);
+      if (referenceOutcome.kind !== 'Normal') return referenceOutcome;
+      if (referenceOutcome.value.tag !== 'Reference') {
+        return panicOutcome(invalidStateError('Assignment through dereference requires a Reference value.', stmt.span, this.ctx.config.fileName));
+      }
+      const result = this.assignThroughReference(referenceOutcome.value as ReferenceRuntimeValue, newValue, stmt.operator, stmt.span);
+      if (result.kind !== 'Normal') return result;
+      return normalOutcome(UNIT_VALUE);
+    }
     if (stmt.target.kind !== 'Identifier') {
       return panicOutcome(unsupportedOperationError(
         'compound assignment to non-identifier',
@@ -762,9 +773,7 @@ export class Evaluator {
       case 'UnaryExpr':
         return this.evaluateUnaryExpr(expr as UnaryExpr, env);
       case 'BorrowExpr':
-        // The initial runtime erases reference wrappers: dereference and mutation-through-reference
-        // syntax are not implemented yet, while static borrow checking runs before evaluation.
-        return this.evaluateExpr((expr as BorrowExpr).operand, env);
+        return this.evaluateBorrowExpr(expr as BorrowExpr, env);
       case 'PipelineExpr':
         return this.evaluatePipelineExpr(expr as PipelineExpr, env);
       case 'OptionFallbackExpr':
@@ -1054,12 +1063,37 @@ export class Evaluator {
 
   // ─── Unary Expression ─────────────────────────────────────────────────────
 
+  private evaluateBorrowExpr(expr: BorrowExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    if (expr.operand.kind !== 'Identifier') {
+      return panicOutcome(invalidStateError('A borrow must target a named local binding.', expr.span, this.ctx.config.fileName));
+    }
+    const reference = env.borrow(expr.operand.name, expr.isMutable);
+    if (!reference) {
+      return panicOutcome(invalidStateError(
+        expr.isMutable ? `Cannot mutably borrow '${expr.operand.name}': binding is missing or immutable.` : `Cannot borrow '${expr.operand.name}': binding was not found.`,
+        expr.span, this.ctx.config.fileName
+      ));
+    }
+    return normalOutcome(reference);
+  }
+
   private evaluateUnaryExpr(expr: UnaryExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const operandOutcome = this.evaluateExpr(expr.operand, env);
     if (operandOutcome.kind !== 'Normal') return operandOutcome;
     const operand = operandOutcome.value;
 
     switch (expr.operator) {
+      case '*': {
+        if (operand.tag !== 'Reference') {
+          return panicOutcome(invalidStateError(`Dereference requires a Reference value, got ${operand.tag}.`, expr.span, this.ctx.config.fileName));
+        }
+        const reference = operand as ReferenceRuntimeValue;
+        const binding = reference.environment.lookup(reference.name);
+        if (!binding) {
+          return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, expr.span, this.ctx.config.fileName));
+        }
+        return normalOutcome(binding.value);
+      }
       case 'not':
         // Strict Bool semantics — 'not' requires a Bool, never an integer/other
         if (operand.tag !== 'Bool') {
@@ -2246,11 +2280,40 @@ export class Evaluator {
 
   // ─── Assignment Expression ────────────────────────────────────────────────
 
+  private assignThroughReference(reference: ReferenceRuntimeValue, value: RuntimeValue, operator: string, span?: Span): RuntimeOutcome {
+    if (!reference.mutable) {
+      return panicOutcome(invalidStateError('Cannot mutate through a shared reference.', span, this.ctx.config.fileName));
+    }
+    const binding = reference.environment.lookup(reference.name);
+    if (!binding) {
+      return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, span, this.ctx.config.fileName));
+    }
+    let nextValue = value;
+    if (operator !== '=') {
+      const compound = this.applyCompoundOperator(operator, binding.value, value, span);
+      if (isPanic(compound)) return compound;
+      nextValue = (compound as NormalOutcome).value;
+    }
+    const assigned = reference.environment.assign(reference.name, nextValue);
+    if (assigned !== 'ok') {
+      return panicOutcome(invalidStateError(`Cannot assign through reference to '${reference.name}'.`, span, this.ctx.config.fileName));
+    }
+    return normalOutcome(nextValue);
+  }
+
   private evaluateAssignmentExpr(expr: AssignmentExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const valOutcome = this.evaluateExpr(expr.value, env);
     if (valOutcome.kind !== 'Normal') return valOutcome;
     const newValue = valOutcome.value;
 
+    if (expr.target.kind === 'UnaryExpr' && (expr.target as UnaryExpr).operator === '*') {
+      const referenceOutcome = this.evaluateExpr((expr.target as UnaryExpr).operand, env);
+      if (referenceOutcome.kind !== 'Normal') return referenceOutcome;
+      if (referenceOutcome.value.tag !== 'Reference') {
+        return panicOutcome(invalidStateError('Assignment through dereference requires a Reference value.', expr.span, this.ctx.config.fileName));
+      }
+      return this.assignThroughReference(referenceOutcome.value as ReferenceRuntimeValue, newValue, expr.operator, expr.span);
+    }
     if (expr.target.kind !== 'Identifier') {
       return panicOutcome(unsupportedOperationError(
         'assignment to non-identifier target', expr.span, this.ctx.config.fileName

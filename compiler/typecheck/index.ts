@@ -704,20 +704,26 @@ export class TypeChecker {
     }
   }
 
-  private checkAssignStmt(stmt: AssignStmt): void {
-    let targetType: Type = UNKNOWN_TYPE;
-    let targetName = 'assignment target';
-
-    if (stmt.target.kind === 'Identifier') {
-      const id = stmt.target as Identifier;
-      targetName = id.name;
-      const sym = this.currentResolverResult?.resolvedSymbols.get(id);
-      if (sym && sym.type) {
-        targetType = sym.type;
+  private checkAssignmentTarget(target: Expr, span: Span): Type {
+    if (target.kind === 'UnaryExpr' && (target as UnaryExpr).operator === '*') {
+      const referenceType = this.checkExpression((target as UnaryExpr).operand);
+      if (referenceType.kind !== 'Reference') {
+        if (!isUnknown(referenceType)) {
+          this.diagnostics.reportError('E3002', `Assignment through dereference requires a reference, but found '${formatType(referenceType)}'.`, target.span, this.currentFile);
+        }
+        return UNKNOWN_TYPE;
       }
-    } else {
-      targetType = this.checkExpression(stmt.target);
+      if (!referenceType.mutable) {
+        this.diagnostics.reportError('E3008', 'Cannot assign through a shared reference. A mutable reference is required.', span, this.currentFile);
+      }
+      return referenceType.inner;
     }
+    return this.checkExpression(target);
+  }
+
+  private checkAssignStmt(stmt: AssignStmt): void {
+    const targetType = this.checkAssignmentTarget(stmt.target, stmt.span);
+    const targetName = stmt.target.kind === 'Identifier' ? (stmt.target as Identifier).name : 'assignment target';
 
     const valType = this.checkExpression(stmt.value, targetType);
 
@@ -979,7 +985,21 @@ export class TypeChecker {
         const un = expr as UnaryExpr;
         const operandType = this.checkExpression(un.operand);
 
-        if (un.operator === 'not') {
+        if (un.operator === '*') {
+          if (operandType.kind === 'Reference') {
+            resultType = operandType.inner;
+          } else {
+            if (!isUnknown(operandType)) {
+              this.diagnostics.reportError(
+                'E3002',
+                `Dereference requires a reference operand, but found '${formatType(operandType)}'.`,
+                un.operand.span,
+                this.currentFile
+              );
+            }
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (un.operator === 'not') {
           if (!isBool(operandType) && !isUnknown(operandType)) {
             this.diagnostics.reportError(
               'E3002',
@@ -1063,19 +1083,8 @@ export class TypeChecker {
       }
       case 'AssignmentExpr': {
         const assign = expr as AssignmentExpr;
-        let targetType: Type = UNKNOWN_TYPE;
-        let targetName = 'assignment target';
-
-        if (assign.target.kind === 'Identifier') {
-          const id = assign.target as Identifier;
-          targetName = id.name;
-          const sym = this.currentResolverResult?.resolvedSymbols.get(id);
-          if (sym && sym.type) {
-            targetType = sym.type;
-          }
-        } else {
-          targetType = this.checkExpression(assign.target);
-        }
+        const targetType = this.checkAssignmentTarget(assign.target, assign.span);
+        const targetName = assign.target.kind === 'Identifier' ? (assign.target as Identifier).name : 'assignment target';
 
         const valType = this.checkExpression(assign.value);
 

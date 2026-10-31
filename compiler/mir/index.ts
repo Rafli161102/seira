@@ -221,7 +221,14 @@ class FunctionLowerer {
       }
       case 'HIRAssignStmt': {
         const rhs = this.lowerExpr(stmt.value);
-        if (stmt.target.kind === 'HIRLocalExpr') {
+        if (stmt.target.kind === 'HIRUnaryExpr' && stmt.target.operator === '*') {
+          const reference = this.lowerExpr(stmt.target.operand);
+          const value = stmt.operator === '=' ? rhs : (() => {
+            const previous = this.emit('deref.load', [reference.id], stmt.target.type, stmt.id);
+            return this.emit('binary', [previous.id, rhs.id], stmt.target.type, stmt.id, { operator: stmt.operator.slice(0, -1) });
+          })();
+          this.emit('deref.store', [reference.id, value.id], stmt.target.type, stmt.id, { operator: stmt.operator });
+        } else if (stmt.target.kind === 'HIRLocalExpr') {
           const previous = this.locals.get(stmt.target.symbolId);
           const value = stmt.operator === '=' || !previous ? rhs :
             this.emit('binary', [previous.id, rhs.id], stmt.target.type, stmt.id, { operator: stmt.operator.slice(0, -1) });
@@ -420,6 +427,7 @@ class FunctionLowerer {
         return this.lowerBlock(expr.block) ?? this.emit('unit', [], expr.type, expr.id);
       case 'HIRUnaryExpr': {
         const operand = this.lowerExpr(expr.operand);
+        if (expr.operator === '*') return this.emit('deref.load', [operand.id], expr.type, expr.id);
         if (expr.operator === 'borrow.shared' || expr.operator === 'borrow.mutable') {
           const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id);
           this.borrowScopes[this.borrowScopes.length - 1]?.push({ valueId: borrow.id, source: this.findOrigin(expr.id) });

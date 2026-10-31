@@ -1550,7 +1550,7 @@ export class Parser {
     return expr;
   }
 
-  // Precedence 11: Unary Prefix: not, -, shared/mutable borrow.
+  // Precedence 11: Unary Prefix: not, -, dereference, shared/mutable borrow.
   private parseUnary(): Expr {
     if (this.match(TokenType.Ampersand)) {
       const op = this.previous();
@@ -1561,7 +1561,7 @@ export class Parser {
         span: { start: op.span.start, end: operand.span.end, sourceId: op.span.sourceId, line: op.span.line, column: op.span.column },
       } as BorrowExpr;
     }
-    if (this.match(TokenType.Not, TokenType.Minus)) {
+    if (this.match(TokenType.Not, TokenType.Minus, TokenType.Star)) {
       const op = this.previous();
       const operand = this.parseUnary();
       return {

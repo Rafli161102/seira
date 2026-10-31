@@ -50,6 +50,15 @@ test('Parser: parses shared and mutable reference types and borrow expressions',
   assert.equal((exclusive.initializer as any).isMutable, true);
 });
 
+test('Parser: parses dereference reads and writes as unary targets', () => {
+  const { ast, diagnostics } = parseSource(`fn main() { value = *ref; *ref = 10; *ref += 2; }`);
+  assert.equal(diagnostics.hasErrors(), false);
+  const fn = ast.items[0] as FunctionDecl;
+  assert.equal((fn.body.statements[0] as BindingStmt).initializer?.kind, 'UnaryExpr');
+  assert.equal((fn.body.statements[1] as any).target.operator, '*');
+  assert.equal((fn.body.statements[2] as any).target.operator, '*');
+});
+
 test('Parser: parses standard function declaration', () => {
   const source = `
     fn main() {

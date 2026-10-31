@@ -44,6 +44,25 @@ test('Typecheck: reference annotations and borrow mutability are checked', () =>
   assert.ok(invalid.diagnostics.getErrors().some((error) => error.code === 'E3008'));
 });
 
+test('Typecheck: dereference reads and mutable-reference assignment are typed', () => {
+  const valid = typecheckSource(`
+    fn read(value: &Int) -> Int { *value }
+    fn increment(value: &mut Int) { *value += 1; }
+    fn replace(value: &mut Int) { *value = 42; }
+    fn main() { mut number = 1; increment(&mut number); replace(&mut number); result = read(&number); }
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+  assert.equal(valid.diagnostics.hasErrors(), false);
+
+  const sharedWrite = typecheckSource(`fn invalid(value: &Int) { *value = 9; }`);
+  assert.equal(sharedWrite.tcResult.success, false);
+  assert.ok(sharedWrite.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+
+  const nonReference = typecheckSource(`fn main() { let number = 1; result = *number; }`);
+  assert.equal(nonReference.tcResult.success, false);
+  assert.ok(nonReference.diagnostics.getErrors().some((error) => error.code === 'E3002'));
+});
+
 test('Typecheck: static type inference for primitive literals', () => {
   const source = `
     fn main() {

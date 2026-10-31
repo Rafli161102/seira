@@ -29,6 +29,7 @@ export const RuntimeTag = {
   Char: 'Char',
   String: 'String',
   Byte: 'Byte',
+  Reference: 'Reference',
   Option: 'Option',
   Result: 'Result',
   List: 'List',
@@ -89,6 +90,14 @@ export interface StringRuntimeValue {
 export interface ByteRuntimeValue {
   readonly tag: 'Byte';
   readonly value: number; // 0–255
+}
+
+/** Runtime reference to a lexical binding cell. */
+export interface ReferenceRuntimeValue {
+  readonly tag: 'Reference';
+  readonly environment: RuntimeEnvironment;
+  readonly name: string;
+  readonly mutable: boolean;
 }
 
 export interface OptionRuntimeValue {
@@ -238,6 +247,7 @@ export type RuntimeValue =
   | CharRuntimeValue
   | StringRuntimeValue
   | ByteRuntimeValue
+  | ReferenceRuntimeValue
   | OptionRuntimeValue
   | ResultRuntimeValue
   | ListRuntimeValue
@@ -893,6 +903,8 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return v.value;
     case 'Byte':
       return `${v.value}b`;
+    case 'Reference':
+      return `${v.mutable ? '&mut ' : '&'}${v.name}`;
     case 'Option':
       return v.isSome ? `Some(${formatRuntimeValue(v.inner!)})` : 'None';
     case 'Result':
@@ -957,6 +969,10 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       return a.value === (b as StringRuntimeValue).value;
     case 'Byte':
       return a.value === (b as ByteRuntimeValue).value;
+    case 'Reference': {
+      const other = b as ReferenceRuntimeValue;
+      return a.environment === other.environment && a.name === other.name && a.mutable === other.mutable;
+    }
     case 'Option': {
       const bOpt = b as OptionRuntimeValue;
       if (a.isSome !== bOpt.isSome) return false;
@@ -1062,6 +1078,20 @@ export class RuntimeEnvironment {
     const local = this.bindings.get(name);
     if (local !== undefined) return local;
     return this.parent?.lookup(name);
+  }
+
+  /** Creates a reference to the exact lexical binding that currently owns the name. */
+  public borrow(name: string, mutable: boolean): ReferenceRuntimeValue | undefined {
+    const owner = this.findBindingEnvironment(name);
+    if (!owner) return undefined;
+    const binding = owner.bindings.get(name);
+    if (!binding || (mutable && !binding.isMut)) return undefined;
+    return { tag: 'Reference', environment: owner, name, mutable };
+  }
+
+  private findBindingEnvironment(name: string): RuntimeEnvironment | undefined {
+    if (this.bindings.has(name)) return this;
+    return this.parent?.findBindingEnvironment(name);
   }
 
   /**
