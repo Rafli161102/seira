@@ -180,8 +180,8 @@ test('Conformance: diagnostics remain deterministic across repeated compilation'
   const fingerprint = (result: ReturnType<CompilerDriver['compile']>) =>
     result.diagnostics.getErrors().map((diagnostic) => [
       diagnostic.code,
-      diagnostic.span.start,
-      diagnostic.span.end,
+      diagnostic.primarySpan.start,
+      diagnostic.primarySpan.end,
     ]);
   assert.deepEqual(fingerprint(first), fingerprint(second));
 });
