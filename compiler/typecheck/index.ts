@@ -169,6 +169,8 @@ export class TypeChecker {
   private currentResolverResult?: ResolverResult;
   private currentFile?: string;
   private currentFunctionReturnType?: Type;
+  /** Effect boundary for the function currently being checked. */
+  private currentFunctionEffectful?: boolean;
 
   private readonly traits = new Map<string, TraitDecl>();
   private readonly structDeclarations = new Map<string, StructDecl>();
@@ -180,6 +182,18 @@ export class TypeChecker {
 
   constructor(diagnostics?: DiagnosticBag) {
     this.diagnostics = diagnostics ?? new DiagnosticBag();
+  }
+
+  private checkEffectCall(calleeName: string, span: Span, calleeEffectful: boolean): void {
+    if (calleeEffectful && this.currentFunctionEffectful === false) {
+      this.diagnostics.reportError(
+        'E8001',
+        `Pure function cannot call effectful function '${calleeName}'. Mark the caller with '!' or move the call to an effectful boundary.`,
+        span,
+        this.currentFile,
+        'Effectful calls must be contained by an effectful function or an explicit top-level host boundary.'
+      );
+    }
   }
 
   public check(
@@ -389,11 +403,12 @@ export class TypeChecker {
         reqParamTypes.length === implParamTypes.length &&
         reqParamTypes.every((p, idx) => areTypesEqual(p, implParamTypes[idx]));
       const retMatch = areTypesEqual(reqRetType, implRetType);
+      const effectMatch = reqMethod.isEffectful === implMethod.isEffectful;
 
-      if (!paramMatch || !retMatch) {
+      if (!paramMatch || !retMatch || !effectMatch) {
         this.diagnostics.reportError(
           'E4006',
-          `Method signature mismatch for '${implMethod.name}' in implementation of trait '${implDecl.traitName}': expected '(${reqParamTypes.map(formatType).join(', ')}) -> ${formatType(reqRetType)}', but found '(${implParamTypes.map(formatType).join(', ')}) -> ${formatType(implRetType)}'.`,
+          `Method signature mismatch for '${implMethod.name}' in implementation of trait '${implDecl.traitName}': expected '${reqMethod.isEffectful ? '!' : ''}(${reqParamTypes.map(formatType).join(', ')}) -> ${formatType(reqRetType)}', but found '${implMethod.isEffectful ? '!' : ''}(${implParamTypes.map(formatType).join(', ')}) -> ${formatType(implRetType)}'.`,
           implMethod.span,
           this.currentFile
         );
@@ -560,7 +575,9 @@ export class TypeChecker {
     }
 
     const prevReturn = this.currentFunctionReturnType;
+    const prevEffectful = this.currentFunctionEffectful;
     this.currentFunctionReturnType = declaredReturn;
+    this.currentFunctionEffectful = fn.isEffectful;
 
     if (fn.isExpressionBody && fn.bodyExpr) {
       const exprType = this.checkExpression(fn.bodyExpr, declaredReturn);
@@ -605,6 +622,7 @@ export class TypeChecker {
     }
 
     this.currentFunctionReturnType = prevReturn;
+    this.currentFunctionEffectful = prevEffectful;
     this.currentGenericParams = prevGenericParams;
   }
 
@@ -2778,6 +2796,7 @@ export class TypeChecker {
 
     if (calleeType.kind === 'Function') {
       const fnType = calleeType as FunctionType;
+      this.checkEffectCall(calleeName, call.span, fnType.isEffectful);
       if (fnType.genericParams && fnType.genericParams.length > 0) {
         return this.checkGenericFunctionCall(call, calleeName, fnType);
       }
@@ -2976,6 +2995,7 @@ export class TypeChecker {
 
       if (calleeType.kind === 'Function') {
         const fnType = calleeType as FunctionType;
+        this.checkEffectCall(calleeName, call.span, fnType.isEffectful);
         const totalArgs: Expr[] = [pipe.left, ...call.args];
         if (fnType.genericParams && fnType.genericParams.length > 0) {
           const syntheticCall: CallExpr = {
@@ -3042,6 +3062,7 @@ export class TypeChecker {
 
       if (calleeType.kind === 'Function') {
         const fnType = calleeType as FunctionType;
+        this.checkEffectCall(calleeName, pipe.right.span, fnType.isEffectful);
         if (fnType.genericParams && fnType.genericParams.length > 0) {
           const syntheticCall: CallExpr = {
             kind: 'CallExpr',
@@ -3476,6 +3497,7 @@ export class TypeChecker {
 
   private checkLambdaExpr(lambda: LambdaExpr, contextualType?: Type): Type {
     const prevReturn = this.currentFunctionReturnType;
+    const prevEffectful = this.currentFunctionEffectful;
     const paramTypes: Type[] = [];
     const contextualFn =
       contextualType && contextualType.kind === 'Function'
@@ -3503,6 +3525,7 @@ export class TypeChecker {
 
     const expectedReturn = contextualFn?.returnType;
     this.currentFunctionReturnType = expectedReturn;
+    this.currentFunctionEffectful = contextualFn?.isEffectful ?? false;
 
     const bodyType =
       lambda.body.kind === 'Block'
@@ -3510,7 +3533,8 @@ export class TypeChecker {
         : this.checkExpression(lambda.body as Expr, expectedReturn);
 
     this.currentFunctionReturnType = prevReturn;
-    return createFunctionType(paramTypes, bodyType);
+    this.currentFunctionEffectful = prevEffectful;
+    return createFunctionType(paramTypes, bodyType, contextualFn?.isEffectful ?? false);
   }
 }
 
