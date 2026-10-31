@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+
 ### Repository Engineering
 - Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.17-d candidate.
 - Marked Seed-era architecture documents as historical baselines.
@@ -9,6 +10,14 @@
 - Added a P1.18 backend readiness contract without claiming operational native or WASM emission.
 
 
+
+## [0.0.18-d] - 2026-10-31
+
+### P1.17 — Compiler Conformance & Deterministic Testing
+- Added a Development semantic conformance matrix for generic inference, mutable-reference syntax, explicit effect boundaries, invalid pure-to-effectful calls, type errors, and parser rejection cases.
+- Added deterministic repeated-compilation checks for diagnostic code and source-span stability.
+- Added bounded deterministic lexer token fuzzing across valid and invalid token fragments, asserting EOF presence and monotonic in-range source spans.
+- Kept true AST-versus-MIR differential execution explicitly deferred because no MIR interpreter or native/WASM emitter exists.
 
 ## [0.0.17-d] - 2026-10-31
 
