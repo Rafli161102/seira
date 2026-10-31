@@ -1,8 +1,8 @@
-# Current Architecture Status — Seira 0.0.17-d
+# Current Architecture Status — Seira 0.0.18-d
 
 **As of:** 2026-10-31  
-**Development baseline:** 0.0.17-d (P1.16 feature branch; CI validation pending)  
-**Current milestone branch:** P1.16 — MIR Optimization Foundation  
+**Development baseline:** 0.0.18-d (P1.16 feature branch; CI validation pending)  
+**Current milestone branch:** P1.17 — Compiler Conformance & Deterministic Testing  
 **Project status:** Experimental; not production-ready; Alpha has not been released.
 
 This document supersedes stale implementation-status tables in historical Seed architecture documents. Those documents remain design-history records, not statements of current implementation.
