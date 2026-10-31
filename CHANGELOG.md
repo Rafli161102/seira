@@ -18,7 +18,7 @@
 - Added configurable instruction/terminator step and call-depth limits.
 - Added fail-closed handling for unsupported opcodes (E9101), runtime faults (E9102), invalid MIR (E9003), missing entry functions (E9100), and execution limits (E9103/E9104).
 - Added AST-versus-MIR differential tests for function calls, loops, conditional branches, and scalar return values.
-- Fixed loop-carried SSA lowering so assignments resolve the active lexical local and pass the updated value along back-edges; added compound-assignment loop regression coverage.
+- Fixed nested-scope bare reassignment resolution so mutable outer bindings retain their identity in HIR/MIR; added loop-carried and compound-assignment differential regression coverage.
 - Kept the AST tree-walking evaluator as the default runtime; no native or WASM emitter was added.
 
 ## [0.0.19-d] - 2026-10-31
