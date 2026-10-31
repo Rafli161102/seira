@@ -74,12 +74,9 @@ export class MIRInterpreter {
   private limit(value: number | undefined, fallback: number): number {
     return Number.isSafeInteger(value) && (value ?? 0) > 0 ? value! : fallback;
   }
-  private tick(context: string, values?: ReadonlyMap<ValueId, MIRRuntimeValue>): void {
+  private tick(context: string): void {
     if (++this.steps > this.maxSteps) {
-      const snapshot = values
-        ? Array.from(values.entries()).map(([id, value]) => '%' + id + '=' + String(value)).join(', ')
-        : '';
-      throw new MIRExecutionFault('E9103', 'MIR execution exceeded the step limit at ' + context + '.' + (snapshot ? ' SSA=' + snapshot : ''));
+      throw new MIRExecutionFault('E9103', 'MIR execution exceeded the step limit at ' + context + '.');
     }
   }
   private executeFunction(fn: MIRFunction, args: ReadonlyArray<MIRRuntimeValue>, depth: number): MIRRuntimeValue {
@@ -106,7 +103,7 @@ export class MIRInterpreter {
           values.set(operation.dest, value);
         }
       }
-      this.tick(fn.name + ':' + block.name + ':terminator', values);
+      this.tick(fn.name + ':' + block.name + ':terminator');
       const term: BasicBlock['terminator'] = block.terminator;
       if (term.kind === 'Return') return term.value === undefined ? null : this.read(values, term.value, 'return');
       if (term.kind === 'Panic') throw new MIRExecutionFault('E9102', term.message);

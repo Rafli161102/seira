@@ -26,24 +26,7 @@ function assertDifferential(source: string, file: string): void {
   const ast = new ExecutionEngine().executeSource(source, file, { enableOutput: false });
   assert.equal(ast.success, true, ast.diagnostics.format());
   const mir = new MIRInterpreter(compiled).execute();
-  const mirDump = compiled.functions.map((fn) => ({
-    name: fn.name,
-    blocks: fn.blocks.map((block) => ({
-      id: block.id,
-      name: block.name,
-      parameters: block.parameters.map((parameter) => ({ id: parameter.id, symbolId: parameter.symbolId, name: parameter.name })),
-      operations: block.operations.map((operation) => ({
-        opcode: operation.opcode, dest: operation.dest, operands: operation.operands, attributes: operation.attributes,
-      })),
-      terminator: block.terminator,
-    })),
-  }));
-  const hirDump = compilation.hir?.topLevelItems.map((item) => (
-    item.kind === 'HIRFunction'
-      ? { kind: item.kind, name: item.name, body: item.body }
-      : { kind: item.kind }
-  ));
-  assert.equal(mir.success, true, (mir.error?.message ?? '') + '\nHIR=' + JSON.stringify(hirDump) + '\nMIR=' + JSON.stringify(mirDump));
+  assert.equal(mir.success, true, mir.error?.message);
   assert.equal(mir.displayValue, ast.displayValue);
 }
 
@@ -58,7 +41,7 @@ test('MIR interpreter executes loop-carried SSA block parameters', () => {
   assertDifferential(`
     fn main() -> Int {
       let mut count = 0;
-      while count < 4 { count = count + 1; }
+      while count < 4 { count += 1; }
       return count;
     }
   `, 'mir-loop.sr');
