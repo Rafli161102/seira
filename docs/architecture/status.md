@@ -1,7 +1,7 @@
 # Current Architecture Status — Seira 0.0.17-d
 
 **As of:** 2026-10-31  
-**Development baseline:** ce8005c983c30852251470bf758997e48f118404 (P1.14 merged)  
+**Development baseline:** 0.0.17-d (P1.16 feature branch; CI validation pending)  
 **Current milestone branch:** P1.16 — MIR Optimization Foundation  
 **Project status:** Experimental; not production-ready; Alpha has not been released.
 
@@ -64,7 +64,5 @@ Permanent branches are main (release), develop (compiler integration), and dev-i
 
 ## Next milestones
 
-- P1.17 / 0.0.18-d — Compiler Conformance & Differential Testing
-- P1.18 / 0.0.19-d — Backend Readiness
 - P1.17 / 0.0.18-d — Compiler Conformance & Differential Testing
 - P1.18 / 0.0.19-d — Backend Readiness
