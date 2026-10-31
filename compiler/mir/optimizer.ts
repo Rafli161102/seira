@@ -9,7 +9,6 @@
 
 import type {
   BasicBlock,
-  MIRFunction,
   MIRModule,
   MIROperation,
   MIRResourceOp,
@@ -320,32 +319,118 @@ function deadCodeEliminate(fn: MIRFunction, stats: MutableStats): MIRFunction {
   return { ...fn, blocks };
 }
 
-function optimizeFunction(fn: MIRFunction, level: MIROptLevel, stats: MutableStats): MIRFunction {
-  if (level === 0) return fn;
+function foldConstants(module: MIRModule, stats: MutableStats): MIRModule {
+  return {
+    ...module,
+    functions: module.functions.map((fn) => ({
+      ...fn,
+      blocks: fn.blocks.map((block) => foldBlock(block, stats).block),
+    })),
+  };
+}
 
-  let blocks = fn.blocks.map((block) => foldBlock(block, stats).block);
-  let withBranches = { ...fn, blocks };
-  const reachable = reachableBlocks(withBranches);
-  stats.unreachableBlocksRemoved += blocks.length - reachable.size;
-  blocks = blocks.filter((block) => reachable.has(block.id));
-  withBranches = { ...fn, blocks };
-  return deadCodeEliminate(withBranches, stats);
+function removeUnreachableBlocks(module: MIRModule, stats: MutableStats): MIRModule {
+  return {
+    ...module,
+    functions: module.functions.map((fn) => {
+      const reachable = reachableBlocks(fn);
+      stats.unreachableBlocksRemoved += fn.blocks.length - reachable.size;
+      return { ...fn, blocks: fn.blocks.filter((block) => reachable.has(block.id)) };
+    }),
+  };
+}
+
+function eliminateDeadPureOperations(module: MIRModule, stats: MutableStats): MIRModule {
+  return {
+    ...module,
+    functions: module.functions.map((fn) => deadCodeEliminate(fn, stats)),
+  };
+}
+
+export interface MIRPass {
+  /** Stable, diagnostic-friendly pass identifier. */
+  readonly name: string;
+  run(module: MIRModule): MIRModule;
+}
+
+export interface MIRPassVerificationFailure {
+  readonly passName: string;
+  readonly errors: ReadonlyArray<string>;
+}
+
+export type MIRPassVerifier = (module: MIRModule, passName: string) => ReadonlyArray<string>;
+
+export interface MIRPassManagerResult {
+  readonly module: MIRModule;
+  readonly passesRun: ReadonlyArray<string>;
+  readonly verificationFailures: ReadonlyArray<MIRPassVerificationFailure>;
 }
 
 /**
- * Runs the safe MIR O1 foundation. Levels 2/3 intentionally reuse the same
- * proven-safe pass set until additional optimization families are specified.
+ * Executes passes in declared order. A candidate is committed only after the
+ * optional verifier accepts it, so an invalid pass result never feeds a later
+ * pass. The caller owns the MIR verifier to keep this module independent from
+ * compiler-driver diagnostics.
  */
-export function optimizeMIR(module: MIRModule, level: MIROptLevel = 1): MIROptimizationResult {
+export function runMIRPasses(
+  input: MIRModule,
+  passes: ReadonlyArray<MIRPass>,
+  verify?: MIRPassVerifier,
+): MIRPassManagerResult {
+  let module = input;
+  const passesRun: string[] = [];
+  const verificationFailures: MIRPassVerificationFailure[] = [];
+
+  for (const pass of passes) {
+    const candidate = pass.run(module);
+    const errors = verify?.(candidate, pass.name) ?? [];
+    if (errors.length > 0) {
+      verificationFailures.push({ passName: pass.name, errors });
+      break;
+    }
+    module = candidate;
+    passesRun.push(pass.name);
+  }
+
+  return { module, passesRun, verificationFailures };
+}
+
+/**
+ * Runs the conservative MIR optimization pipeline. Levels 2/3 intentionally
+ * reuse the same proven-safe pass set until additional families are specified.
+ */
+export function optimizeMIR(
+  module: MIRModule,
+  level: MIROptLevel = 1,
+  verify?: MIRPassVerifier,
+): MIROptimizationResult {
   const stats: MutableStats = {
     constantFolds: 0,
     branchesFolded: 0,
     unreachableBlocksRemoved: 0,
     deadOperationsRemoved: 0,
   };
-  const functions = module.functions.map((fn) => optimizeFunction(fn, level, stats));
+
+  if (level === 0) {
+    return {
+      module,
+      stats,
+      passesRun: [],
+      verificationFailures: [],
+    };
+  }
+
+  const passes: ReadonlyArray<MIRPass> = [
+    { name: 'constant-fold-and-branch-simplification', run: (input) => foldConstants(input, stats) },
+    { name: 'unreachable-block-elimination', run: (input) => removeUnreachableBlocks(input, stats) },
+    { name: 'dead-pure-operation-elimination', run: (input) => eliminateDeadPureOperations(input, stats) },
+  ];
+  const result = runMIRPasses(module, passes, verify);
+
   return {
-    module: level === 0 ? module : { ...module, functions },
+    module: result.module,
     stats,
+    passesRun: result.passesRun,
+    verificationFailures: result.verificationFailures,
   };
 }
