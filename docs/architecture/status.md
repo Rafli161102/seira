@@ -48,7 +48,7 @@ The current optimizer operates on typed MIR. It folds supported constant arithme
 
 ## MIR optimization boundary — P1.16
 
-The optimizer consumes typed MIR. It folds supported constant arithmetic/comparisons and selected unary operations, simplifies constant conditional branches, removes unreachable blocks, and eliminates only operations classified as pure and non-trapping. Calls, resource events, dereferences, projections/loads, potentially trapping division, and unknown operations are retained. Resource event positions are adjusted when earlier pure operations are removed. The driver verifies optimized MIR before ownership analysis. Development defaults to optLevel 0; optLevel 2 and 3 currently reuse the conservative O1 pass set and do not imply additional optimization families.
+The optimizer consumes typed MIR. It folds supported constant arithmetic/comparisons and selected unary operations, simplifies constant conditional branches, removes unreachable blocks, and eliminates only operations classified as pure and non-trapping. Calls, resource events, dereferences, projections/loads, potentially trapping division, and unknown operations are retained. Resource event positions are adjusted when earlier pure operations are removed. The driver verifies MIR before optimization and validates every optimization pass candidate; a rejected candidate is not committed and produces E4005. Development defaults to optLevel 0; optLevel 2 and 3 currently reuse the conservative O1 pass set and do not imply additional optimization families.
 
 ## Backend truth — P1.18 readiness target
 
