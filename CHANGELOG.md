@@ -5,6 +5,7 @@
 ### P1.9 — Runtime Tuple-Projection References
 - Added runtime shared and mutable references to positional tuple places, including nested projections such as `&pair.0` and `&mut pair.1.0`.
 - Preserved tuple projection paths through reference values and shared/mutable reborrows.
+- Extended postfix parsing for chained tuple positions such as `pair.1.0`, which the numeric lexer otherwise groups into a float token after a dot.
 - Made dereference reads resolve the projected tuple element and mutable dereference writes rebuild tuples from the modified leaf to the root binding, retaining sibling values.
 - Included tuple projection paths in runtime reference formatting and structural reference equality.
 - Added execution regressions for shared tuple reads, nested mutable tuple updates, sibling preservation, and reborrow path retention.

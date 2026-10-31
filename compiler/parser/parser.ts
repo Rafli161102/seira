@@ -1665,13 +1665,41 @@ export class Parser {
           },
         } as IndexExpr;
       } else if (this.match(TokenType.Dot)) {
-        // Member access: expr.prop or tuple positional access expr.0
+        // Member access: expr.prop or tuple positional access expr.0.
+        // A chained tuple path such as expr.1.0 is tokenized as a FloatLiteral
+        // ("1.0") by the lexer, so split that token into two positional members
+        // only in this postfix-member context.
         let propName: string;
         let endSpan: Span;
+        let nestedTupleIndex: string | undefined;
+        let nestedTupleSpan: Span | undefined;
         if (this.match(TokenType.IntLiteral)) {
           const prop = this.previous();
           propName = prop.lexeme;
           endSpan = prop.span;
+        } else if (this.match(TokenType.FloatLiteral)) {
+          const prop = this.previous();
+          const parts = prop.lexeme.split('.');
+          if (parts.length !== 2 || !parts.every((part) => /^\\d+$/.test(part))) {
+            this.diagnostics.reportError(
+              'E1011',
+              'Expected an integer tuple position after dot.',
+              prop.span,
+              this.fileName,
+            );
+            propName = prop.lexeme;
+            endSpan = prop.span;
+          } else {
+            propName = parts[0];
+            const firstEnd = prop.span.start + parts[0].length;
+            endSpan = { ...prop.span, end: firstEnd };
+            nestedTupleIndex = parts[1];
+            nestedTupleSpan = {
+              ...prop.span,
+              start: firstEnd + 1,
+              column: prop.span.column + parts[0].length + 1,
+            };
+          }
         } else {
           const prop = this.consume(TokenType.Identifier, 'Expected property identifier after dot.');
           propName = prop.lexeme;
@@ -1690,6 +1718,21 @@ export class Parser {
             column: expr.span.column,
           },
         };
+        if (nestedTupleIndex !== undefined && nestedTupleSpan !== undefined) {
+          expr = {
+            kind: 'MemberExpr',
+            object: expr,
+            property: nestedTupleIndex,
+            isOptional: false,
+            span: {
+              start: expr.span.start,
+              end: nestedTupleSpan.end,
+              sourceId: expr.span.sourceId,
+              line: expr.span.line,
+              column: expr.span.column,
+            },
+          };
+        }
       } else if (this.match(TokenType.QuestionDot)) {
         // Safe navigation: expr?.prop
         const prop = this.consume(TokenType.Identifier, 'Expected property identifier after ?. operator.');
