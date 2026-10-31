@@ -18,7 +18,7 @@
 | Ownership | P1.13 CFG-join hardening merged; initial NLL/projections available | Reference escapes, general interprocedural alias propagation, closure-capture ownership deferred |
 | Effects | P1.15 explicit effect-call boundary merged | No effect inference, polymorphism, handlers, complete host-operation classification |
 | Runtime | TypeScript tree-walking evaluator | No MIR interpreter |
-| Conformance | P1.17 merged: semantic matrix, deterministic diagnostics, bounded lexer fuzz | CI pending; true AST-vs-MIR differential execution unavailable |
+| Conformance | P1.17 merged: semantic matrix, deterministic diagnostics, bounded lexer fuzz | True AST-vs-MIR differential execution unavailable until a MIR interpreter exists |
 | Backend contract | P1.18 candidate: versioned target/runtime ABI, data-layout checks, MIR input validation | No official target profile or code emitter |
 | Native backend | Interface only; E9001 for valid MIR | No LLVM/native emitter |
 | WASM backend | Interface only; E9001 for valid MIR | No WASM emitter/artifact execution |
