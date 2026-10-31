@@ -61,6 +61,7 @@ import type {
   PipelineExpr,
   Program,
   ReturnStmt,
+  StructDecl,
   SetLiteral,
   Stmt,
   TupleLiteral,
@@ -141,6 +142,7 @@ import {
   rtSet,
   rtSome,
   rtString,
+  rtStruct,
   rtTuple,
   rtUInt,
   runtimeValuesEqual,
@@ -161,6 +163,8 @@ import {
   type PathRuntimeValue,
   type ReaderRuntimeValue,
   type ReferenceRuntimeValue,
+  type RuntimePlaceProjection,
+  type StructRuntimeValue,
   type ResourceRuntimeValue,
   type ResultRuntimeValue,
   type RuntimeValue,
@@ -276,6 +280,7 @@ export class Evaluator {
   private readonly ctx: ExecutionContext;
   /** Global-scope function declarations, hoisted before execution. */
   private readonly globalFunctions = new Map<string, FunctionDecl>();
+  private readonly globalStructs = new Map<string, StructDecl>();
 
   constructor(ctx: ExecutionContext) {
     this.ctx = ctx;
@@ -289,6 +294,11 @@ export class Evaluator {
    * and expression statements in order.
    */
   public executeProgram(program: Program, dependencyModules?: SeiraModule[]): RuntimeOutcome {
+    this.globalStructs.clear();
+    for (const item of program.items) {
+      if (item.kind === 'StructDecl') this.globalStructs.set(item.name, item as StructDecl);
+    }
+
     // Build the global execution environment
     const env = new RuntimeEnvironment(undefined, 'global');
 
@@ -302,7 +312,10 @@ export class Evaluator {
         const modExports = new Map<string, RuntimeValue>();
 
         for (const item of mod.ast.items) {
-          if (item.kind === 'FunctionDecl') {
+          if (item.kind === 'StructDecl') {
+            const struct = item as StructDecl;
+            this.globalStructs.set(struct.name, struct);
+          } else if (item.kind === 'FunctionDecl') {
             const fn = item as FunctionDecl;
             this.globalFunctions.set(fn.name, fn);
             const fnVal = rtFunction(fn.name, fn, env);
@@ -1064,50 +1077,70 @@ export class Evaluator {
   // ─── Unary Expression ─────────────────────────────────────────────────────
 
   /** Resolve a named binding followed only by numeric tuple-member projections. */
-  private tupleBorrowPlace(expr: Expr): { name: string; path: number[] } | undefined {
-    if (expr.kind === 'Identifier') {
-      return { name: (expr as Identifier).name, path: [] };
-    }
+  /** Resolve a named binding followed by tuple-position and struct-field projections. */
+  private runtimeBorrowPlace(expr: Expr): { name: string; path: RuntimePlaceProjection[] } | undefined {
+    if (expr.kind === 'Identifier') return { name: (expr as Identifier).name, path: [] };
     if (expr.kind !== 'MemberExpr') return undefined;
-
     const member = expr as MemberExpr;
-    const parent = this.tupleBorrowPlace(member.object);
-    if (!parent || !/^(0|[1-9][0-9]*)$/.test(member.property)) return undefined;
-    const index = Number(member.property);
-    if (!Number.isSafeInteger(index)) return undefined;
-    return { name: parent.name, path: [...parent.path, index] };
+    const parent = this.runtimeBorrowPlace(member.object);
+    if (!parent) return undefined;
+
+    if (/^(0|[1-9][0-9]*)$/.test(member.property)) {
+      const index = Number(member.property);
+      if (!Number.isSafeInteger(index)) return undefined;
+      return { name: parent.name, path: [...parent.path, { kind: 'tuple', index }] };
+    }
+    return { name: parent.name, path: [...parent.path, { kind: 'field', name: member.property }] };
   }
 
-  /** Read a nested tuple position without changing the original tuple value. */
-  private readTupleProjection(value: RuntimeValue, path: ReadonlyArray<number>): RuntimeValue | undefined {
+  private readPlaceProjection(value: RuntimeValue, path: ReadonlyArray<RuntimePlaceProjection>): RuntimeValue | undefined {
     let current = value;
-    for (const index of path) {
-      if (current.tag !== 'Tuple') return undefined;
-      const next = (current as TupleRuntimeValue).elements[index];
-      if (next === undefined) return undefined;
-      current = next;
+    for (const part of path) {
+      if (part.kind === 'tuple') {
+        if (current.tag !== 'Tuple') return undefined;
+        const next = (current as TupleRuntimeValue).elements[part.index];
+        if (next === undefined) return undefined;
+        current = next;
+      } else {
+        if (current.tag !== 'Struct') return undefined;
+        const next = (current as StructRuntimeValue).fields.get(part.name);
+        if (next === undefined) return undefined;
+        current = next;
+      }
     }
     return current;
   }
 
-  /** Rebuild tuples from the leaf outward, preserving all unmodified siblings. */
-  private updateTupleProjection(
+  /** Rebuild immutable tuple/struct containers from the changed leaf to the root. */
+  private updatePlaceProjection(
     value: RuntimeValue,
-    path: ReadonlyArray<number>,
+    path: ReadonlyArray<RuntimePlaceProjection>,
     replacement: RuntimeValue,
   ): RuntimeValue | undefined {
     if (path.length === 0) return replacement;
-    if (value.tag !== 'Tuple') return undefined;
+    const [part, ...remaining] = path;
+    if (!part) return undefined;
 
-    const tuple = value as TupleRuntimeValue;
-    const [index, ...remaining] = path;
-    if (index === undefined || index < 0 || index >= tuple.elements.length) return undefined;
+    if (part.kind === 'tuple') {
+      if (value.tag !== 'Tuple') return undefined;
+      const tuple = value as TupleRuntimeValue;
+      if (part.index < 0 || part.index >= tuple.elements.length) return undefined;
+      const updatedChild = this.updatePlaceProjection(tuple.elements[part.index], remaining, replacement);
+      if (updatedChild === undefined) return undefined;
+      const elements = [...tuple.elements];
+      elements[part.index] = updatedChild;
+      return { ...tuple, elements };
+    }
 
-    const updatedChild = this.updateTupleProjection(tuple.elements[index], remaining, replacement);
-    if (updatedChild === undefined) return undefined;
-    const elements = [...tuple.elements];
-    elements[index] = updatedChild;
-    return { ...tuple, elements };
+    if (value.tag !== 'Struct') return undefined;
+    const struct = value as StructRuntimeValue;
+    const currentField = struct.fields.get(part.name);
+    if (currentField === undefined) return undefined;
+    const updatedField = this.updatePlaceProjection(currentField, remaining, replacement);
+    if (updatedField === undefined) return undefined;
+    const fields = new Map(struct.fields);
+    fields.set(part.name, updatedField);
+    return { ...struct, fields };
   }
 
   private evaluateBorrowExpr(expr: BorrowExpr, env: RuntimeEnvironment): RuntimeOutcome {
@@ -1126,11 +1159,11 @@ export class Evaluator {
         environment: parent.environment,
         name: parent.name,
         mutable: expr.isMutable,
-        ...(parent.tuplePath && parent.tuplePath.length > 0 ? { tuplePath: [...parent.tuplePath] } : {}),
+        ...(parent.placePath && parent.placePath.length > 0 ? { placePath: [...parent.placePath] } : {}),
       } satisfies ReferenceRuntimeValue);
     }
 
-    const place = this.tupleBorrowPlace(expr.operand);
+    const place = this.runtimeBorrowPlace(expr.operand);
     if (!place) {
       return panicOutcome(invalidStateError(
         'Runtime borrowing supports named bindings and tuple positional projections only.',
@@ -1151,9 +1184,9 @@ export class Evaluator {
     }
 
     const binding = reference.environment.lookup(reference.name);
-    if (!binding || this.readTupleProjection(binding.value, reference.tuplePath ?? []) === undefined) {
+    if (!binding || this.readPlaceProjection(binding.value, reference.placePath ?? []) === undefined) {
       return panicOutcome(invalidStateError(
-        `Tuple projection for reference '${place.name}' is not valid at runtime.`,
+        `Place projection for reference '${place.name}' is not valid for the runtime value.`,
         expr.span,
         this.ctx.config.fileName,
       ));
@@ -1175,10 +1208,10 @@ export class Evaluator {
         if (!binding) {
           return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, expr.span, this.ctx.config.fileName));
         }
-        const projected = this.readTupleProjection(binding.value, reference.tuplePath ?? []);
+        const projected = this.readPlaceProjection(binding.value, reference.placePath ?? []);
         if (projected === undefined) {
           return panicOutcome(invalidStateError(
-            `Tuple projection for reference '${reference.name}' is no longer valid.`,
+            `Place projection for reference '${reference.name}' is no longer valid.`,
             expr.span,
             this.ctx.config.fileName,
           ));
@@ -1436,6 +1469,20 @@ export class Evaluator {
     span?: Span,
     env?: RuntimeEnvironment
   ): RuntimeOutcome {
+    const structDecl = this.globalStructs.get(name);
+    if (structDecl) {
+      if (args.length !== structDecl.fields.length) {
+        return panicOutcome(invalidStateError(
+          `Struct constructor '${name}' expects ${structDecl.fields.length} fields, but received ${args.length}.`,
+          span,
+          this.ctx.config.fileName,
+        ));
+      }
+      const fields = new Map<string, RuntimeValue>();
+      structDecl.fields.forEach((field, index) => fields.set(field.name, args[index]));
+      return normalOutcome(rtStruct(name, fields));
+    }
+
     // Check built-ins first
     const builtinResult = this.tryCallBuiltin(name, args, span);
     if (builtinResult !== null) return builtinResult;
@@ -2380,11 +2427,11 @@ export class Evaluator {
       return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, span, this.ctx.config.fileName));
     }
 
-    const tuplePath = reference.tuplePath ?? [];
-    const currentValue = this.readTupleProjection(binding.value, tuplePath);
+    const placePath = reference.placePath ?? [];
+    const currentValue = this.readPlaceProjection(binding.value, placePath);
     if (currentValue === undefined) {
       return panicOutcome(invalidStateError(
-        `Tuple projection for reference '${reference.name}' is no longer valid.`,
+        `Place projection for reference '${reference.name}' is no longer valid.`,
         span,
         this.ctx.config.fileName,
       ));
@@ -2397,10 +2444,10 @@ export class Evaluator {
       nextValue = (compound as NormalOutcome).value;
     }
 
-    const updatedRoot = this.updateTupleProjection(binding.value, tuplePath, nextValue);
+    const updatedRoot = this.updatePlaceProjection(binding.value, placePath, nextValue);
     if (updatedRoot === undefined) {
       return panicOutcome(invalidStateError(
-        `Cannot update tuple projection through reference to '${reference.name}'.`,
+        `Cannot update projected place through reference to '${reference.name}'.`,
         span,
         this.ctx.config.fileName,
       ));
@@ -2469,6 +2516,18 @@ export class Evaluator {
     const targetOutcome = this.evaluateExpr(expr.object, env);
     if (targetOutcome.kind !== 'Normal') return targetOutcome;
     const target = targetOutcome.value;
+
+    // User-defined struct field access.
+    if (target.tag === 'Struct') {
+      const struct = target as StructRuntimeValue;
+      const fieldValue = struct.fields.get(expr.property);
+      if (fieldValue !== undefined) return normalOutcome(fieldValue);
+      return panicOutcome(invalidStateError(
+        `Struct '${struct.name}' has no field named '${expr.property}'.`,
+        expr.span,
+        this.ctx.config.fileName,
+      ));
+    }
 
     // Tuple positional index: e.g. user.0, user.1
     if (target.tag === 'Tuple') {
