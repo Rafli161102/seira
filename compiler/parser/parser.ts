@@ -1680,12 +1680,12 @@ export class Parser {
         } else if (this.match(TokenType.FloatLiteral)) {
           const prop = this.previous();
           const parts = prop.lexeme.split('.');
-          if (parts.length !== 2 || !parts.every((part) => /^\\d+$/.test(part))) {
+          if (parts.length !== 2 || !parts.every((part) => /^\d+$/.test(part))) {
             this.diagnostics.reportError(
               'E1011',
               'Expected an integer tuple position after dot.',
               prop.span,
-              this.fileName,
+              this.file,
             );
             propName = prop.lexeme;
             endSpan = prop.span;
