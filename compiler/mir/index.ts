@@ -43,6 +43,8 @@ export interface MIRResourceOp {
   readonly action: 'acquire' | 'release';
   readonly resourceId: ValueId;
   readonly cleanup: string;
+  /** Number of ordinary operations already emitted when this event occurs. */
+  readonly position?: number;
   readonly source?: MIRSource;
 }
 
@@ -230,7 +232,7 @@ class FunctionLowerer {
       case 'HIRWithStmt': {
         const resource = this.lowerExpr(stmt.resource);
         const source = this.findOrigin(stmt.id) ?? { hirNodeId: stmt.id, span: stmt.source.span, file: stmt.source.file };
-        this.current.resourceOps.push({ action: 'acquire', resourceId: resource.id, cleanup: stmt.cleanupContract, source });
+        this.current.resourceOps.push({ action: 'acquire', resourceId: resource.id, cleanup: stmt.cleanupContract, position: this.current.operations.length, source });
         this.resourceStack.push({ value: resource, cleanup: stmt.cleanupContract, source });
         if (stmt.aliasSymbolId) this.locals.set(stmt.aliasSymbolId, resource);
         this.lowerBlock(stmt.body);
@@ -267,7 +269,7 @@ class FunctionLowerer {
       const resource = this.resourceStack.pop()!;
       this.current.resourceOps.push({
         action: 'release', resourceId: resource.value.id,
-        cleanup: resource.cleanup, source: resource.source,
+        cleanup: resource.cleanup, position: this.current.operations.length, source: resource.source,
       });
     }
   }
@@ -750,7 +752,11 @@ export function validateMIR(module: MIRModule): MIRValidationResult {
       // Resource operations are ordered at block-scope cleanup points; validate
       // references after all ordinary operations in that block.
       for (const resourceOp of block.resourceOps) {
-        checkUse(resourceOp.resourceId, block.id, block.operations.length, `resource ${resourceOp.action}`);
+        const position = resourceOp.position ?? block.operations.length;
+        if (!Number.isInteger(position) || position < 0 || position > block.operations.length) {
+          report(`Resource ${resourceOp.action} in block ${block.id} has invalid operation position ${position}.`);
+        }
+        checkUse(resourceOp.resourceId, block.id, position, `resource ${resourceOp.action}`);
       }
 
       const term = block.terminator;

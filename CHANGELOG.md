@@ -14,6 +14,10 @@ and this project adheres to the Seira Staged Versioning Model:
 ## [Unreleased]
 
 ### Added
+- Added MIR ownership and borrow analysis as the ResourceCheck compiler stage, with CFG data-flow for resource acquisition/release, move state, shared/mutable borrow conflicts, and borrow lifetime validation.
+- Added ordered MIR resource events and verifier checks for event positions.
+- Added ownership/borrow regression tests for use-after-release, double release, leaks across branch merges, move errors, shared borrows, mutable-borrow conflicts, and escaping loans.
+- Documented ownership-analysis opcodes, diagnostics, and current front-end limitations in docs/architecture/ownership.md.
 - Implemented the HIR-to-MIR lowering pipeline with typed SSA values, basic blocks, explicit branch edges, block parameters for value merges, and source-node provenance.
 - Lowered assignment expressions into explicit HIR mutation blocks with single-evaluation RHS temporaries and preserved assignment results.
 - Updated `seira info` to report HIR and MIR as active development pipeline stages while native/WASM code generation remains reserved.

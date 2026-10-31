@@ -2,7 +2,7 @@
  * Seira Compiler Driver
  *
  * Orchestrates the sequential compiler pipeline:
- * Source -> Lexer -> Parser -> Resolver -> Type Checking -> Effect Checking -> Resource Checking -> HIR -> MIR -> Backend
+ * Source -> Lexer -> Parser -> Resolver -> Type Checking -> HIR -> MIR -> Resource/Ownership Checking -> Backend
  *
  * Implements clean stage-based compilation with clear engineering boundaries.
  */
@@ -16,6 +16,7 @@ import { HIRLowering, HIRValidator, type HIRProgram } from '../hir/index.ts';
 import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
 import { MIRBuilder, validateMIR, type MIRModule } from '../mir/index.ts';
+import { analyzeOwnership, type OwnershipAnalysisResult } from '../ownership/index.ts';
 import {
   ModuleGraph,
   PackageGraph,
@@ -52,6 +53,7 @@ export interface CompilationResult {
   readonly ast?: Program;
   readonly hir?: HIRProgram;
   readonly mir?: MIRModule;
+  readonly ownership?: OwnershipAnalysisResult;
   readonly backendResult?: BackendResult;
   readonly diagnostics: DiagnosticBag;
   readonly context: CompilerContext;
@@ -393,7 +395,33 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 7: Backend Code Generation (Architectural Skeleton)
+    // Stage 7: Ownership & Borrow Analysis over MIR
+    let ownership: OwnershipAnalysisResult | undefined;
+    if (isStageAtLeast(effectiveStop, CompilerStage.ResourceCheck) && mir) {
+      ownership = analyzeOwnership(mir);
+      for (const issue of ownership.issues) {
+        const span = issue.source?.span ?? hir?.source.span ?? { start: 0, end: 0, line: 1, column: 1 };
+        const file = issue.source?.file ?? hir?.source.file;
+        context.diagnostics.reportError(issue.code, issue.message, span, file);
+      }
+
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.ResourceCheck) {
+        context.finish();
+        return {
+          success: !context.diagnostics.hasErrors(),
+          stage: CompilerStage.ResourceCheck,
+          tokens,
+          ast,
+          hir,
+          mir,
+          ownership,
+          diagnostics: context.diagnostics,
+          context,
+        };
+      }
+    }
+
+    // Stage 8: Backend Code Generation (Architectural Skeleton)
     let backendResult: BackendResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.Backend)) {
       const backend = new CompilerBackend(
@@ -415,6 +443,7 @@ export class CompilerDriver {
       ast,
       hir,
       mir,
+      ownership,
       backendResult,
       diagnostics: context.diagnostics,
       context,
