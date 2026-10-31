@@ -2,7 +2,7 @@
  * Seira CLI Version Command
  */
 
-export const SEIRA_VERSION = '0.0.18-d';
+export const SEIRA_VERSION = '0.0.19-d';
 
 export function runVersion(): void {
   console.log(`Seira ${SEIRA_VERSION}`);
