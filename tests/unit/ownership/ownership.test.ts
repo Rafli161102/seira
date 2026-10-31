@@ -336,6 +336,7 @@ test('Ownership: shared child reborrow prevents parent use when parent is mutabl
     operation('borrow.mutable', [11], 21),
     { ...operation('borrow.shared', [21], 22), attributes: { reborrow: true } },
     operation('call', [21], 23),
+    operation('call', [22], 24),
   ]);
   assert.ok(codes(result).includes('E7005'));
 });
