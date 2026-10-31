@@ -1,7 +1,7 @@
 # Backend Readiness Contract — P1.18
 
 **Target release:** 0.0.19-d  
-**Status:** Contract-validation candidate implemented; code generation remains NOT IMPLEMENTED.  
+**Status:** P1.18 contract validation merged to main and develop; code generation remains NOT IMPLEMENTED.  
 **Current emitter diagnostic:** E9001 for valid MIR; E9003 for invalid MIR input.
 
 ## Implemented contract surface
