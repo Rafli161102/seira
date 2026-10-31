@@ -31,7 +31,7 @@ The optimizer deliberately retains calls, resource lifecycle events, dereference
 
 ## Deferred
 
-Copy propagation, loop optimizations, global value numbering, inlining, target-specific lowering, and a full named pass-manager/plugin API remain deferred. Native LLVM and WebAssembly emission remain unimplemented (E9001).
+Copy propagation, loop optimizations, global value numbering, inlining, and target-specific lowering remain deferred. The current pass manager is intentionally small and does not expose third-party plugin loading. Native LLVM and WebAssembly emission remain unimplemented (E9001).
 
 ## Regression coverage
 
