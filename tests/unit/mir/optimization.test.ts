@@ -179,3 +179,24 @@ test('MIR optimization remaps resource event positions after removing dead pure 
   assert.equal(optimized.resourceOps[0].position, 1);
   assert.equal(validateMIR(result.module).success, true);
 });
+
+
+test('MIR pass manager verifies each pass and stops before committing an invalid candidate', () => {
+  const input = moduleOf([
+    block(0, [
+      operation('const', 1, [], HIR_INT_TYPE, { literalKind: 'Int', value: '8', raw: '8' }),
+      operation('const', 2, [], HIR_INT_TYPE, { literalKind: 'Int', value: '9', raw: '9' }),
+      operation('binary', 3, [1, 2], HIR_INT_TYPE, { operator: '+' }),
+    ], { kind: 'Return', value: 3 }, 'entry'),
+  ]);
+  const checked: string[] = [];
+  const result = optimizeMIR(input, 1, (_candidate, passName) => {
+    checked.push(passName);
+    return passName === 'unreachable-block-elimination' ? ['synthetic verifier rejection'] : [];
+  });
+  assert.deepEqual(checked, ['constant-fold-and-branch-simplification', 'unreachable-block-elimination']);
+  assert.deepEqual(result.passesRun, ['constant-fold-and-branch-simplification']);
+  assert.equal(result.verificationFailures.length, 1);
+  assert.equal(result.verificationFailures[0].passName, 'unreachable-block-elimination');
+  assert.equal(result.module.functions[0].blocks[0].operations.find((op) => op.dest === 3)?.opcode, 'const');
+});
