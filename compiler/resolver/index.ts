@@ -909,7 +909,7 @@ export class Resolver {
       this.resolveTypeAnnotation(stmt.typeAnnotation);
     }
 
-    const localExisting = this.currentScope.lookupLocal(stmt.name);
+    const localExisting = this.currentScope.lookup(stmt.name);
     if (localExisting && !stmt.isMut && !stmt.typeAnnotation) {
       if (!localExisting.isMut) {
         this.diagnostics.reportError(

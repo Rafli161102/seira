@@ -58,7 +58,7 @@ test('MIR interpreter executes loop-carried SSA block parameters', () => {
   assertDifferential(`
     fn main() -> Int {
       let mut count = 0;
-      while count < 4 { count += 1; }
+      while count < 4 { count = count + 1; }
       return count;
     }
   `, 'mir-loop.sr');
