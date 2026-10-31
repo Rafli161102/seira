@@ -169,13 +169,13 @@ test('Ownership: disjoint field reads remain available during a field borrow', (
 test('Ownership: source field borrows lower to independent MIR places', () => {
   const result = new CompilerDriver().compile(`
     type Pair { left: Int, right: Int }
-    fn main() {
-      mut pair = Pair { left: 1, right: 2 };
+    fn borrow_fields(mut pair: Pair) {
       left_ref = &mut pair.left;
       right_ref = &mut pair.right;
       println(*left_ref);
       println(*right_ref);
     }
+    fn main() {}
   `, 'field-sensitive-borrows.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, true, result.diagnostics.format());
   const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
