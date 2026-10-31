@@ -418,9 +418,8 @@ export function substituteType(type: Type, substitutions: Map<string, Type>): Ty
  * Populates bindings with resolved generic arguments.
  */
 function unifyTypesInto(paramType: Type, argType: Type, bindings: Map<string, Type>): boolean {
-    // Unknown input is a provisional binding: later arguments can refine it.
-    // Keeping the placeholder preserves existing trait-constrained inference
-    // where front-end resolution has not yet produced a concrete argument type.
+  if (paramType.kind === 'GenericParam') {
+    // Unknown is provisional: later arguments can refine it to a concrete type.
     if (isUnknown(argType)) {
       if (!bindings.has(paramType.name)) bindings.set(paramType.name, UNKNOWN_TYPE);
       return true;
@@ -435,6 +434,7 @@ function unifyTypesInto(paramType: Type, argType: Type, bindings: Map<string, Ty
     }
     bindings.set(paramType.name, argType);
     return true;
+  }
   if (paramType.kind === 'TypeAlias') {
     return unifyTypesInto(paramType.target, argType, bindings);
   }
