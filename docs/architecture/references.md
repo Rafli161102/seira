@@ -35,11 +35,11 @@ HIR represents borrow and dereference using typed unary nodes. MIR lowers refere
 
 ## Runtime representation
 
-A runtime reference stores the owning RuntimeEnvironment, binding name, mutability, and an optional tuple-position path. With no path it points to the complete lexical binding cell. With a path such as [1, 0], it points to a nested tuple element within that binding. Passing a reference to a function preserves the root binding and projection path. Mutable dereference assignment rebuilds the tuple chain and writes the updated value back to the root binding. Reference return values and other escapes are rejected by the front end.
+A runtime reference stores the owning RuntimeEnvironment, binding name, mutability, and an optional ordered tuple/struct-field path. With no path it points to the complete lexical binding cell. With a path such as [1, 0] or [field:stats, field:score], it points to a nested tuple element or struct field. Passing a reference to a function preserves the root binding and complete projection path. Mutable dereference assignment rebuilds nested tuple/struct containers and writes the updated value back to the root binding. Reference return values and other escapes are rejected by the front end.
 
 ## Deliberate limitations
 
-This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections for compiler/MIR analysis, and positional tuple projections for runtime references. Runtime references to user-defined struct fields are not yet implemented. References cannot be returned or escape the defining function. Dynamic list/map index borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
+This is a first MIR-based NLL foundation, not full lifetime analysis. Source borrowing accepts named local bindings, named struct-field projections, and positional tuple projections. Struct and tuple field references are executable at runtime. References cannot be returned or escape the defining function. Dynamic list/map index borrowing, arbitrary pointer/address expressions, closure-capture ownership, and general interprocedural alias propagation remain future work. Native and WebAssembly backends are also not implemented yet.
 
 
 ## NLL boundary (P1.6)
@@ -57,3 +57,10 @@ The supported reborrow places are named references behind one dereference: `&*r`
 The runtime reference value has an optional tuplePath: number[] projection. Borrow expressions such as pair.0 and pair.1.0 resolve to the lexical root binding plus the ordered tuple positions. Reborrowing through a dereference retains this path. Dereference reads select the nested element; mutable writes copy the tuple chain outward and replace the root binding from the evaluator.
 
 Only constant positional tuple members are supported by this runtime path. List/map indexing, dynamic indices, and user-defined struct-field references remain outside this increment.
+
+
+## Runtime struct values and field references (P1.10)
+
+A struct declaration is instantiated by a positional constructor call whose arguments follow declaration field order: `Person("Mika", 23)`. The evaluator stores the value as a Struct runtime value containing its type name and named field map. Member reads retrieve declared fields by name.
+
+Reference paths use ordered projections of two kinds: tuple positions and struct field names. Thus `&mut player.stats.score` retains the root binding and every nested segment. Dereference mutation reconstructs the nested Struct/Tuple values from the leaf outward and writes the new root value to its original mutable binding. Reborrowing preserves the full path. Dynamic list/map index references and named-argument constructor syntax remain deferred.

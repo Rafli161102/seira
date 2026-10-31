@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### P1.10 — Runtime Struct Values & Field References
+- Added first-class runtime Struct values with a type name and named field storage.
+- Added positional struct constructor calls following declaration field order (for example, `Person("Mika", 23)`) with constructor arity and field type validation.
+- Added runtime struct member reads and shared/mutable references to named fields, including nested mixed paths such as `player.stats.score`.
+- Generalized runtime references to preserve ordered tuple-position and struct-field projections through dereference reads, mutable writes, and reborrowing.
+- Made mutable dereference writes rebuild nested immutable tuple/struct containers from the modified leaf to the root binding without disturbing siblings.
+- Added execution, typecheck, and ownership regressions for construction, field access, disjoint field loans, overlapping loans, nested mutation, and reborrow paths.
+- Kept dynamic list/map index borrowing and named-argument struct constructors deferred.
+
 ### P1.9 — Runtime Tuple-Projection References
 - Added runtime shared and mutable references to positional tuple places, including nested projections such as `&pair.0` and `&mut pair.1.0`.
 - Preserved tuple projection paths through reference values and shared/mutable reborrows.
