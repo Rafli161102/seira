@@ -215,6 +215,38 @@ test('Ownership: mutable borrows of the same tuple position conflict', () => {
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
 });
 
+test('Ownership: struct constructors lower independent field loans to MIR places', () => {
+  const result = new CompilerDriver().compile(`
+    type Person { name: String, age: Int }
+    fn main() {
+      mut person = Person("Mika", 23);
+      name_ref = &mut person.name;
+      age_ref = &mut person.age;
+      println(*name_ref);
+      println(*age_ref);
+    }
+  `, 'runtime-struct-field-borrows.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+  const operations = result.mir!.functions.flatMap((fn) => fn.blocks.flatMap((block) => block.operations));
+  const loans = operations.filter((op) => op.opcode === 'borrow.mutable' && typeof op.attributes?.placePath === 'string');
+  assert.deepEqual(loans.map((op) => op.attributes?.placePath).sort(), ['age', 'name']);
+});
+
+test('Ownership: overlapping mutable loans of one struct field are rejected', () => {
+  const result = new CompilerDriver().compile(`
+    type Person { name: String, age: Int }
+    fn main() {
+      mut person = Person("Mika", 23);
+      first = &mut person.name;
+      second = &mut person.name;
+      println(*first);
+      println(*second);
+    }
+  `, 'runtime-struct-field-overlap.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
+});
+
 test('Ownership: detects direct owner reads during an active mutable borrow', () => {
   const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); *exclusive += 1; }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);

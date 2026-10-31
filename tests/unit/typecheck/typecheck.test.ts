@@ -464,6 +464,32 @@ test('Typecheck: rejects mutable field borrow through an immutable root', () => 
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
 });
 
+test('Typecheck: validates struct constructors, argument types, and declared field access', () => {
+  const valid = typecheckSource(`
+    type Person { name: String, age: Int }
+    fn main() {
+      person = Person("Mika", 23);
+      mut age_ref = &mut person.age;
+      *age_ref += 1;
+    }
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+
+  const badCount = typecheckSource(`
+    type Person { name: String, age: Int }
+    fn main() { person = Person("Mika"); }
+  `);
+  assert.equal(badCount.tcResult.success, false);
+  assert.ok(badCount.diagnostics.getErrors().some((error) => error.code === 'E3003'));
+
+  const badField = typecheckSource(`
+    type Person { name: String }
+    fn main() { person = Person("Mika"); println(person.age); }
+  `);
+  assert.equal(badField.tcResult.success, false);
+  assert.ok(badField.diagnostics.getErrors().some((error) => error.code === 'E3002'));
+});
+
 test('Typecheck: rejects borrowing computed member expressions as places', () => {
   const result = typecheckSource(`
     type Pair { left: Int }

@@ -1030,3 +1030,50 @@ test('Execution: mutable tuple projection is preserved across reborrowing', () =
   assert.ok(r.success, r.diagnostics.format());
   assert.deepStrictEqual(r.output, ['11']);
 });
+
+test('Execution: positional struct constructor creates a runtime value with named fields', () => {
+  const r = run(`
+    type Person { name: String, age: Int }
+    fn main() {
+      person = Person("Mika", 23);
+      println(person.name);
+      println(person.age);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Mika', '23']);
+});
+
+test('Execution: mutable field reference updates the original struct binding', () => {
+  const r = run(`
+    type Person { name: String, age: Int }
+    fn main() {
+      mut person = Person("Mika", 23);
+      name_ref = &mut person.name;
+      *name_ref = "Rafli";
+      *name_ref = *name_ref + "!";
+      println(*name_ref);
+      println(person.name);
+      println(person.age);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Rafli!', 'Rafli!', '23']);
+});
+
+test('Execution: nested struct field references preserve each path segment', () => {
+  const r = run(`
+    type Stats { score: Int }
+    type Player { stats: Stats, name: String }
+    fn main() {
+      mut player = Player(Stats(40), "Aqua");
+      score_ref = &mut player.stats.score;
+      *score_ref += 2;
+      println(*score_ref);
+      println(player.name);
+      println(player.stats.score);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['42', 'Aqua', '42']);
+});
