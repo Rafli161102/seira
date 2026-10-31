@@ -20,7 +20,19 @@ function assertDifferential(source: string, file: string): void {
   const ast = new ExecutionEngine().executeSource(source, file, { enableOutput: false });
   assert.equal(ast.success, true, ast.diagnostics.format());
   const mir = new MIRInterpreter(compiled).execute();
-  assert.equal(mir.success, true, mir.error?.message);
+  const mirDump = compiled.functions.map((fn) => ({
+    name: fn.name,
+    blocks: fn.blocks.map((block) => ({
+      id: block.id,
+      name: block.name,
+      parameters: block.parameters.map((parameter) => ({ id: parameter.id, symbolId: parameter.symbolId })),
+      operations: block.operations.map((operation) => ({
+        opcode: operation.opcode, dest: operation.dest, operands: operation.operands, attributes: operation.attributes,
+      })),
+      terminator: block.terminator,
+    })),
+  }));
+  assert.equal(mir.success, true, (mir.error?.message ?? '') + '\nMIR=' + JSON.stringify(mirDump));
   assert.equal(mir.displayValue, ast.displayValue);
 }
 
