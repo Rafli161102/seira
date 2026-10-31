@@ -83,3 +83,38 @@ test('MIR interpreter enforces the execution step budget', () => {
   assert.equal(limited.success, false);
   assert.equal(limited.error?.code, 'E9103');
 });
+
+
+test('MIR interpreter enforces the call-depth budget for recursion', () => {
+  const source = `
+    fn descend(value: Int) -> Int {
+      if value == 0 { return 0; }
+      return descend(value - 1);
+    }
+    fn main() -> Int { return descend(20); }
+  `;
+  const compiled = compileToMIR(source, 'mir-call-depth.sr');
+  const limited = new MIRInterpreter(compiled, { maxCallDepth: 4 }).execute();
+  assert.equal(limited.success, false);
+  assert.equal(limited.error?.code, 'E9104');
+});
+
+test('MIR interpreter reports a missing entry function explicitly', () => {
+  const module = compileToMIR('fn main() -> Int { return 1; }', 'mir-missing-entry.sr');
+  const result = new MIRInterpreter(module).execute('not_found');
+  assert.equal(result.success, false);
+  assert.equal(result.error?.code, 'E9100');
+});
+
+test('MIR interpreter rejects invalid MIR before executing it', () => {
+  const module: MIRModule = {
+    name: 'invalid-mir',
+    functions: [{
+      name: 'main', functionId: 'fn:main', parameters: [], returnType: HIR_INT_TYPE, entry: 99,
+      blocks: [],
+    }],
+  };
+  const result = new MIRInterpreter(module).execute();
+  assert.equal(result.success, false);
+  assert.equal(result.error?.code, 'E9003');
+});
