@@ -32,7 +32,7 @@ The existing `develop` branch contains post-Seed compiler and language work. The
 
 ### Recent Development Updates (`develop`)
 
-- **P1.19 — MIR Interpreter Foundation:** added a bounded experimental scalar/CFG MIR interpreter, direct in-module calls, loop-carried SSA block parameters, execution limits, fail-closed unsupported-op diagnostics, and AST/MIR return-value differential tests.
+- **P1.19 — MIR Interpreter Foundation:** added a bounded experimental scalar/CFG MIR interpreter, direct in-module calls, loop-carried SSA block parameters, execution limits, fail-closed unsupported-op diagnostics, and AST/MIR return-value differential tests. Merged to develop via PR #26; PR #27 corrected the post-merge lexical-shadowing regression.
 - **P1.18 — Backend Readiness Contract:** added versioned target/runtime ABI contracts, target-layout validation, and MIR input validation at the backend boundary. Native and WASM code generation remain unimplemented.
 - **P1.17 — Compiler Conformance & Deterministic Testing:** added a Development semantic conformance matrix for generics, mutable references, effects, and stable diagnostics, plus deterministic bounded lexer fuzz coverage.
 - **P1.16 — MIR Optimization Foundation:** added conservative constant folding, constant-branch simplification, unreachable-block removal, dead pure-operation elimination, and MIR verification after optimization. Optimization remains disabled by default in the development profile (`optLevel: 0`).
@@ -284,7 +284,7 @@ PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.20-d]
   ├── 0.0.17-d: MIR Optimization Foundation (P1.16 — Complete)
   ├── 0.0.18-d: Compiler Conformance & Deterministic Testing (P1.17 — Complete)
   ├── 0.0.19-d: Backend Readiness Contract (P1.18 — Complete)
-  └── 0.0.20-d: MIR Interpreter Foundation (P1.19 — In Progress)
+  └── 0.0.20-d: MIR Interpreter Foundation (P1.19 — Merged to develop; CI fix merged)
 
 PHASE 3: ALPHA (0.1.0-alpha.x)
   └── Native (LLVM) code generation, WebAssembly backend, and executable binaries.
