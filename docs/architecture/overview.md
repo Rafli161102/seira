@@ -1,5 +1,8 @@
 # Seira Architecture Overview
 
+> **Historical baseline:** this specification records the 0.0.10-s Seed architecture as of 2026-10-01. HIR, MIR, MIR verification and initial MIR-based ownership/borrow analysis have since been implemented in Development. Old version labels below are historical; consult [Current Architecture Status](status.md) for current capability boundaries.
+
+
 | Field | Value |
 |---|---|
 | Specification | Seira 0.0.10-s Repository Architecture |

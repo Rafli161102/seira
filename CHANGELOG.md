@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.0.14-d] - 2026-10-31
+
+### P1.13 — Ownership & Borrow Checker Hardening
+- Fixed an unsound CFG-join merge that selected one owner when a reference could originate from different owners on predecessor paths.
+- Added a conservative unknown-owner identity so a joined reference aliases every possible root owner.
+- Preserved conservative parent suspension when joined child reborrows can originate from different parents.
+- Added a synthetic MIR regression with two predecessor blocks and a conflicting mutable borrow after the join.
+- Updated architecture status and documented the remaining alias/lifetime limitations.
+- Kept general interprocedural alias propagation, reference escapes, and closure-capture ownership out of scope.
+
 ## [0.0.13-d] - 2026-10-31
 
 ### P1.12 — Runtime Map Key References & Collection Safety
