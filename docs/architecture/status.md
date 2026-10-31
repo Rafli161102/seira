@@ -1,4 +1,4 @@
-# Current Architecture Status — Seira 0.0.16-d
+# Current Architecture Status — Seira 0.0.17-d
 
 **As of:** 2026-10-31  
 **Development baseline:** ce8005c983c30852251470bf758997e48f118404 (P1.14 merged)  
@@ -45,6 +45,10 @@ This is not a complete algebraic effect system. Built-in print, println, filesys
 ## MIR optimization boundary — P1.16
 
 The current optimizer operates on typed MIR. It folds supported constant arithmetic/comparisons, simplifies constant conditional branches, removes unreachable blocks, and eliminates only operations classified as pure and non-trapping. Calls, resource events, dereferences, potentially trapping division, and unknown operations are retained. The driver verifies optimized MIR before proceeding to ownership analysis. Optimization defaults to disabled at optLevel 0; levels 2 and 3 currently reuse the conservative O1 pass set and do not imply additional optimization families.
+
+## MIR optimization boundary — P1.16
+
+The optimizer consumes typed MIR. It folds supported constant arithmetic/comparisons and selected unary operations, simplifies constant conditional branches, removes unreachable blocks, and eliminates only operations classified as pure and non-trapping. Calls, resource events, dereferences, projections/loads, potentially trapping division, and unknown operations are retained. Resource event positions are adjusted when earlier pure operations are removed. The driver verifies optimized MIR before ownership analysis. Development defaults to optLevel 0; optLevel 2 and 3 currently reuse the conservative O1 pass set and do not imply additional optimization families.
 
 ## Backend truth — P1.18 readiness target
 
