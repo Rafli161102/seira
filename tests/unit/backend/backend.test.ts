@@ -41,9 +41,9 @@ function wasmContract(): BackendTargetContract {
     ...nativeContract(),
     target: 'wasm32',
     triple: 'wasm32-unknown-unknown',
-    objectFormat: 'elf',
+    objectFormat: 'wasm',
     dataLayout: {
-      pointerWidth: 64,
+      pointerWidth: 32,
       endianness: 'little',
       maxAlignment: 16,
       integerWidths: [8, 16, 32, 64],
@@ -74,7 +74,8 @@ test('Backend contract: rejects ABI mismatch, invalid wasm pointer width, and du
   const invalid = {
     ...wasmContract(),
     abiVersion: '9.9.9',
-    dataLayout: { ...wasmContract().dataLayout, pointerWidth: 64 as const },
+    objectFormat: 'elf',
+    dataLayout: { ...wasmContract().dataLayout, pointerWidth: 64 as const, maxAlignment: 15 },
     runtime: { ...wasmContract().runtime, version: '9.9.9', ioWriteSymbol: 'seira_test_main' },
   };
   const result = validateBackendContract(invalid);
