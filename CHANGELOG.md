@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### P1.19 — Post-merge CI correction
+- Restored resolver lookup for bare `BindingStmt` to the current lexical scope, preserving nested block shadowing instead of treating inner declarations as assignments to outer bindings.
+- Kept explicit assignment/compound assignment as the mutation path and updated loop mutation fixtures to use `count += 1`.
+- Verified the corrective PR #27 on all six CI combinations (Ubuntu/macOS/Windows × Node.js 22/24); the merged develop commit's CI run #190 also passed all six jobs.
+
 ### Repository Engineering
 - Added an audited current-state architecture reference and historical P1.13–P1.18 roadmap references and the new P1.19–P1.24 roadmap.
 - Marked Seed-era architecture documents as historical baselines.
