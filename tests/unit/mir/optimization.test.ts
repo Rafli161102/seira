@@ -69,7 +69,7 @@ test('MIR optimization folds constant branches and removes unreachable blocks', 
 test('MIR optimization never removes calls, resource events, or potentially trapping division', () => {
   const call = { op: 'call', opcode: 'call', dest: 4, operands: [], type: HIR_INT_TYPE, attributes: {}, source };
   const division = operation('binary', 5, [1, 2], HIR_INT_TYPE, { operator: '/' });
-  const resource = { action: 'acquire' as const, resourceId: 4, cleanup: 'close', position: 1, source };
+  const resource = { action: 'acquire' as const, resourceId: 4, cleanup: 'close', position: 3, source };
   const input = moduleOf([
     {
       id: 0, name: 'entry', parameters: [],
@@ -86,7 +86,7 @@ test('MIR optimization never removes calls, resource events, or potentially trap
   const operations = result.module.functions[0].blocks[0].operations;
   assert.ok(operations.some((op) => op.opcode === 'call'));
   assert.ok(operations.some((op) => op.opcode === 'binary' && op.attributes?.operator === '/'));
-  assert.equal(result.module.functions[0].blocks[0].resourceOps[0].position, 1);
+  assert.equal(result.module.functions[0].blocks[0].resourceOps[0].position, 3);
   assert.equal(validateMIR(result.module).success, true);
 });
 
