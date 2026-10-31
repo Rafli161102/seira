@@ -14,6 +14,7 @@ export const CompilerStage = {
   ResourceCheck: 'resource_check',
   HIR: 'hir',
   MIR: 'mir',
+  Optimize: 'optimize',
   Backend: 'backend',
 } as const;
 
@@ -27,6 +28,7 @@ export const STAGE_ORDER: ReadonlyArray<CompilerStage> = [
   CompilerStage.EffectCheck,
   CompilerStage.HIR,
   CompilerStage.MIR,
+  CompilerStage.Optimize,
   CompilerStage.ResourceCheck,
   CompilerStage.Backend,
 ];
