@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — P1.5 Dereference & Borrowed Mutation
+## [Unreleased]
+
+### P1.6 — MIR-Based Loan Liveness & Non-Lexical Lifetimes
+- Added backward MIR CFG value-liveness analysis, including branch-edge argument to block-parameter mapping.
+- Ended local and incoming reference loans after their last semantic SSA use; synthetic `borrow.end` markers are excluded from liveness so they do not extend a borrow.
+- Preserved explicit lexical cleanup markers as harmless when the corresponding loan has already ended through liveness.
+- Added a regression test proving that the original owner can be accessed after the last use of a mutable reference, before lexical scope exit.
+- Updated README and ownership/reference architecture documentation to describe the initial NLL boundary and remaining limitations.
+
+### P1.5 — Dereference & Borrowed Mutation
 
 - Added prefix dereference syntax (`*reference`) and type-checked it against shared/mutable reference types.
 - Added assignment and compound-assignment through mutable references (`*reference = value`, `*reference += value`); shared-reference writes are rejected with `E3008`.
@@ -10,7 +19,7 @@
 - Added parser, type-checker, MIR/ownership, and runtime regression tests for borrowed mutation.
 - Updated README and reference/ownership architecture documentation to reflect the enabled syntax and remaining lifetime limitations.
 
-## Unreleased — P1.4 Reference Types & Borrow Syntax
+### P1.4 — Reference Types & Borrow Syntax
 
 - Added `&T` and `&mut T` reference annotations plus `&value` and `&mut value` borrow expressions.
 - Added reference-aware structural type checking and HIR type lowering.
@@ -29,8 +38,6 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Beta Series**: `0.1.0-beta.1` through `0.1.0-beta.10`
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
-
-## [Unreleased]
 
 ### Added
 - Added MIR ownership and borrow analysis as the ResourceCheck compiler stage, with CFG data-flow for resource acquisition/release, move state, shared/mutable borrow conflicts, and borrow lifetime validation.

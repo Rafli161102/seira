@@ -41,6 +41,8 @@ interface LoanState {
   readonly status: LoanStatus;
   /** True when the loan is an incoming reference parameter owned by the caller. */
   readonly external?: boolean;
+  /** True when NLL ended this loan before its lexical borrow.end marker. */
+  readonly expiredByLiveness?: boolean;
 }
 
 interface FlowState {
@@ -84,6 +86,7 @@ function joinLoan(a: LoanState | undefined, b: LoanState | undefined): LoanState
     kind: a.kind === b.kind ? a.kind : 'mutable',
     status: a.status === b.status && a.ownerId === b.ownerId && a.kind === b.kind ? a.status : 'maybe',
     external: a.external === true && b.external === true,
+    expiredByLiveness: a.expiredByLiveness === true && b.expiredByLiveness === true,
   };
 }
 
@@ -129,7 +132,7 @@ function statesEqual(a: FlowState | undefined, b: FlowState): boolean {
   for (const [id, value] of b.moved) if (a.moved.get(id) !== value) return false;
   for (const [id, value] of b.loans) {
     const old = a.loans.get(id);
-    if (!old || old.ownerId !== value.ownerId || old.kind !== value.kind || old.status !== value.status || old.external !== value.external) return false;
+    if (!old || old.ownerId !== value.ownerId || old.kind !== value.kind || old.status !== value.status || old.external !== value.external || old.expiredByLiveness !== value.expiredByLiveness) return false;
   }
   return true;
 }
@@ -138,6 +141,107 @@ function activeLoans(state: FlowState, ownerId: ValueId): Array<[ValueId, LoanSt
   return [...state.loans.entries()].filter(([, loan]) =>
     loan.ownerId === ownerId && loan.status !== 'ended'
   );
+}
+
+
+/**
+ * Computes SSA value liveness over the MIR CFG. Synthetic borrow.end operands
+ * are deliberately excluded: they describe lexical cleanup, not a semantic
+ * use of the reference, and must not extend a loan's lifetime.
+ */
+function computeValueLiveness(
+  fn: MIRFunction,
+  blocks: ReadonlyMap<number, BasicBlock>,
+  reachable: ReadonlySet<number>,
+): Map<number, ReadonlyArray<ReadonlySet<ValueId>>> {
+  const liveIn = new Map<number, Set<ValueId>>();
+  for (const id of reachable) liveIn.set(id, new Set());
+
+  const edgeLive = (targetId: number, args: ReadonlyArray<ValueId>): Set<ValueId> => {
+    const target = blocks.get(targetId);
+    const targetLive = liveIn.get(targetId) ?? new Set<ValueId>();
+    const result = new Set(targetLive);
+    if (!target) return result;
+    target.parameters.forEach((parameter, index) => {
+      if (!targetLive.has(parameter.id)) return;
+      result.delete(parameter.id);
+      const argument = args[index];
+      if (argument !== undefined) result.add(argument);
+    });
+    return result;
+  };
+
+  const blockUseDef = new Map<number, { use: Set<ValueId>; def: Set<ValueId> }>();
+  for (const block of fn.blocks) {
+    if (!reachable.has(block.id)) continue;
+    const use = new Set<ValueId>();
+    // Block/function parameters are live-in values from the predecessor/caller
+    // perspective. Keep them in liveIn so edgeLive can map block parameters
+    // back to their incoming SSA arguments.
+    const def = new Set<ValueId>();
+    for (const operation of block.operations) {
+      if (operation.opcode !== 'borrow.end') {
+        for (const operand of operation.operands) if (!def.has(operand)) use.add(operand);
+      }
+      if (operation.dest !== undefined) def.add(operation.dest);
+    }
+    blockUseDef.set(block.id, { use, def });
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const block of [...fn.blocks].reverse()) {
+      if (!reachable.has(block.id)) continue;
+      const nextOut = new Set<ValueId>();
+      const term = block.terminator;
+      if (term.kind === 'Branch') {
+        for (const id of edgeLive(term.target, term.args)) nextOut.add(id);
+      } else if (term.kind === 'CondBranch') {
+        nextOut.add(term.condition);
+        for (const id of edgeLive(term.trueTarget, term.trueArgs)) nextOut.add(id);
+        for (const id of edgeLive(term.falseTarget, term.falseArgs)) nextOut.add(id);
+      } else if (term.kind === 'Return' && term.value !== undefined) {
+        nextOut.add(term.value);
+      }
+      const { use, def } = blockUseDef.get(block.id)!;
+      const nextIn = new Set(use);
+      for (const id of nextOut) if (!def.has(id)) nextIn.add(id);
+      const current = liveIn.get(block.id)!;
+      if (current.size !== nextIn.size || [...current].some((id) => !nextIn.has(id))) {
+        liveIn.set(block.id, nextIn);
+        changed = true;
+      }
+    }
+  }
+
+  const result = new Map<number, ReadonlyArray<ReadonlySet<ValueId>>>();
+  for (const block of fn.blocks) {
+    if (!reachable.has(block.id)) continue;
+    const live = new Set<ValueId>();
+    const term = block.terminator;
+    if (term.kind === 'Branch') {
+      for (const id of edgeLive(term.target, term.args)) live.add(id);
+    } else if (term.kind === 'CondBranch') {
+      live.add(term.condition);
+      for (const id of edgeLive(term.trueTarget, term.trueArgs)) live.add(id);
+      for (const id of edgeLive(term.falseTarget, term.falseArgs)) live.add(id);
+    } else if (term.kind === 'Return' && term.value !== undefined) {
+      live.add(term.value);
+    }
+    const snapshots: Set<ValueId>[] = new Array(block.operations.length + 1);
+    snapshots[block.operations.length] = new Set(live);
+    for (let index = block.operations.length - 1; index >= 0; index--) {
+      const operation = block.operations[index];
+      snapshots[index] = new Set(live);
+      if (operation.dest !== undefined) live.delete(operation.dest);
+      if (operation.opcode !== 'borrow.end') {
+        for (const operand of operation.operands) live.add(operand);
+      }
+    }
+    result.set(block.id, snapshots);
+  }
+  return result;
 }
 
 export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
@@ -188,6 +292,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
       for (const next of successors.get(current) ?? []) reachWorklist.push(next);
     }
 
+    const valueLiveness = computeValueLiveness(fn, blocks, reachable);
     const outgoing = new Map<number, FlowState>();
     const entryState = emptyState();
     for (const parameter of fn.parameters) {
@@ -204,14 +309,45 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
     const incomingFor = (blockId: number): FlowState | undefined => {
       const states: FlowState[] = [];
       if (blockId === fn.entry) states.push(entryState);
-      for (const pred of predecessors.get(blockId) ?? []) {
-        const state = outgoing.get(pred);
-        if (state && reachable.has(pred)) states.push(state);
+      const target = blocks.get(blockId);
+      for (const pred of fn.blocks) {
+        if (!reachable.has(pred.id)) continue;
+        const state = outgoing.get(pred.id);
+        if (!state) continue;
+        const term = pred.terminator;
+        const edges = term.kind === 'Branch'
+          ? [{ target: term.target, args: term.args }]
+          : term.kind === 'CondBranch'
+            ? [
+                { target: term.trueTarget, args: term.trueArgs },
+                { target: term.falseTarget, args: term.falseArgs },
+              ]
+            : [];
+        for (const edge of edges) {
+          if (edge.target !== blockId || !target) continue;
+          const mapped = cloneState(state);
+          const valueMap = new Map<ValueId, ValueId>();
+          target.parameters.forEach((parameter, index) => {
+            const argument = edge.args[index];
+            if (argument !== undefined) valueMap.set(argument, parameter.id);
+          });
+          for (const [loanId, loan] of [...mapped.loans]) {
+            const mappedLoanId = valueMap.get(loanId);
+            const mappedOwnerId = valueMap.get(loan.ownerId) ?? loan.ownerId;
+            if (mappedLoanId !== undefined) {
+              mapped.loans.delete(loanId);
+              mapped.loans.set(mappedLoanId, { ...loan, ownerId: mappedOwnerId });
+            } else if (mappedOwnerId !== loan.ownerId) {
+              mapped.loans.set(loanId, { ...loan, ownerId: mappedOwnerId });
+            }
+          }
+          states.push(mapped);
+        }
       }
       return states.length ? mergeStates(states) : undefined;
     };
 
-    const transferBlock = (block: BasicBlock, initial: FlowState, collectIssues: boolean): FlowState => {
+    const transferBlock = (block: BasicBlock, initial: FlowState, collectIssues: boolean, liveAfter: ReadonlyArray<ReadonlySet<ValueId>>): FlowState => {
       const state = cloneState(initial);
       const emitIssue = (
         code: OwnershipIssue['code'],
@@ -285,6 +421,14 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
         }
       };
 
+      const expireDeadLoans = (live: ReadonlySet<ValueId>): void => {
+        for (const [loanId, loan] of state.loans) {
+          if (loan.status === 'active' && !live.has(loanId)) {
+            state.loans.set(loanId, { ...loan, status: 'ended', expiredByLiveness: true });
+          }
+        }
+      };
+
       const processOperation = (operation: MIROperation): void => {
         const opcode = operation.opcode;
         const operands = operation.operands;
@@ -331,6 +475,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           if (loanId === undefined || !loan) {
             emitIssue('E7007', 'Borrow end references an unknown borrow value.', loanId, operation.source);
           } else if (loan.status === 'ended') {
+            if (loan.expiredByLiveness) return;
             emitIssue('E7007', `Borrow %${loanId} is ended more than once.`, loanId, operation.source);
           } else if (loan.status === 'maybe') {
             emitIssue('E7007', `Borrow %${loanId} is not active on every path where it is ended.`, loanId, operation.source);
@@ -401,8 +546,13 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
           processResourceEvent(events[eventIndex].event);
           eventIndex++;
         }
-        if (position < block.operations.length) processOperation(block.operations[position]);
+        if (position < block.operations.length) {
+          processOperation(block.operations[position]);
+          expireDeadLoans(liveAfter[position]);
+        }
       }
+
+      expireDeadLoans(liveAfter[block.operations.length]);
 
       if (block.terminator.kind === 'Return') {
         const returnedValue = block.terminator.value;
@@ -434,7 +584,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
         if (!reachable.has(block.id)) continue;
         const incoming = incomingFor(block.id);
         if (!incoming) continue;
-        const next = transferBlock(block, incoming, false);
+        const next = transferBlock(block, incoming, false, valueLiveness.get(block.id) ?? []);
         if (!statesEqual(outgoing.get(block.id), next)) {
           outgoing.set(block.id, next);
           changed = true;
@@ -448,7 +598,7 @@ export function analyzeOwnership(module: MIRModule): OwnershipAnalysisResult {
     for (const block of fn.blocks) {
       if (!reachable.has(block.id)) continue;
       const incoming = incomingFor(block.id);
-      if (incoming) transferBlock(block, incoming, true);
+      if (incoming) transferBlock(block, incoming, true, valueLiveness.get(block.id) ?? []);
     }
   }
 

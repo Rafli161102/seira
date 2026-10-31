@@ -56,7 +56,7 @@ Returning an owned resource value is treated as an ownership transfer to the cal
 
 ## Limitations and next work
 
-This is a conservative ownership foundation, not a complete Rust-style borrow checker. In particular, it does not yet perform source-level lifetime inference, field-sensitive borrowing, reborrowing, closure-capture ownership, or non-lexical lifetimes. Call-boundary checking currently treats reference parameters as loans supplied by the caller; deeper interprocedural alias propagation remains future work.
+This is an initial NLL foundation, not a complete Rust-style borrow checker. Liveness is based on MIR SSA values and CFG edges; it does not yet model reborrowing relationships, field-sensitive places, closure-capture ownership, or arbitrary alias propagation. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
 
 
 ## Source-level references (P1.4)
@@ -66,3 +66,8 @@ The frontend accepts shared and mutable reference annotations (`&T`, `&mut T`) a
 P1.5 adds dereference reads (`deref.load`) and writes (`deref.store`) through active references. Incoming reference parameters are modelled as external loans within the callee, and a write is accepted only through a mutable loan.
 
 This remains an initial lexical-borrow model, not a complete lifetime system. Reference return types and borrowed references escaping a function are rejected with `E3008`. Reborrowing, field-sensitive loans, inferred/NLL lifetimes, closure-capture borrowing, and references to temporaries are not part of this increment.
+
+
+## MIR loan liveness (P1.6)
+
+The backward liveness pass computes per-operation live-after sets. It includes ordinary operation operands, terminator operands, and branch arguments only when the corresponding target block parameter is live. This preserves liveness across SSA block-parameter merges without treating dead edge arguments as semantic uses. `borrow.end` is intentionally ignored as a use because it is a compiler-generated lexical cleanup marker. Once a local or incoming reference value is absent from the live-after set, its loan becomes ended in the forward ownership state. The regression suite covers mutable dereference followed by direct owner access before scope exit.

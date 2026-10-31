@@ -84,7 +84,7 @@ test('Ownership: temporary call-argument borrows end after the call', () => {
 });
 
 test('Ownership: rejects conflicting mutable and shared source-level borrows', () => {
-  const result = new CompilerDriver().compile(`fn main() { mut count = 7; shared = &count; exclusive = &mut count; }`, 'borrow-conflict.sr', { stopAfter: CompilerStage.ResourceCheck });
+  const result = new CompilerDriver().compile(`fn main() { mut count = 7; shared = &count; exclusive = &mut count; println(*shared); *exclusive += 1; }`, 'borrow-conflict.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7005'));
 });
@@ -102,10 +102,66 @@ test('Ownership: validates dereference read and write through an incoming mutabl
   assert.equal(result.ownership?.success, true, JSON.stringify(result.ownership?.issues));
 });
 
+
+test('Ownership: non-lexical lifetime ends a mutable loan after its last semantic use', () => {
+  const result = new CompilerDriver().compile(
+    `fn main() { mut count = 7; exclusive = &mut count; *exclusive += 1; println(count); }`,
+    'borrow-nll-last-use.sr',
+    { stopAfter: CompilerStage.ResourceCheck },
+  );
+  assert.equal(result.success, true, result.diagnostics.format());
+  assert.equal(result.ownership?.success, true, JSON.stringify(result.ownership?.issues));
+});
+
 test('Ownership: detects direct owner reads during an active mutable borrow', () => {
-  const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
+  const result = new CompilerDriver().compile(`fn main() { mut count = 7; exclusive = &mut count; println(count); *exclusive += 1; }`, 'mutable-borrow-read.sr', { stopAfter: CompilerStage.ResourceCheck });
   assert.equal(result.success, false);
   assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E7006'));
+});
+
+
+test('Ownership: NLL permits owner access when a created reference is never used', () => {
+  const result = new CompilerDriver().compile(
+    `fn main() { mut count = 7; exclusive = &mut count; println(count); }`,
+    'borrow-nll-unused.sr',
+    { stopAfter: CompilerStage.ResourceCheck },
+  );
+  assert.equal(result.success, true, result.diagnostics.format());
+});
+
+test('Ownership: loan liveness follows a reference passed through a MIR block parameter', () => {
+  const referenceType = {
+    id: 'type:Reference<Int>',
+    kind: 'Reference',
+    name: '&mut Int',
+    innerType: INT,
+    isMutableReference: true,
+  } as any;
+  const module: MIRModule = {
+    name: 'borrow-block-parameter',
+    functions: [{
+      name: 'subject',
+      functionId: 'fn:subject',
+      parameters: [],
+      returnType: UNIT,
+      entry: 0,
+      blocks: [
+        {
+          id: 0, name: 'entry', parameters: [],
+          operations: [operation('borrow.mutable', [11], 21), operation('call.method', [11], 22)],
+          resourceOps: [],
+          terminator: { kind: 'Branch', target: 1, args: [21] },
+        },
+        {
+          id: 1, name: 'borrowed', parameters: [{ id: 23, type: referenceType, typeName: '&mut Int' }],
+          operations: [operation('call', [23], 24)],
+          resourceOps: [],
+          terminator: { kind: 'Return' },
+        },
+      ],
+    }],
+  };
+  assert.ok(codes(module).includes('E7006'));
 });
 
 test('Ownership: detects use after release using ordered MIR resource events', () => {
@@ -165,6 +221,7 @@ test('Borrow checker: rejects direct owner access while a mutable borrow is acti
   const result = ownershipModule([
     operation('borrow.mutable', [11], 21),
     operation('call.method', [11], 22),
+    operation('call.method', [21], 23),
     operation('borrow.end', [21]),
   ]);
 
@@ -180,10 +237,12 @@ test('Ownership: rejects use of a moved value', () => {
   assert.ok(codes(result).includes('E7006'));
 });
 
-test('Borrow checker: rejects a borrow that remains active at function return', () => {
-  const result = ownershipModule([
-    operation('borrow.shared', [11], 21),
-  ]);
+test('Borrow checker: rejects a live borrow that reaches function return', () => {
+  const result = ownershipModule(
+    [operation('borrow.shared', [11], 21)],
+    [],
+    { kind: 'Return', value: 21 },
+  );
 
   assert.ok(codes(result).includes('E7007'));
 });
