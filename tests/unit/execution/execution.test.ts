@@ -960,3 +960,32 @@ x + 20
   assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
   assert.strictEqual(r.displayValue, '30');
 });
+
+test('Execution: mutable reborrow updates the same binding and restores parent access', () => {
+  const r = run(`
+    fn main() {
+      mut counter = 40;
+      parent = &mut counter;
+      child = &mut *parent;
+      *child += 1;
+      *parent += 1;
+      println(counter);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['42']);
+});
+
+test('Execution: shared reborrow reads through the original reference target', () => {
+  const r = run(`
+    fn main() {
+      value = 9;
+      parent = &value;
+      child = &*parent;
+      println(*parent);
+      println(*child);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['9', '9']);
+});

@@ -403,3 +403,37 @@ test('Typecheck: pipeline expression validation (|>)', () => {
   assert.strictEqual(res2.tcResult.success, false);
   assert.ok(res2.diagnostics.getErrors().some((e) => e.code === 'E3003'));
 });
+
+test('Typecheck: accepts shared and mutable reborrows through dereference', () => {
+  const shared = typecheckSource(`
+    fn main() {
+      mut value = 1;
+      parent = &mut value;
+      child = &*parent;
+      println(*child);
+    }
+  `);
+  assert.equal(shared.tcResult.success, true, shared.diagnostics.format());
+
+  const mutable = typecheckSource(`
+    fn main() {
+      mut value = 1;
+      parent = &mut value;
+      child = &mut *parent;
+      *child += 1;
+    }
+  `);
+  assert.equal(mutable.tcResult.success, true, mutable.diagnostics.format());
+});
+
+test('Typecheck: rejects mutable reborrow through a shared reference', () => {
+  const result = typecheckSource(`
+    fn main() {
+      value = 1;
+      parent = &value;
+      child = &mut *parent;
+    }
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});

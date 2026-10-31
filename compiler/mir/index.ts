@@ -426,13 +426,16 @@ class FunctionLowerer {
       case 'HIRBlockExpr':
         return this.lowerBlock(expr.block) ?? this.emit('unit', [], expr.type, expr.id);
       case 'HIRUnaryExpr': {
-        const operand = this.lowerExpr(expr.operand);
-        if (expr.operator === '*') return this.emit('deref.load', [operand.id], expr.type, expr.id);
         if (expr.operator === 'borrow.shared' || expr.operator === 'borrow.mutable') {
-          const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id);
+          const isReborrow = expr.operand.kind === 'HIRUnaryExpr' && expr.operand.operator === '*';
+          const borrowSource = isReborrow ? expr.operand.operand : expr.operand;
+          const operand = this.lowerExpr(borrowSource);
+          const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id, isReborrow ? { reborrow: true } : undefined);
           this.borrowScopes[this.borrowScopes.length - 1]?.push({ valueId: borrow.id, source: this.findOrigin(expr.id) });
           return borrow;
         }
+        const operand = this.lowerExpr(expr.operand);
+        if (expr.operator === '*') return this.emit('deref.load', [operand.id], expr.type, expr.id);
         return this.emit('unary', [operand.id], expr.type, expr.id, { operator: expr.operator });
       }
       case 'HIRBinaryExpr': {

@@ -1064,8 +1064,22 @@ export class Evaluator {
   // ─── Unary Expression ─────────────────────────────────────────────────────
 
   private evaluateBorrowExpr(expr: BorrowExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    if (expr.operand.kind === 'UnaryExpr' && expr.operand.operator === '*' && expr.operand.operand.kind === 'Identifier') {
+      const parentOutcome = this.evaluateExpr(expr.operand.operand, env);
+      if (parentOutcome.kind !== 'Normal') return parentOutcome;
+      if (parentOutcome.value.tag !== 'Reference') {
+        return panicOutcome(invalidStateError('A reborrow requires an existing Reference value.', expr.span, this.ctx.config.fileName));
+      }
+      const parent = parentOutcome.value as ReferenceRuntimeValue;
+      if (expr.isMutable && !parent.mutable) {
+        return panicOutcome(invalidStateError('A shared reference cannot be reborrowed as mutable.', expr.span, this.ctx.config.fileName));
+      }
+      return normalOutcome({
+        tag: 'Reference', environment: parent.environment, name: parent.name, mutable: expr.isMutable,
+      } satisfies ReferenceRuntimeValue);
+    }
     if (expr.operand.kind !== 'Identifier') {
-      return panicOutcome(invalidStateError('A borrow must target a named local binding.', expr.span, this.ctx.config.fileName));
+      return panicOutcome(invalidStateError('A borrow must target a named local binding or reborrow through dereference.', expr.span, this.ctx.config.fileName));
     }
     const reference = env.borrow(expr.operand.name, expr.isMutable);
     if (!reference) {
@@ -1076,7 +1090,6 @@ export class Evaluator {
     }
     return normalOutcome(reference);
   }
-
   private evaluateUnaryExpr(expr: UnaryExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const operandOutcome = this.evaluateExpr(expr.operand, env);
     if (operandOutcome.kind !== 'Normal') return operandOutcome;

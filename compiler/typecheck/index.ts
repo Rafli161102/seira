@@ -970,8 +970,17 @@ export class TypeChecker {
       case 'BorrowExpr': {
         const borrow = expr as BorrowExpr;
         const operandType = this.checkExpression(borrow.operand);
-        if (borrow.operand.kind !== 'Identifier') {
-          this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding in this language edition.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
+        const dereference = borrow.operand.kind === 'UnaryExpr' ? borrow.operand as UnaryExpr : undefined;
+        const isDereferenceReborrow = dereference?.operator === '*';
+        if (isDereferenceReborrow && dereference) {
+          const parentType = this.checkExpression(dereference.operand);
+          if (dereference.operand.kind !== 'Identifier' || parentType.kind !== 'Reference') {
+            this.diagnostics.reportError('E3008', 'A reborrow must dereference a named reference binding.', dereference.span, this.currentFile, 'Use &*r or &mut *r with a local reference.');
+          } else if (borrow.isMutable && !parentType.mutable) {
+            this.diagnostics.reportError('E3008', 'A shared reference cannot be reborrowed as mutable.', borrow.span, this.currentFile, 'Use a mutable parent reference before creating a mutable child reborrow.');
+          }
+        } else if (borrow.operand.kind !== 'Identifier') {
+          this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding or reborrow through dereference.', borrow.operand.span, this.currentFile);
         } else if (borrow.isMutable) {
           const symbol = this.currentResolverResult?.resolvedSymbols.get(borrow.operand);
           if (!symbol?.isMut) {

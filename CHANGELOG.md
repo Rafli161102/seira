@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### P1.7 — Reborrowing & Loan Hierarchy
+- Added source syntax for shared and mutable reborrows through dereference (`&*reference`, `&mut *reference`).
+- Extended MIR borrow operations with explicit reborrow metadata so lowering preserves the parent reference instead of loading a copied value.
+- Added parent-child loan relationships, shared-child coexistence, mutable-child exclusivity, and parent-reference suspension while exclusive child loans are live.
+- Restored parent reference access after child loan expiration/end and rejected mutable reborrows from shared parents.
+- Updated runtime reborrow evaluation to retain the original lexical binding cell and enforce parent mutability.
+- Added typecheck, ownership, and execution regression tests; updated README and ownership/reference architecture documentation.
+
 ### P1.6 — MIR-Based Loan Liveness & Non-Lexical Lifetimes
 - Added backward MIR CFG value-liveness analysis, including branch-edge argument to block-parameter mapping.
 - Ended local and incoming reference loans after their last semantic SSA use; synthetic `borrow.end` markers are excluded from liveness so they do not extend a borrow.

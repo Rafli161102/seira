@@ -15,7 +15,7 @@ The current language front end emits MIRResourceOp acquire/release events for wi
 | borrow.mutable | Create an exclusive mutable loan from operand 0 into the destination |
 | borrow.end | End the loan referenced by operand 0 |
 
-**Current front-end support:** Seira exposes `&T` / `&mut T` type annotations and `&value` / `&mut value` borrow expressions. P1.5 adds dereference read/write operations (`deref.load`, `deref.store`) and passes reference parameters into callee MIR as external loans. Runtime reference values point to the original lexical binding cell. The checker verifies that only mutable loans permit dereference stores.
+**Current front-end support:** Seira exposes `&T` / `&mut T` type annotations and `&value` / `&mut value` borrow expressions. P1.5 adds dereference read/write operations (`deref.load`, `deref.store`) and passes reference parameters into callee MIR as external loans. Runtime reference values point to the original lexical binding cell. The checker verifies that only mutable loans permit dereference stores. P1.7 adds child loans for reborrows, blocks parent use while an exclusive child is live, permits compatible shared children, and requires a mutable parent for a mutable child.
 
 ## Resource event ordering
 
@@ -56,7 +56,7 @@ Returning an owned resource value is treated as an ownership transfer to the cal
 
 ## Limitations and next work
 
-This is an initial NLL foundation, not a complete Rust-style borrow checker. Liveness is based on MIR SSA values and CFG edges; it does not yet model reborrowing relationships, field-sensitive places, closure-capture ownership, or arbitrary alias propagation. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
+This is an initial NLL foundation, not a complete Rust-style borrow checker. Liveness is based on MIR SSA values and CFG edges; it does not yet model field-sensitive places, closure-capture ownership, or arbitrary alias propagation. Call-boundary checking treats reference parameters as caller-supplied loans and expires them after their last use inside the callee; deeper interprocedural alias propagation remains future work.
 
 
 ## Source-level references (P1.4)
@@ -71,3 +71,10 @@ This remains an initial lexical-borrow model, not a complete lifetime system. Re
 ## MIR loan liveness (P1.6)
 
 The backward liveness pass computes per-operation live-after sets. It includes ordinary operation operands, terminator operands, and branch arguments only when the corresponding target block parameter is live. This preserves liveness across SSA block-parameter merges without treating dead edge arguments as semantic uses. `borrow.end` is intentionally ignored as a use because it is a compiler-generated lexical cleanup marker. Once a local or incoming reference value is absent from the live-after set, its loan becomes ended in the forward ownership state. The regression suite covers mutable dereference followed by direct owner access before scope exit.
+
+
+## Reborrowing & loan hierarchy (P1.7)
+
+MIR marks reborrow operations explicitly. A reborrow consumes a reference value as its parent, inherits the parent's root owner, and records `parentId` on the child loan. Shared children may coexist unless an exclusive child is already active. Mutable reborrows require a mutable parent and no active child loans. A mutable parent reference is unavailable while any child loan remains live; a shared parent may still be read alongside shared children. Any incompatible parent access produces `E7005`. Child expiration through P1.6 NLL or an explicit `borrow.end` removes the suspension condition, allowing later parent use.
+
+The analysis is intentionally limited to named-reference dereference reborrows (`&*r`, `&mut *r`). It does not yet provide reborrowing of fields, arbitrary places, or interprocedural alias tracking.

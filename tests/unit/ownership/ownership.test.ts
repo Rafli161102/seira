@@ -291,3 +291,102 @@ test('Ownership: returning an owned resource transfers it to the caller', () => 
   );
   assert.deepEqual(codes(result), []);
 });
+
+test('Ownership: mutable child reborrow suspends its parent until the child ends', () => {
+  const blocked = ownershipModule([
+    operation('borrow.mutable', [11], 21),
+    { ...operation('borrow.mutable', [21], 22), attributes: { reborrow: true } },
+    operation('call', [21], 23),
+    operation('call', [22], 24),
+  ]);
+  assert.ok(codes(blocked).includes('E7005'));
+
+  const resumed = ownershipModule([
+    operation('borrow.mutable', [11], 31),
+    { ...operation('borrow.mutable', [31], 32), attributes: { reborrow: true } },
+    operation('call', [32], 33),
+    operation('borrow.end', [32]),
+    operation('call', [31], 34),
+    operation('borrow.end', [31]),
+  ]);
+  assert.deepEqual(codes(resumed), []);
+});
+
+test('Ownership: shared children can coexist under a shared parent and keep the parent readable', () => {
+  const result = ownershipModule([
+    operation('borrow.shared', [11], 21),
+    { ...operation('borrow.shared', [21], 22), attributes: { reborrow: true } },
+    { ...operation('borrow.shared', [21], 23), attributes: { reborrow: true } },
+    operation('call', [21, 22, 23], 24),
+  ]);
+  assert.deepEqual(codes(result), []);
+});
+
+test('Ownership: mutable reborrow is rejected when its parent is shared', () => {
+  const result = ownershipModule([
+    operation('borrow.shared', [11], 21),
+    { ...operation('borrow.mutable', [21], 22), attributes: { reborrow: true } },
+    operation('call', [22], 23),
+  ]);
+  assert.ok(codes(result).includes('E7005'));
+});
+
+test('Ownership: shared child reborrow prevents parent use when parent is mutable', () => {
+  const result = ownershipModule([
+    operation('borrow.mutable', [11], 21),
+    { ...operation('borrow.shared', [21], 22), attributes: { reborrow: true } },
+    operation('call', [21], 23),
+  ]);
+  assert.ok(codes(result).includes('E7005'));
+});
+
+test('Ownership: source-level reborrows obey child lifetime and parent resumption', () => {
+  const valid = new CompilerDriver().compile(`
+    fn main() {
+      mut count = 7;
+      parent = &mut count;
+      child = &mut *parent;
+      *child += 1;
+      *parent += 1;
+    }
+  `, 'reborrow-valid.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(valid.success, true, valid.diagnostics.format());
+
+  const invalid = new CompilerDriver().compile(`
+    fn main() {
+      mut count = 7;
+      parent = &mut count;
+      child = &mut *parent;
+      *parent += 1;
+      *child += 1;
+    }
+  `, 'reborrow-parent-suspended.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(invalid.success, false);
+  assert.ok(invalid.diagnostics.getErrors().some((error) => error.code === 'E7005'));
+});
+
+test('Ownership: rejects mutable reborrow from a shared reference at the source level', () => {
+  const result = new CompilerDriver().compile(`
+    fn main() {
+      value = 7;
+      parent = &value;
+      child = &mut *parent;
+      println(*child);
+    }
+  `, 'reborrow-shared-to-mutable.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
+test('Ownership: shared parent can be read while shared child reborrows are live', () => {
+  const result = new CompilerDriver().compile(`
+    fn main() {
+      value = 7;
+      parent = &value;
+      child = &*parent;
+      println(*parent);
+      println(*child);
+    }
+  `, 'reborrow-shared-parent.sr', { stopAfter: CompilerStage.ResourceCheck });
+  assert.equal(result.success, true, result.diagnostics.format());
+});
