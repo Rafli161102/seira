@@ -1697,7 +1697,7 @@ export class Parser {
             nestedTupleSpan = {
               ...prop.span,
               start: firstEnd + 1,
-              column: prop.span.column + parts[0].length + 1,
+              column: (prop.span.column ?? 1) + parts[0].length + 1,
             };
           }
         } else {
