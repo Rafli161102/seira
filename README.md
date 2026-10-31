@@ -1,7 +1,7 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.19-d](https://img.shields.io/badge/Release-0.0.17--d%20Development-orange.svg)](CHANGELOG.md)
+[![Release: 0.0.19-d](https://img.shields.io/badge/Release-0.0.19--d%20Development-orange.svg)](CHANGELOG.md)
 [![Status: Development](https://img.shields.io/badge/Status-Development-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Development Series.
