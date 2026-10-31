@@ -2,7 +2,7 @@
  * Seira Compiler Stages
  *
  * Defines the sequential compiler pipeline stages:
- * Source -> Lexer -> Parser -> Resolver -> Type Checking -> Effect Checking -> Resource Checking -> HIR -> MIR -> Backend
+ * Source -> Lexer -> Parser -> Resolver -> Type Checking -> HIR -> MIR -> Resource/Ownership Checking -> Backend
  */
 
 export const CompilerStage = {
@@ -25,9 +25,9 @@ export const STAGE_ORDER: ReadonlyArray<CompilerStage> = [
   CompilerStage.Resolve,
   CompilerStage.Typecheck,
   CompilerStage.EffectCheck,
-  CompilerStage.ResourceCheck,
   CompilerStage.HIR,
   CompilerStage.MIR,
+  CompilerStage.ResourceCheck,
   CompilerStage.Backend,
 ];
 

@@ -33,6 +33,15 @@ test('Lexer: tokenizes locked symbols', () => {
   }
 });
 
+test('Lexer: tokenizes ampersand borrow syntax while rejecting &&', () => {
+  const bag = new DiagnosticBag();
+  const tokens = new Lexer('& &mut value && other', 'borrow.sr', bag).tokenize();
+  assert.equal(tokens[0].type, TokenType.Ampersand);
+  assert.equal(tokens[1].type, TokenType.Ampersand);
+  assert.equal(tokens[2].type, TokenType.Mut);
+  assert.ok(bag.getErrors().some((error) => error.code === 'E1005'));
+});
+
 test('Lexer: tokenizes compound assignment operators', () => {
   const source = '+= -= *= /= %=';
   const lexer = new Lexer(source);

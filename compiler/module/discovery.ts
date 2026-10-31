@@ -9,8 +9,8 @@
  * - Duplicate module identity rejection (E6003)
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { isAbsolute, normalize, relative, resolve } from 'node:path';
+import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { DiagnosticBag } from '../diagnostics/index.ts';
 import { createModuleId, isValidModulePath, normalizeModulePath } from './module_id.ts';
 import { SeiraModule } from './module.ts';
@@ -19,6 +19,11 @@ export interface DiscoveredModuleInfo {
   readonly modulePath: string; // e.g. "http.client"
   readonly filePath: string;   // full filesystem path
   readonly isEntry: boolean;   // true for main or lib
+}
+
+function isWithinRoot(rootDir: string, targetPath: string): boolean {
+  const relPath = relative(rootDir, targetPath);
+  return relPath === "" || (!isAbsolute(relPath) && relPath !== ".." && !relPath.startsWith(".." + sep));
 }
 
 export class ModuleDiscovery {
@@ -40,10 +45,31 @@ export class ModuleDiscovery {
       return modules;
     }
 
-    const absRoot = resolve(sourceRoot);
+    const requestedRoot = resolve(sourceRoot);
+    let rootStat;
+    try {
+      rootStat = lstatSync(requestedRoot);
+    } catch {
+      return modules;
+    }
+
+    if (rootStat.isSymbolicLink()) {
+      this.diagnostics.reportError(
+        "E6013",
+        "Source root is a symbolic link: " + requestedRoot,
+        { start: 0, end: 0, line: 1, column: 1 },
+        requestedRoot,
+        undefined,
+        "Use a real source directory inside the package instead of a symbolic link."
+      );
+      return modules;
+    }
+    if (!rootStat.isDirectory()) return modules;
+
+    const absRoot = realpathSync(requestedRoot);
     const discoveredList: DiscoveredModuleInfo[] = [];
 
-    this.scanDirectory(absRoot, absRoot, discoveredList);
+    this.scanDirectory(absRoot, absRoot, discoveredList, new Set<string>());
 
     // Sort deterministically by modulePath to ensure platform-independent ordering
     discoveredList.sort((a, b) => a.modulePath.localeCompare(b.modulePath));
@@ -83,7 +109,7 @@ export class ModuleDiscovery {
     const fullPath = resolve(absRoot, relFilePath);
     const relFromRoot = relative(absRoot, fullPath);
 
-    if (relFromRoot.startsWith('..') || isAbsolute(relFromRoot)) {
+    if (!isWithinRoot(absRoot, fullPath)) {
       this.diagnostics.reportError(
         'E6013',
         `Invalid module path '${relFilePath}': source file escapes package source root.`,
@@ -93,8 +119,33 @@ export class ModuleDiscovery {
       return null;
     }
 
-    const isSr = fullPath.endsWith('.sr');
-    const isSra = fullPath.endsWith('.sra');
+    if (existsSync(fullPath)) {
+      try {
+        const fileStat = lstatSync(fullPath);
+        if (fileStat.isSymbolicLink() || !isWithinRoot(realpathSync(absRoot), realpathSync(fullPath))) {
+          this.diagnostics.reportError(
+            "E6013",
+            "Invalid module path: symbolic links and paths outside the source root are not allowed: " + relFilePath,
+            { start: 0, end: 0, line: 1, column: 1 },
+            fullPath,
+            undefined,
+            "Keep module files inside the package source root and avoid symbolic links."
+          );
+          return null;
+        }
+      } catch {
+        this.diagnostics.reportError(
+          "E6013",
+          "Unable to validate module path: " + relFilePath,
+          { start: 0, end: 0, line: 1, column: 1 },
+          fullPath
+        );
+        return null;
+      }
+    }
+
+    const isSr = fullPath.endsWith(".sr");
+    const isSra = fullPath.endsWith(".sra");
     if (!isSr && !isSra) return null;
 
     const ext = isSr ? '.sr' : '.sra';
@@ -121,57 +172,93 @@ export class ModuleDiscovery {
   private scanDirectory(
     currentDir: string,
     rootDir: string,
-    outList: DiscoveredModuleInfo[]
+    outList: DiscoveredModuleInfo[],
+    visitedDirectories: Set<string>
   ): void {
-    let entries: string[];
+    let canonicalDir: string;
     try {
-      entries = readdirSync(currentDir);
+      canonicalDir = realpathSync(currentDir);
     } catch {
       return;
     }
 
-    // Sort entries to avoid OS-level readdir randomness
+    if (!isWithinRoot(rootDir, canonicalDir)) {
+      this.diagnostics.reportError(
+        "E6013",
+        "Directory resolves outside the source root: " + currentDir,
+        { start: 0, end: 0, line: 1, column: 1 },
+        currentDir
+      );
+      return;
+    }
+
+    if (visitedDirectories.has(canonicalDir)) return;
+    visitedDirectories.add(canonicalDir);
+
+    let entries: string[];
+    try {
+      entries = readdirSync(canonicalDir);
+    } catch {
+      return;
+    }
     entries.sort();
 
     for (const entry of entries) {
-      if (entry.startsWith('.') || entry === 'node_modules') continue;
+      if (entry.startsWith(".") || entry === "node_modules") continue;
 
-      const fullPath = resolve(currentDir, entry);
+      const fullPath = resolve(canonicalDir, entry);
       let stat;
       try {
-        stat = statSync(fullPath);
+        // lstatSync is intentional: statSync follows links outside the source root.
+        stat = lstatSync(fullPath);
       } catch {
         continue;
       }
 
+      if (stat.isSymbolicLink()) {
+        this.diagnostics.reportError(
+          "E6013",
+          "Symbolic link is not allowed during module discovery: " + fullPath,
+          { start: 0, end: 0, line: 1, column: 1 },
+          fullPath,
+          undefined,
+          "Replace the symbolic link with a regular file or directory inside the source root."
+        );
+        continue;
+      }
+
       if (stat.isDirectory()) {
-        this.scanDirectory(fullPath, rootDir, outList);
+        this.scanDirectory(fullPath, rootDir, outList, visitedDirectories);
       } else if (stat.isFile()) {
-        const isSr = entry.endsWith('.sr');
-        const isSra = entry.endsWith('.sra');
+        const isSr = entry.endsWith(".sr");
+        const isSra = entry.endsWith(".sra");
         if (!isSr && !isSra) continue;
 
-        // Verify that path does not escape root
-        const relPath = relative(rootDir, fullPath);
-        if (relPath.startsWith('..') || isAbsolute(relPath)) {
+        let canonicalFile: string;
+        try {
+          canonicalFile = realpathSync(fullPath);
+        } catch {
+          continue;
+        }
+        if (!isWithinRoot(rootDir, canonicalFile)) {
           this.diagnostics.reportError(
-            'E6013',
-            `Invalid module path '${fullPath}': source file escapes package source root.`,
+            "E6013",
+            "Source file escapes package source root: " + fullPath,
             { start: 0, end: 0, line: 1, column: 1 },
             fullPath
           );
           continue;
         }
 
-        // Strip extension
-        const ext = isSr ? '.sr' : '.sra';
+        const relPath = relative(rootDir, canonicalFile);
+        const ext = isSr ? ".sr" : ".sra";
         const withoutExt = relPath.slice(0, -ext.length);
         const modulePath = normalizeModulePath(withoutExt);
 
         if (!isValidModulePath(modulePath)) {
           this.diagnostics.reportError(
-            'E6013',
-            `Invalid module path '${modulePath}' derived from '${relPath}'.`,
+            "E6013",
+            "Invalid module path '" + modulePath + "' derived from '" + relPath + "'.",
             { start: 0, end: 0, line: 1, column: 1 },
             fullPath,
             undefined,
@@ -180,12 +267,8 @@ export class ModuleDiscovery {
           continue;
         }
 
-        const isEntry = modulePath === 'main' || modulePath === 'lib';
-        outList.push({
-          modulePath,
-          filePath: fullPath,
-          isEntry,
-        });
+        const isEntry = modulePath === "main" || modulePath === "lib";
+        outList.push({ modulePath, filePath: canonicalFile, isEntry });
       }
     }
   }

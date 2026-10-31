@@ -28,6 +28,7 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BorrowExpr,
   BreakStmt,
   CallExpr,
   ConstStmt,
@@ -62,6 +63,7 @@ import type {
   ReturnStmt,
   SetLiteral,
   Stmt,
+  StructDecl,
   TraitDecl,
   TupleLiteral,
   TypeAliasDecl,
@@ -169,6 +171,8 @@ export class TypeChecker {
   private currentFunctionReturnType?: Type;
 
   private readonly traits = new Map<string, TraitDecl>();
+  private readonly structDeclarations = new Map<string, StructDecl>();
+  private readonly structMethodNames = new Map<string, Set<string>>();
   private readonly implementations = new Map<string, Set<string>>();
   private readonly typeAliases = new Map<string, TypeAliasDecl>();
   private currentGenericParams?: Map<string, GenericParamType>;
@@ -201,6 +205,8 @@ export class TypeChecker {
     this.currentFile = targetFile;
 
     this.traits.clear();
+    this.structDeclarations.clear();
+    this.structMethodNames.clear();
     this.implementations.clear();
     this.typeAliases.clear();
     this.currentGenericParams = undefined;
@@ -216,6 +222,8 @@ export class TypeChecker {
       for (const [name, sym] of resolverResult.globalScope.getLocalSymbols()) {
         if (sym.declNode?.kind === 'TraitDecl') {
           this.traits.set(name, sym.declNode as TraitDecl);
+        } else if (sym.declNode?.kind === 'StructDecl') {
+          this.structDeclarations.set(name, sym.declNode as StructDecl);
         } else if (sym.declNode?.kind === 'TypeAliasDecl') {
           this.typeAliases.set(name, sym.declNode as TypeAliasDecl);
         }
@@ -224,7 +232,10 @@ export class TypeChecker {
 
     // Pass 1a: collect traits, type aliases, and trait implementations
     for (const item of program.items) {
-      if (item.kind === 'TraitDecl') {
+      if (item.kind === 'StructDecl') {
+        const struct = item as StructDecl;
+        this.structDeclarations.set(struct.name, struct);
+      } else if (item.kind === 'TraitDecl') {
         const trait = item as TraitDecl;
         this.traits.set(trait.name, trait);
       } else if (item.kind === 'TypeAliasDecl') {
@@ -233,6 +244,12 @@ export class TypeChecker {
       } else if (item.kind === 'ImplDecl') {
         const impl = item as ImplDecl;
         const targetTypeName = impl.targetType.name;
+        if (!this.structMethodNames.has(targetTypeName)) {
+          this.structMethodNames.set(targetTypeName, new Set());
+        }
+        for (const method of impl.methods) {
+          this.structMethodNames.get(targetTypeName)!.add(method.name);
+        }
         if (!this.implementations.has(targetTypeName)) {
           this.implementations.set(targetTypeName, new Set());
         }
@@ -527,6 +544,10 @@ export class TypeChecker {
       ? this.resolveTypeAnnotation(fn.returnType)
       : UNIT_TYPE;
 
+    if (declaredReturn.kind === 'Reference') {
+      this.diagnostics.reportError('E3008', 'Reference return types are not supported until explicit lifetime annotations are available.', fn.returnType?.span ?? fn.span, this.currentFile);
+    }
+
     // Register parameter types on their declared symbols
     for (const param of fn.params) {
       const paramType = param.typeAnnotation
@@ -543,6 +564,9 @@ export class TypeChecker {
 
     if (fn.isExpressionBody && fn.bodyExpr) {
       const exprType = this.checkExpression(fn.bodyExpr, declaredReturn);
+      if (exprType.kind === 'Reference') {
+        this.diagnostics.reportError('E3008', 'A borrowed reference cannot escape its defining function in this language edition.', fn.bodyExpr.span, this.currentFile);
+      }
       if (fn.returnType && !isTypeAssignable(declaredReturn, exprType) && !isUnknown(exprType)) {
         this.diagnostics.reportError(
           'E3004',
@@ -554,6 +578,9 @@ export class TypeChecker {
       }
     } else {
       const bodyType = this.checkBlock(fn.body);
+      if (bodyType.kind === 'Reference') {
+        this.diagnostics.reportError('E3008', 'A borrowed reference cannot escape its defining function in this language edition.', fn.body.statements[fn.body.statements.length - 1]?.span ?? fn.span, this.currentFile);
+      }
       const hasExplicitTrailingReturn =
         fn.body.statements.length > 0 &&
         fn.body.statements[fn.body.statements.length - 1].kind === 'ReturnStmt';
@@ -693,20 +720,26 @@ export class TypeChecker {
     }
   }
 
-  private checkAssignStmt(stmt: AssignStmt): void {
-    let targetType: Type = UNKNOWN_TYPE;
-    let targetName = 'assignment target';
-
-    if (stmt.target.kind === 'Identifier') {
-      const id = stmt.target as Identifier;
-      targetName = id.name;
-      const sym = this.currentResolverResult?.resolvedSymbols.get(id);
-      if (sym && sym.type) {
-        targetType = sym.type;
+  private checkAssignmentTarget(target: Expr, span: Span): Type {
+    if (target.kind === 'UnaryExpr' && (target as UnaryExpr).operator === '*') {
+      const referenceType = this.checkExpression((target as UnaryExpr).operand);
+      if (referenceType.kind !== 'Reference') {
+        if (!isUnknown(referenceType)) {
+          this.diagnostics.reportError('E3002', `Assignment through dereference requires a reference, but found '${formatType(referenceType)}'.`, target.span, this.currentFile);
+        }
+        return UNKNOWN_TYPE;
       }
-    } else {
-      targetType = this.checkExpression(stmt.target);
+      if (!referenceType.mutable) {
+        this.diagnostics.reportError('E3008', 'Cannot assign through a shared reference. A mutable reference is required.', span, this.currentFile);
+      }
+      return referenceType.inner;
     }
+    return this.checkExpression(target);
+  }
+
+  private checkAssignStmt(stmt: AssignStmt): void {
+    const targetType = this.checkAssignmentTarget(stmt.target, stmt.span);
+    const targetName = stmt.target.kind === 'Identifier' ? (stmt.target as Identifier).name : 'assignment target';
 
     const valType = this.checkExpression(stmt.value, targetType);
 
@@ -748,6 +781,10 @@ export class TypeChecker {
     const valType = stmt.value
       ? this.checkExpression(stmt.value, this.currentFunctionReturnType)
       : UNIT_TYPE;
+
+    if (valType.kind === 'Reference') {
+      this.diagnostics.reportError('E3008', 'A borrowed reference cannot escape its defining function in this language edition.', stmt.value?.span ?? stmt.span, this.currentFile);
+    }
 
     if (this.currentFunctionReturnType) {
       if (!isTypeAssignable(this.currentFunctionReturnType, valType) && !isUnknown(valType)) {
@@ -946,11 +983,84 @@ export class TypeChecker {
         }
         break;
       }
+      case 'BorrowExpr': {
+        const borrow = expr as BorrowExpr;
+        const operandType = this.checkExpression(borrow.operand);
+        const dereference = borrow.operand.kind === 'UnaryExpr' ? borrow.operand as UnaryExpr : undefined;
+        const isDereferenceReborrow = dereference?.operator === '*';
+        let referenceInnerType = operandType;
+        const rootOfPlace = (place: Expr): Identifier | undefined => {
+          if (place.kind === 'Identifier') return place as Identifier;
+          if (place.kind === 'MemberExpr') return rootOfPlace((place as MemberExpr).object);
+          if (place.kind === 'IndexExpr') return rootOfPlace((place as IndexExpr).object);
+          return undefined;
+        };
+        if (isDereferenceReborrow && dereference) {
+          const parentType = this.checkExpression(dereference.operand);
+          if (dereference.operand.kind !== 'Identifier' || parentType.kind !== 'Reference') {
+            this.diagnostics.reportError('E3008', 'A reborrow must dereference a named reference binding.', dereference.span, this.currentFile, 'Use &*r or &mut *r with a local reference.');
+          } else if (borrow.isMutable && !parentType.mutable) {
+            this.diagnostics.reportError('E3008', 'A shared reference cannot be reborrowed as mutable.', borrow.span, this.currentFile, 'Use a mutable parent reference before creating a mutable child reborrow.');
+          }
+        } else {
+          const root = rootOfPlace(borrow.operand);
+          const isIndexPlace = borrow.operand.kind === 'IndexExpr';
+          const isNamedPlace = root !== undefined && (
+            borrow.operand.kind === 'Identifier' ||
+            borrow.operand.kind === 'MemberExpr' ||
+            isIndexPlace
+          );
+
+          if (isIndexPlace) {
+            const indexedObjectType = this.checkExpression((borrow.operand as IndexExpr).object);
+            if (indexedObjectType.kind === 'List') {
+              // A borrowed List slot is the element itself, not Option<T>.
+              referenceInnerType = indexedObjectType.element;
+            } else if (indexedObjectType.kind === 'Map') {
+              // A borrowed Map entry is its value, not Option<V>.
+              referenceInnerType = indexedObjectType.value;
+            } else {
+              this.diagnostics.reportError(
+                'E3008',
+                'Only List and Map index projections can be borrowed in this language edition.',
+                borrow.operand.span,
+                this.currentFile,
+                'Bind a List or Map before borrowing one of its existing elements.',
+              );
+            }
+          }
+
+          if (!isNamedPlace) {
+            this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding, field, or existing collection element.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
+          } else if (borrow.isMutable) {
+            const symbol = this.currentResolverResult?.resolvedSymbols.get(root!);
+            if (!symbol?.isMut) {
+              this.diagnostics.reportError('E3008', `Cannot mutably borrow a place in immutable binding '${root!.name}'.`, root!.span, this.currentFile, `Declare the root binding as mutable with 'mut ${root!.name}' before using '&mut'.`);
+            }
+          }
+        }
+        resultType = { kind: 'Reference', inner: referenceInnerType, mutable: borrow.isMutable };
+        break;
+      }
       case 'UnaryExpr': {
         const un = expr as UnaryExpr;
         const operandType = this.checkExpression(un.operand);
 
-        if (un.operator === 'not') {
+        if (un.operator === '*') {
+          if (operandType.kind === 'Reference') {
+            resultType = operandType.inner;
+          } else {
+            if (!isUnknown(operandType)) {
+              this.diagnostics.reportError(
+                'E3002',
+                `Dereference requires a reference operand, but found '${formatType(operandType)}'.`,
+                un.operand.span,
+                this.currentFile
+              );
+            }
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (un.operator === 'not') {
           if (!isBool(operandType) && !isUnknown(operandType)) {
             this.diagnostics.reportError(
               'E3002',
@@ -1034,19 +1144,8 @@ export class TypeChecker {
       }
       case 'AssignmentExpr': {
         const assign = expr as AssignmentExpr;
-        let targetType: Type = UNKNOWN_TYPE;
-        let targetName = 'assignment target';
-
-        if (assign.target.kind === 'Identifier') {
-          const id = assign.target as Identifier;
-          targetName = id.name;
-          const sym = this.currentResolverResult?.resolvedSymbols.get(id);
-          if (sym && sym.type) {
-            targetType = sym.type;
-          }
-        } else {
-          targetType = this.checkExpression(assign.target);
-        }
+        const targetType = this.checkAssignmentTarget(assign.target, assign.span);
+        const targetName = assign.target.kind === 'Identifier' ? (assign.target as Identifier).name : 'assignment target';
 
         const valType = this.checkExpression(assign.value);
 
@@ -1144,6 +1243,23 @@ export class TypeChecker {
             this.diagnostics.reportError(
               'E3002',
               `Tuple index '${mem.property}' is out of bounds for tuple with ${objType.elements.length} elements.`,
+              mem.span,
+              this.currentFile
+            );
+            resultType = UNKNOWN_TYPE;
+          }
+        } else if (objType.kind === 'Custom' && this.structDeclarations.has(objType.name)) {
+          const struct = this.structDeclarations.get(objType.name)!;
+          const field = struct.fields.find((candidate) => candidate.name === mem.property);
+          if (field) {
+            resultType = this.resolveTypeAnnotation(field.type);
+          } else if (this.structMethodNames.get(objType.name)?.has(mem.property)) {
+            // Method calls on user-defined structs are resolved by checkCall/HIR dispatch.
+            resultType = UNKNOWN_TYPE;
+          } else {
+            this.diagnostics.reportError(
+              'E3002',
+              `Struct '${objType.name}' has no field or declared method named '${mem.property}'.`,
               mem.span,
               this.currentFile
             );
@@ -2444,6 +2560,35 @@ export class TypeChecker {
       const id = call.callee as Identifier;
       calleeName = id.name;
 
+      const calleeSymbol = this.currentResolverResult?.resolvedSymbols.get(id);
+      const structDecl = calleeSymbol?.kind === 'struct' && calleeSymbol.declNode?.kind === 'StructDecl'
+        ? calleeSymbol.declNode as StructDecl
+        : this.structDeclarations.get(calleeName);
+      if (structDecl) {
+        if (call.args.length !== structDecl.fields.length) {
+          this.diagnostics.reportError(
+            'E3003',
+            `Struct constructor '${calleeName}' expects ${structDecl.fields.length} positional fields, but got ${call.args.length}.`,
+            call.span,
+            this.currentFile
+          );
+        }
+        for (let index = 0; index < call.args.length; index++) {
+          const field = structDecl.fields[index];
+          const expectedFieldType = field ? this.resolveTypeAnnotation(field.type) : undefined;
+          const actualType = this.checkExpression(call.args[index], expectedFieldType);
+          if (field && expectedFieldType && !isTypeAssignable(expectedFieldType, actualType) && !isUnknown(actualType)) {
+            this.diagnostics.reportError(
+              'E3001',
+              `Field '${field.name}' of '${calleeName}' expects '${formatType(expectedFieldType)}', but found '${formatType(actualType)}'.`,
+              call.args[index].span,
+              this.currentFile
+            );
+          }
+        }
+        return { kind: 'Custom', name: calleeName };
+      }
+
       // Built-in constructors with contextual expected type propagation
       if (calleeName === 'Some' && call.args.length === 1) {
         const expectedInner =
@@ -3022,6 +3167,10 @@ export class TypeChecker {
       case 'Set': {
         const elem = annotation.generics && annotation.generics.length > 0 ? this.resolveTypeAnnotation(annotation.generics[0]) : UNKNOWN_TYPE;
         return createSetType(elem);
+      }
+      case 'Reference': {
+        const inner = annotation.generics && annotation.generics.length > 0 ? this.resolveTypeAnnotation(annotation.generics[0]) : UNKNOWN_TYPE;
+        return { kind: 'Reference', inner, mutable: annotation.isMutableReference ?? false };
       }
       default: {
         if (annotation.generics && annotation.generics.length > 0) {

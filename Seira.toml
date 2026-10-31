@@ -1,13 +1,13 @@
 # Seira Project Manifest
-# Specification: 0.0.10-s I/O & Resource Boundary Foundation v1.0
+# Specification: 0.0.13-d Runtime Map Key References & Collection Safety
 
 [package]
 name = "seira"
-version = "0.0.10-s"
+version = "0.0.13-d"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
-description = "The Seira Programming Language — I/O & Resource Boundary Foundation v1.0"
+description = "The Seira Programming Language — Runtime Map Key References & Collection Safety (Development Release)"
 repository = "https://github.com/Rafli161102/seira"
 readme = "README.md"
 

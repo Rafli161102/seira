@@ -26,6 +26,43 @@ function typecheckSource(src: string) {
   return { ast, tcResult, diagnostics: tcResult.diagnostics };
 }
 
+test('Typecheck: reference annotations and borrow mutability are checked', () => {
+  const valid = typecheckSource(`
+    fn inspect(value: &Int) {}
+    fn update(value: &mut Int) {}
+    fn main() {
+      let count = 1;
+      inspect(&count);
+      mut total = 2;
+      update(&mut total);
+    }
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+  assert.equal(valid.diagnostics.hasErrors(), false);
+  const invalid = typecheckSource(`fn update(value: &mut Int) {} fn main() { let count = 1; update(&mut count); }`);
+  assert.equal(invalid.tcResult.success, false);
+  assert.ok(invalid.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
+test('Typecheck: dereference reads and mutable-reference assignment are typed', () => {
+  const valid = typecheckSource(`
+    fn read(value: &Int) -> Int { *value }
+    fn increment(value: &mut Int) { *value += 1; }
+    fn set_value(value: &mut Int) { *value = 42; }
+    fn main() { mut number = 1; increment(&mut number); set_value(&mut number); result = read(&number); }
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+  assert.equal(valid.diagnostics.hasErrors(), false);
+
+  const sharedWrite = typecheckSource(`fn invalid(value: &Int) { *value = 9; }`);
+  assert.equal(sharedWrite.tcResult.success, false);
+  assert.ok(sharedWrite.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+
+  const nonReference = typecheckSource(`fn main() { let number = 1; result = *number; }`);
+  assert.equal(nonReference.tcResult.success, false);
+  assert.ok(nonReference.diagnostics.getErrors().some((error) => error.code === 'E3002'));
+});
+
 test('Typecheck: static type inference for primitive literals', () => {
   const source = `
     fn main() {
@@ -365,4 +402,166 @@ test('Typecheck: pipeline expression validation (|>)', () => {
   const res2 = typecheckSource(invalidPipeType);
   assert.strictEqual(res2.tcResult.success, false);
   assert.ok(res2.diagnostics.getErrors().some((e) => e.code === 'E3003'));
+});
+
+test('Typecheck: accepts shared and mutable reborrows through dereference', () => {
+  const shared = typecheckSource(`
+    fn main() {
+      mut value = 1;
+      parent = &mut value;
+      child = &*parent;
+      println(*child);
+    }
+  `);
+  assert.equal(shared.tcResult.success, true, shared.diagnostics.format());
+
+  const mutable = typecheckSource(`
+    fn main() {
+      mut value = 1;
+      parent = &mut value;
+      child = &mut *parent;
+      *child += 1;
+    }
+  `);
+  assert.equal(mutable.tcResult.success, true, mutable.diagnostics.format());
+});
+
+test('Typecheck: rejects mutable reborrow through a shared reference', () => {
+  const result = typecheckSource(`
+    fn main() {
+      value = 1;
+      parent = &value;
+      child = &mut *parent;
+    }
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
+test('Typecheck: accepts mutable borrows of named struct fields on a mutable root', () => {
+  const result = typecheckSource(`
+    type Pair { left: Int, right: Int }
+    fn borrow_fields(mut pair: Pair) {
+      left_ref = &mut pair.left;
+      right_ref = &mut pair.right;
+      println(*left_ref);
+      println(*right_ref);
+    }
+    fn main() {}
+  `);
+  assert.equal(result.tcResult.success, true, result.diagnostics.format());
+});
+
+test('Typecheck: rejects mutable field borrow through an immutable root', () => {
+  const result = typecheckSource(`
+    type Pair { left: Int }
+    fn borrow_field(pair: Pair) {
+      left_ref = &mut pair.left;
+    }
+    fn main() {}
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
+test('Typecheck: validates struct constructors, argument types, and declared field access', () => {
+  const valid = typecheckSource(`
+    type Person { name: String, age: Int }
+    fn main() {
+      mut person = Person("Mika", 23);
+      mut age_ref = &mut person.age;
+      *age_ref += 1;
+    }
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+
+  const badCount = typecheckSource(`
+    type Person { name: String, age: Int }
+    fn main() { person = Person("Mika"); }
+  `);
+  assert.equal(badCount.tcResult.success, false);
+  assert.ok(badCount.diagnostics.getErrors().some((error) => error.code === 'E3003'));
+
+  const badField = typecheckSource(`
+    type Person { name: String }
+    fn main() { person = Person("Mika"); println(person.age); }
+  `);
+  assert.equal(badField.tcResult.success, false);
+  assert.ok(badField.diagnostics.getErrors().some((error) => error.code === 'E3002'));
+});
+
+test('Typecheck: rejects borrowing computed member expressions as places', () => {
+  const result = typecheckSource(`
+    type Pair { left: Int }
+    fn identity(pair: Pair) -> Pair { pair }
+    fn main(mut pair: Pair) {
+      ref = &identity(pair).left;
+    }
+  `);
+  assert.equal(result.tcResult.success, false);
+  assert.ok(result.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+});
+
+
+test('Typecheck: supports List element references but rejects Map index references', () => {
+  const valid = typecheckSource(`
+    fn update(mut values: List<Int>, index: Int) {
+      shared_ref = &values[index];
+      println(*shared_ref);
+      mutable_ref = &mut values[index];
+      *mutable_ref += 1;
+    }
+    fn main() {}
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+
+  const immutableRoot = typecheckSource(`
+    fn update(values: List<Int>) {
+      mutable_ref = &mut values[0];
+    }
+    fn main() {}
+  `);
+  assert.equal(immutableRoot.tcResult.success, false);
+  assert.ok(immutableRoot.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+
+  const mapIndex = typecheckSource(`
+    fn update(mut values: Map<String, Int>, key: String) {
+      mutable_ref = &mut values[key];
+      *mutable_ref += 1;
+    }
+    fn main() {}
+  `);
+  assert.equal(mapIndex.tcResult.success, true, mapIndex.diagnostics.format());
+});
+
+
+test('Typecheck: supports Map value references with key type checking', () => {
+  const valid = typecheckSource(`
+    fn update(mut values: Map<String, Int>, key: String) {
+      shared_ref = &values[key];
+      println(*shared_ref);
+      mutable_ref = &mut values[key];
+      *mutable_ref += 1;
+    }
+    fn main() {}
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+
+  const immutableRoot = typecheckSource(`
+    fn update(values: Map<String, Int>) {
+      mutable_ref = &mut values["alpha"];
+    }
+    fn main() {}
+  `);
+  assert.equal(immutableRoot.tcResult.success, false);
+  assert.ok(immutableRoot.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+
+  const badKey = typecheckSource(`
+    fn update(mut values: Map<String, Int>) {
+      mutable_ref = &mut values[1];
+    }
+    fn main() {}
+  `);
+  assert.equal(badKey.tcResult.success, false);
+  assert.ok(badKey.diagnostics.getErrors().some((error) => error.code === 'E3002'));
 });

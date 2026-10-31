@@ -26,6 +26,44 @@ function parseSource(src: string) {
   return { ast: parser.parse(), diagnostics: parser.getDiagnostics() };
 }
 
+test('Parser: parses shared and mutable reference types and borrow expressions', () => {
+  const { ast, diagnostics } = parseSource(`
+    fn inspect(value: &Int, mut_value: &mut Int) {}
+    fn main() {
+      let count = 1;
+      shared = &count;
+      exclusive = &mut count;
+    }
+  `);
+  assert.equal(diagnostics.hasErrors(), false);
+  const inspect = ast.items[0] as FunctionDecl;
+  assert.equal(inspect.params[0].typeAnnotation?.name, 'Reference');
+  assert.equal(inspect.params[0].typeAnnotation?.isMutableReference, false);
+  assert.equal(inspect.params[1].typeAnnotation?.name, 'Reference');
+  assert.equal(inspect.params[1].typeAnnotation?.isMutableReference, true);
+  const main = ast.items[1] as FunctionDecl;
+  const shared = main.body.statements[1] as BindingStmt;
+  const exclusive = main.body.statements[2] as BindingStmt;
+  assert.equal(shared.initializer?.kind, 'BorrowExpr');
+  assert.equal((shared.initializer as any).isMutable, false);
+  assert.equal(exclusive.initializer?.kind, 'BorrowExpr');
+  assert.equal((exclusive.initializer as any).isMutable, true);
+});
+
+test('Parser: parses dereference reads and writes as unary targets', () => {
+  const { ast, diagnostics } = parseSource(`fn main() { value = *ref; *ref = 10; *ref += 2; }`);
+  assert.equal(diagnostics.hasErrors(), false);
+  const fn = ast.items[0] as FunctionDecl;
+  assert.equal((fn.body.statements[0] as BindingStmt).initializer?.kind, 'UnaryExpr');
+  const assignment = (fn.body.statements[1] as any).expression;
+  const compoundAssignment = (fn.body.statements[2] as any).expression;
+  assert.equal(assignment.kind, 'AssignmentExpr');
+  assert.equal(assignment.target.kind, 'UnaryExpr');
+  assert.equal(assignment.target.operator, '*');
+  assert.equal(compoundAssignment.kind, 'AssignmentExpr');
+  assert.equal(compoundAssignment.target.operator, '*');
+});
+
 test('Parser: parses standard function declaration', () => {
   const source = `
     fn main() {

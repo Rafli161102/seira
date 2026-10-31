@@ -380,6 +380,22 @@ fn main() {
   assert.ok(r.success);
 });
 
+test('Execution: dereference reads and mutable-reference writes update the original binding', () => {
+  const r = run(`
+    fn read(value: &Int) -> Int { *value }
+    fn increment(value: &mut Int) { *value += 1; }
+    fn set_value(value: &mut Int) { *value = 41; }
+    fn main() {
+      mut counter = 0;
+      increment(&mut counter);
+      set_value(&mut counter);
+      println(read(&counter));
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['41']);
+});
+
 test('Execution: binding in block does not escape scope', () => {
   const r = run(`
 fn outer() -> Int {
@@ -943,4 +959,250 @@ x + 20
 `, '<test>', { enableOutput: false });
   assert.ok(r.success, `Diag: ${r.diagnostics.format()}`);
   assert.strictEqual(r.displayValue, '30');
+});
+
+test('Execution: mutable reborrow updates the same binding and restores parent access', () => {
+  const r = run(`
+    fn main() {
+      mut counter = 40;
+      parent = &mut counter;
+      child = &mut *parent;
+      *child += 1;
+      *parent += 1;
+      println(counter);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['42']);
+});
+
+test('Execution: shared reborrow reads through the original reference target', () => {
+  const r = run(`
+    fn main() {
+      value = 9;
+      parent = &value;
+      child = &*parent;
+      println(*parent);
+      println(*child);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['9', '9']);
+});
+
+test('Execution: mutable reference updates a nested tuple projection and preserves siblings', () => {
+  const r = run(`
+    fn main() {
+      mut pair = (10, (20, 30));
+      nested = &mut pair.1.0;
+      *nested += 7;
+      println(*nested);
+      println(pair.0);
+      println(pair.1.1);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['27', '10', '30']);
+});
+
+test('Execution: shared reference reads a tuple projection', () => {
+  const r = run(`
+    fn main() {
+      pair = (4, 9);
+      second = &pair.1;
+      println(*second);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['9']);
+});
+
+test('Execution: mutable tuple projection is preserved across reborrowing', () => {
+  const r = run(`
+    fn main() {
+      mut pair = (5, 10);
+      parent = &mut pair.1;
+      child = &mut *parent;
+      *child += 1;
+      println(*parent);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['11']);
+});
+
+test('Execution: positional struct constructor creates a runtime value with named fields', () => {
+  const r = run(`
+    type Person { name: String, age: Int }
+    fn main() {
+      person = Person("Mika", 23);
+      println(person.name);
+      println(person.age);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Mika', '23']);
+});
+
+test('Execution: mutable field reference updates the original struct binding', () => {
+  const r = run(`
+    type Person { name: String, age: Int }
+    fn main() {
+      mut person = Person("Mika", 23);
+      name_ref = &mut person.name;
+      *name_ref = "Rafli";
+      *name_ref = *name_ref + "!";
+      println(*name_ref);
+      println(person.name);
+      println(person.age);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Rafli!', 'Rafli!', '23']);
+});
+
+test('Execution: nested struct field references preserve each path segment', () => {
+  const r = run(`
+    type Stats { score: Int }
+    type Player { stats: Stats, name: String }
+    fn main() {
+      mut player = Player(Stats(40), "Aqua");
+      score_ref = &mut player.stats.score;
+      *score_ref += 2;
+      println(*score_ref);
+      println(player.name);
+      println(player.stats.score);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['42', 'Aqua', '42']);
+});
+
+
+test('Execution: shared reference reads a List element selected by a dynamic index', () => {
+  const r = run(`
+    fn main() {
+      values = [7, 8, 9];
+      index = 1;
+      element_ref = &values[index];
+      println(*element_ref);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['8']);
+});
+
+test('Execution: mutable List index reference updates the original list and preserves siblings', () => {
+  const r = run(`
+    fn main() {
+      mut values = [10, 20, 30];
+      index = 1;
+      element_ref = &mut values[index];
+      println(values[0]);
+      *element_ref += 7;
+      println(*element_ref);
+      println(values[1]);
+      println(values[2]);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Some(10)', '27', 'Some(27)', 'Some(30)']);
+});
+
+test('Execution: reborrowing a dynamic List element preserves its projection path', () => {
+  const r = run(`
+    fn main() {
+      mut values = [3, 4];
+      index = 1;
+      parent = &mut values[index];
+      child = &mut *parent;
+      *child += 5;
+      println(*parent);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['9']);
+});
+
+test('Execution: borrowing an out-of-range List index fails safely', () => {
+  const r = run(`
+    fn main() {
+      mut values = [1];
+      missing = &mut values[2];
+      println(*missing);
+    }
+  `);
+  assert.equal(r.success, false);
+  assert.ok(r.diagnostics.getErrors().some((error) => error.code.startsWith('R')));
+});
+
+
+test('Execution: mutable Map key reference updates the existing entry without changing its key', () => {
+  const r = run(`
+    fn main() {
+      mut scores = {"alpha": 10, "beta": 20};
+      score_ref = &mut scores["alpha"];
+      *score_ref += 5;
+      println(*score_ref);
+      println(scores["alpha"]);
+      println(scores["beta"]);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['15', 'Some(15)', 'Some(20)']);
+});
+
+test('Execution: shared and mutable Map entry references support dynamic keys and reborrowing', () => {
+  const r = run(`
+    fn main() {
+      mut scores = {"alpha": 10, "beta": 20};
+      key = "beta";
+      parent = &mut scores[key];
+      child = &mut *parent;
+      *child += 2;
+      println(*parent);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['22']);
+});
+
+test('Execution: nested Map entry references preserve the complete projection path', () => {
+  const r = run(`
+    type Stats { score: Int }
+    fn main() {
+      mut players = {"aqua": Stats(40)};
+      score_ref = &mut players["aqua"].score;
+      *score_ref += 2;
+      println(*score_ref);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['42']);
+});
+
+test('Execution: borrowing a missing Map key fails safely', () => {
+  const r = run(`
+    fn main() {
+      mut scores = {"alpha": 10};
+      score_ref = &mut scores["missing"];
+      println(*score_ref);
+    }
+  `);
+  assert.equal(r.success, false);
+  assert.ok(r.diagnostics.getErrors().some((error) => error.code.startsWith('R')));
+});
+
+
+test('Execution: shared Map key reference reads the stored value without wrapping it in Option', () => {
+  const r = run(`
+    fn main() {
+      scores = {"alpha": 10, "beta": 20};
+      score_ref = &scores["alpha"];
+      println(*score_ref);
+      println(scores["alpha"]);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['10', 'Some(10)']);
 });

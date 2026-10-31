@@ -29,10 +29,12 @@ export const RuntimeTag = {
   Char: 'Char',
   String: 'String',
   Byte: 'Byte',
+  Reference: 'Reference',
   Option: 'Option',
   Result: 'Result',
   List: 'List',
   Tuple: 'Tuple',
+  Struct: 'Struct',
   Map: 'Map',
   Set: 'Set',
   Function: 'Function',
@@ -91,6 +93,22 @@ export interface ByteRuntimeValue {
   readonly value: number; // 0–255
 }
 
+export type RuntimePlaceProjection =
+  | { readonly kind: 'tuple'; readonly index: number }
+  | { readonly kind: 'list'; readonly index: number }
+  | { readonly kind: 'field'; readonly name: string }
+  | { readonly kind: 'map'; readonly key: RuntimeValue };
+
+/** Runtime reference to a lexical binding or a projected place within it. */
+export interface ReferenceRuntimeValue {
+  readonly tag: 'Reference';
+  readonly environment: RuntimeEnvironment;
+  readonly name: string;
+  readonly mutable: boolean;
+  /** Ordered tuple/struct-field projections from the root lexical binding. */
+  readonly placePath?: ReadonlyArray<RuntimePlaceProjection>;
+}
+
 export interface OptionRuntimeValue {
   readonly tag: 'Option';
   readonly isSome: boolean;
@@ -111,6 +129,13 @@ export interface ListRuntimeValue {
 export interface TupleRuntimeValue {
   readonly tag: 'Tuple';
   readonly elements: ReadonlyArray<RuntimeValue>;
+}
+
+/** User-defined struct value with named fields. */
+export interface StructRuntimeValue {
+  readonly tag: 'Struct';
+  readonly name: string;
+  readonly fields: ReadonlyMap<string, RuntimeValue>;
 }
 
 export interface MapEntryRuntime {
@@ -238,10 +263,12 @@ export type RuntimeValue =
   | CharRuntimeValue
   | StringRuntimeValue
   | ByteRuntimeValue
+  | ReferenceRuntimeValue
   | OptionRuntimeValue
   | ResultRuntimeValue
   | ListRuntimeValue
   | TupleRuntimeValue
+  | StructRuntimeValue
   | MapRuntimeValue
   | SetRuntimeValue
   | FunctionRuntimeValue
@@ -313,6 +340,10 @@ export function rtList(elements: RuntimeValue[]): ListRuntimeValue {
 
 export function rtTuple(elements: ReadonlyArray<RuntimeValue>): TupleRuntimeValue {
   return { tag: 'Tuple', elements };
+}
+
+export function rtStruct(name: string, fields: ReadonlyMap<string, RuntimeValue>): StructRuntimeValue {
+  return { tag: 'Struct', name, fields: new Map(fields) };
 }
 
 export function rtMap(entries: ReadonlyArray<MapEntryRuntime>): MapRuntimeValue {
@@ -716,6 +747,10 @@ export function createFile(
 ): FileRuntimeValue {
   const normPath = normalizePath(pathStr);
   const normMode = mode.toLowerCase();
+  const supportedModes = new Set(['r', 'w', 'a', 'r+', 'w+', 'a+']);
+  if (!supportedModes.has(normMode)) {
+    throw new RangeError("Unsupported file mode '" + mode + "'.");
+  }
 
   if (initialContent !== undefined) {
     const b = typeof initialContent === 'string'
@@ -727,10 +762,10 @@ export function createFile(
   let closed = false;
   let pos = 0;
 
-  if (normMode === 'w') {
+  if (normMode === 'w' || normMode === 'w+') {
     VIRTUAL_FILES.set(normPath, new Uint8Array(0));
     pos = 0;
-  } else if (normMode === 'a') {
+  } else if (normMode === 'a' || normMode === 'a+') {
     const existing = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
     pos = existing.length;
   } else if (normMode === 'r' || normMode === 'r+') {
@@ -750,7 +785,7 @@ export function createFile(
     },
     read(n?: number): ResultRuntimeValue {
       if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
-      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      if (normMode === 'w' || normMode === 'a') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
       const data = VIRTUAL_FILES.get(normPath);
       if (!data || pos >= data.length) {
         return rtOk(rtNone);
@@ -763,7 +798,7 @@ export function createFile(
     },
     readAll(): ResultRuntimeValue {
       if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
-      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      if (normMode === 'w' || normMode === 'a') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
       const data = VIRTUAL_FILES.get(normPath);
       if (!data || pos >= data.length) {
         return rtOk(rtString(''));
@@ -775,7 +810,7 @@ export function createFile(
     },
     readBytes(n?: number): ResultRuntimeValue {
       if (closed) return rtErr(rtString("AlreadyClosed: File is already closed"));
-      if (normMode === 'w') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
+      if (normMode === 'w' || normMode === 'a') return rtErr(rtString("PermissionDenied: File is opened in write-only mode"));
       const data = VIRTUAL_FILES.get(normPath);
       if (!data || pos >= data.length) {
         return rtOk(rtNone);
@@ -792,7 +827,7 @@ export function createFile(
       const current = VIRTUAL_FILES.get(normPath) ?? new Uint8Array(0);
 
       let updated: Uint8Array;
-      if (normMode === 'a') {
+      if (normMode === 'a' || normMode === 'a+') {
         updated = new Uint8Array(current.length + bytesToWrite.length);
         updated.set(current, 0);
         updated.set(bytesToWrite, current.length);
@@ -855,6 +890,9 @@ export function createFile(
 export function openFile(pathStr: string, mode: string = 'r'): ResultRuntimeValue {
   const normPath = normalizePath(pathStr);
   const normMode = mode.toLowerCase();
+  if (!['r', 'w', 'a', 'r+', 'w+', 'a+'].includes(normMode)) {
+    return rtErr(rtString("InvalidArgument: Unsupported file mode '" + mode + "'"));
+  }
   if (normMode === 'r' || normMode === 'r+') {
     if (!VIRTUAL_FILES.has(normPath)) {
       return rtErr(rtString(`NotFound: File '${pathStr}' does not exist`));
@@ -886,6 +924,15 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return v.value;
     case 'Byte':
       return `${v.value}b`;
+    case 'Reference': {
+      const projection = (v.placePath ?? []).map((part) =>
+        part.kind === 'tuple' ? `.${part.index}`
+          : part.kind === 'list' ? `[${part.index}]`
+            : part.kind === 'field' ? `.${part.name}`
+              : `[${formatRuntimeValue(part.key)}]`
+      ).join('');
+      return `${v.mutable ? '&mut ' : '&'}${v.name}${projection}`;
+    }
     case 'Option':
       return v.isSome ? `Some(${formatRuntimeValue(v.inner!)})` : 'None';
     case 'Result':
@@ -896,6 +943,8 @@ export function formatRuntimeValue(v: RuntimeValue): string {
       return `[${v.elements.map(formatRuntimeValue).join(', ')}]`;
     case 'Tuple':
       return `(${v.elements.map(formatRuntimeValue).join(', ')})`;
+    case 'Struct':
+      return `${v.name} { ${[...v.fields.entries()].map(([name, value]) => `${name}: ${formatRuntimeValue(value)}`).join(', ')} }`;
     case 'Map':
       return `{${v.entries.map((e) => `${formatRuntimeValue(e.key)}: ${formatRuntimeValue(e.value)}`).join(', ')}}`;
     case 'Set':
@@ -950,6 +999,26 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       return a.value === (b as StringRuntimeValue).value;
     case 'Byte':
       return a.value === (b as ByteRuntimeValue).value;
+    case 'Reference': {
+      const other = b as ReferenceRuntimeValue;
+      const leftPath = a.placePath ?? [];
+      const rightPath = other.placePath ?? [];
+      return a.environment === other.environment &&
+        a.name === other.name &&
+        a.mutable === other.mutable &&
+        leftPath.length === rightPath.length &&
+        leftPath.every((part, position) => {
+          const otherPart = rightPath[position];
+          return otherPart !== undefined && part.kind === otherPart.kind &&
+            (part.kind === 'tuple'
+              ? otherPart.kind === 'tuple' && part.index === otherPart.index
+              : part.kind === 'list'
+                ? otherPart.kind === 'list' && part.index === otherPart.index
+                : part.kind === 'field'
+                  ? otherPart.kind === 'field' && part.name === otherPart.name
+                  : otherPart.kind === 'map' && runtimeValuesEqual(part.key, otherPart.key));
+        });
+    }
     case 'Option': {
       const bOpt = b as OptionRuntimeValue;
       if (a.isSome !== bOpt.isSome) return false;
@@ -970,6 +1039,15 @@ export function runtimeValuesEqual(a: RuntimeValue, b: RuntimeValue): boolean {
       const bTup = b as TupleRuntimeValue;
       if (a.elements.length !== bTup.elements.length) return false;
       return a.elements.every((el, idx) => runtimeValuesEqual(el, bTup.elements[idx]));
+    }
+    case 'Struct': {
+      const other = b as StructRuntimeValue;
+      if (a.name !== other.name || a.fields.size !== other.fields.size) return false;
+      for (const [fieldName, fieldValue] of a.fields) {
+        const otherValue = other.fields.get(fieldName);
+        if (otherValue === undefined || !runtimeValuesEqual(fieldValue, otherValue)) return false;
+      }
+      return true;
     }
     case 'Map': {
       const bMap = b as MapRuntimeValue;
@@ -1055,6 +1133,30 @@ export class RuntimeEnvironment {
     const local = this.bindings.get(name);
     if (local !== undefined) return local;
     return this.parent?.lookup(name);
+  }
+
+  /** Creates a reference to the exact lexical binding that currently owns the name. */
+  public borrow(
+    name: string,
+    mutable: boolean,
+    placePath: ReadonlyArray<RuntimePlaceProjection> = [],
+  ): ReferenceRuntimeValue | undefined {
+    const owner = this.findBindingEnvironment(name);
+    if (!owner) return undefined;
+    const binding = owner.bindings.get(name);
+    if (!binding || (mutable && !binding.isMut)) return undefined;
+    return {
+      tag: 'Reference',
+      environment: owner,
+      name,
+      mutable,
+      ...(placePath.length > 0 ? { placePath: [...placePath] } : {}),
+    };
+  }
+
+  private findBindingEnvironment(name: string): RuntimeEnvironment | undefined {
+    if (this.bindings.has(name)) return this;
+    return this.parent?.findBindingEnvironment(name);
   }
 
   /**

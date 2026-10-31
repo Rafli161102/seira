@@ -41,8 +41,12 @@ export function main(argv: string[] = process.argv.slice(2)): number {
       return 0;
 
     case 'check':
-    case 'c':
-      return runCheck(argv[1]);
+    case 'c': {
+      const rest = argv.slice(1);
+      const emitHir = rest.includes('--emit-hir');
+      const target = rest.find((arg) => !arg.startsWith('--'));
+      return runCheck(target, { emitHir });
+    }
 
     case 'run':
     case 'r':

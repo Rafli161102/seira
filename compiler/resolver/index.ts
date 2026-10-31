@@ -18,6 +18,7 @@ import type {
   BindingStmt,
   Block,
   BlockExpr,
+  BorrowExpr,
   BreakStmt,
   CallExpr,
   ConstStmt,
@@ -784,6 +785,13 @@ export class Resolver {
   }
 
   private resolveTypeAnnotation(annotation: TypeAnnotation): void {
+    // `Reference` is a structural type constructor introduced by the syntax `&T` / `&mut T`,
+    // not a user-visible name that must be declared in the type namespace.
+    if (annotation.name === 'Reference') {
+      for (const inner of annotation.generics ?? []) this.resolveTypeAnnotation(inner);
+      return;
+    }
+
     if (annotation.name === 'Union') {
       if (annotation.unionTypes) {
         for (const t of annotation.unionTypes) {
@@ -1195,6 +1203,10 @@ export class Resolver {
       case 'UnaryExpr': {
         const un = expr as UnaryExpr;
         this.resolveExpression(un.operand);
+        break;
+      }
+      case 'BorrowExpr': {
+        this.resolveExpression((expr as BorrowExpr).operand);
         break;
       }
       case 'CallExpr': {

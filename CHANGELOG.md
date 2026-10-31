@@ -1,5 +1,95 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.0.13-d] - 2026-10-31
+
+### P1.12 — Runtime Map Key References & Collection Safety
+- Added shared and mutable references to existing Map values through literal and dynamic key expressions.
+- Kept ordinary safe Map indexing unchanged: `scores[key]` still returns `Option<V>`, while borrowing an existing entry refers to its stored value `V`.
+- Added ordered Map-key runtime projections; dereference reads and writes resolve entries using Seira structural key equality.
+- Mutable dereference updates rebuild the Map value entry while preserving its original key, entry order, and all sibling entries.
+- Added type checking for Map key/value references and rejected mutable borrows rooted in immutable bindings.
+- Added MIR Map places with key-type-aware literal segments and a dynamic-key wildcard. Distinct constant keys may be borrowed independently; a dynamic key conservatively aliases every Map key.
+- Preserved key/index expressions as MIR operands so dynamic key evaluation and liveness are not erased during place lowering.
+- Missing Map keys fail with a structured runtime diagnostic; this milestone does not implicitly insert new keys through a borrow.
+- Added runtime, typecheck, and ownership regressions for mutation, reborrowing, dynamic aliases, disjoint keys, key type mismatches, and missing keys.
+- Kept Map key mutation, reference escapes, and general interprocedural alias propagation out of scope.
+
+## [0.0.12-d] - 2026-10-31
+
+### P1.11 — Runtime List Index References & Alias Safety
+- Added shared and mutable references to List elements through constant and dynamic index expressions.
+- Kept ordinary safe List indexing unchanged: `values[index]` still returns `Option<T>`, while `&values[index]` and `&mut values[index]` refer to the element `T`.
+- Added runtime List index projections to reference paths, including nested List/Tuple/Struct paths and copy-on-write mutation that preserves sibling values.
+- Added MIR List place projections: constant positions use distinct path segments, while dynamic positions use a conservative wildcard that aliases any List index at the same path depth.
+- Made indexed List reads place-sensitive in ownership analysis so disjoint constant positions remain accessible during another position's mutable loan.
+- Added typecheck, ownership, and execution regressions for shared/mutable indexed references, dynamic alias conflicts, disjoint constant positions, reborrowing, and out-of-range access.
+- Deliberately deferred Map index references, reference escapes, and general interprocedural alias propagation.
+
+## [0.0.11-d] - 2026-10-31
+
+### P1.10 — Runtime Struct Values & Field References
+- Added first-class runtime Struct values with a type name and named field storage.
+- Added positional struct constructor calls following declaration field order (for example, `Person("Mika", 23)`) with constructor arity and field type validation.
+- Added runtime struct member reads and shared/mutable references to named fields, including nested mixed paths such as `player.stats.score`.
+- Generalized runtime references to preserve ordered tuple-position and struct-field projections through dereference reads, mutable writes, and reborrowing.
+- Made mutable dereference writes rebuild nested immutable tuple/struct containers from the modified leaf to the root binding without disturbing siblings.
+- Added execution, typecheck, and ownership regressions for construction, field access, disjoint field loans, overlapping loans, nested mutation, and reborrow paths.
+- Kept dynamic list/map index borrowing and named-argument struct constructors deferred.
+
+### P1.9 — Runtime Tuple-Projection References
+- Added runtime shared and mutable references to positional tuple places, including nested projections such as `&pair.0` and `&mut pair.1.0`.
+- Preserved tuple projection paths through reference values and shared/mutable reborrows.
+- Extended postfix parsing for chained tuple positions such as `pair.1.0`, which the numeric lexer otherwise groups into a float token after a dot.
+- Made dereference reads resolve the projected tuple element and mutable dereference writes rebuild tuples from the modified leaf to the root binding, retaining sibling values.
+- Included tuple projection paths in runtime reference formatting and structural reference equality.
+- Added execution regressions for shared tuple reads, nested mutable tuple updates, sibling preservation, and reborrow path retention.
+- Added compiler/ownership regressions proving disjoint tuple positions lower to independent MIR places while overlapping borrows of the same position are rejected.
+- Kept dynamic list/map index borrowing and runtime references to user-defined struct fields deferred.
+
+### P1.8 — Place-Sensitive & Field-Sensitive Borrowing
+- Added MIR place-path metadata for borrows of named struct fields and nested field projections.
+- Added overlap-aware loan conflict analysis: disjoint field paths can be borrowed independently, while identical and parent/nested paths conflict.
+- Lowered field reads with root binding and projection metadata so ownership checks can permit disjoint field reads while rejecting access to borrowed fields.
+- Extended source borrow validation to permit field projections rooted at named local bindings and to require a mutable root for mutable field borrows.
+- Added typecheck, MIR lowering, and ownership regression tests for disjoint, overlapping, and nested field places.
+- Documented the MIR/compiler scope and deferred tuple/index projections and runtime user-defined struct field references.
+
+### P1.7 — Reborrowing & Loan Hierarchy
+- Added source syntax for shared and mutable reborrows through dereference (`&*reference`, `&mut *reference`).
+- Extended MIR borrow operations with explicit reborrow metadata so lowering preserves the parent reference instead of loading a copied value.
+- Added parent-child loan relationships, shared-child coexistence, mutable-child exclusivity, and parent-reference suspension while exclusive child loans are live.
+- Restored parent reference access after child loan expiration/end and rejected mutable reborrows from shared parents.
+- Updated runtime reborrow evaluation to retain the original lexical binding cell and enforce parent mutability.
+- Added typecheck, ownership, and execution regression tests; updated README and ownership/reference architecture documentation.
+
+### P1.6 — MIR-Based Loan Liveness & Non-Lexical Lifetimes
+- Added backward MIR CFG value-liveness analysis, including branch-edge argument to block-parameter mapping.
+- Ended local and incoming reference loans after their last semantic SSA use; synthetic `borrow.end` markers are excluded from liveness so they do not extend a borrow.
+- Preserved explicit lexical cleanup markers as harmless when the corresponding loan has already ended through liveness.
+- Added a regression test proving that the original owner can be accessed after the last use of a mutable reference, before lexical scope exit.
+- Updated README and ownership/reference architecture documentation to describe the initial NLL boundary and remaining limitations.
+
+### P1.5 — Dereference & Borrowed Mutation
+
+- Added prefix dereference syntax (`*reference`) and type-checked it against shared/mutable reference types.
+- Added assignment and compound-assignment through mutable references (`*reference = value`, `*reference += value`); shared-reference writes are rejected with `E3008`.
+- Lowered dereference reads/writes into MIR `deref.load` and `deref.store` operations.
+- Extended ownership analysis to recognize incoming reference parameters and enforce mutable-only dereference stores.
+- Replaced runtime reference erasure with reference values that point to the original lexical binding cell, enabling reads and writes through function parameters.
+- Added parser, type-checker, MIR/ownership, and runtime regression tests for borrowed mutation.
+- Updated README and reference/ownership architecture documentation to reflect the enabled syntax and remaining lifetime limitations.
+
+### P1.4 — Reference Types & Borrow Syntax
+
+- Added `&T` and `&mut T` reference annotations plus `&value` and `&mut value` borrow expressions.
+- Added reference-aware structural type checking and HIR type lowering.
+- Lowered shared/mutable borrows into MIR and emitted lexical `borrow.end` operations.
+- Connected MIR operand reads to ownership analysis so an active mutable loan blocks direct owner access.
+- Added `E3008` diagnostics for unsupported borrow places, mutable borrowing of immutable bindings, and reference escapes. Full lifetime inference/NLL and dereference syntax remain future work.
+
+
 All notable changes to the Seira programming language will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -10,6 +100,35 @@ and this project adheres to the Seira Staged Versioning Model:
 - **Beta Series**: `0.1.0-beta.1` through `0.1.0-beta.10`
 - **Release Candidates**: `0.1.0-rc.1` ...
 - **Stable**: `1.0.0`
+
+### Added
+- Added MIR ownership and borrow analysis as the ResourceCheck compiler stage, with CFG data-flow for resource acquisition/release, move state, shared/mutable borrow conflicts, and borrow lifetime validation.
+- Added ordered MIR resource events and verifier checks for event positions.
+- Added ownership/borrow regression tests for use-after-release, double release, leaks across branch merges, move errors, shared borrows, mutable-borrow conflicts, and escaping loans.
+- Documented ownership-analysis opcodes, diagnostics, and current front-end limitations in docs/architecture/ownership.md.
+- Implemented the HIR-to-MIR lowering pipeline with typed SSA values, basic blocks, explicit branch edges, block parameters for value merges, and source-node provenance.
+- Lowered assignment expressions into explicit HIR mutation blocks with single-evaluation RHS temporaries and preserved assignment results.
+- Updated `seira info` to report HIR and MIR as active development pipeline stages while native/WASM code generation remains reserved.
+- Added SSA block-parameter merges for mutable bindings across `if` branches and loop-carried values across loop headers, back-edges, exits, `break`, and `continue` edges.
+- Added MIR verifier checks for undefined and duplicate value definitions, use-before-definition, control-flow dominance, Boolean branch conditions, branch-target validity, block-argument arity, and edge argument type compatibility.
+- Preserved lexical binding scopes while lowering nested HIR blocks and iterator loop bindings.
+- Lowered expressions, calls, collections, closures, conditionals, match dispatch, loops, early returns, and `with` resource acquire/release operations into MIR operations and control flow.
+- Added MIR structural validation for entry blocks, unique definitions, branch targets, and block-argument arity; the compiler driver now validates MIR before exposing it.
+- Added MIR pipeline and resource-lifecycle regression tests.
+
+### Fixed
+- Hardened module discovery by refusing symbolic links and checking canonical paths against the source root.
+- Restricted workspace members to real directories contained within the workspace root.
+- Integrated workspace member maps into package dependency resolution.
+- Kept module dependency graphs package-scoped so identical module paths in different packages cannot overwrite one another.
+- Made package checksums independent of absolute checkout location and added strict lockfile parsing, dependency round-tripping, and checksum verification.
+- Corrected virtual file mode handling for `w+`, `a`, and `a+`; unsupported modes now return `Result.Err`.
+- Routed `print` and `println` through the same captured runtime output sink.
+- Added npm dependency auditing to the cross-platform CI workflow.
+
+### Notes
+- Runtime file I/O remains an in-memory virtual filesystem. A native filesystem host adapter is still future work; this change does not claim real operating-system file access.
+- Changes are being developed on the existing `develop` branch; no additional branch was created.
 
 ## [0.0.10-s] - 2026-10-01
 

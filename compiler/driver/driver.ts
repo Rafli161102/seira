@@ -2,7 +2,7 @@
  * Seira Compiler Driver
  *
  * Orchestrates the sequential compiler pipeline:
- * Source -> Lexer -> Parser -> Resolver -> Type Checking -> Effect Checking -> Resource Checking -> HIR -> MIR -> Backend
+ * Source -> Lexer -> Parser -> Resolver -> Type Checking -> HIR -> MIR -> Resource/Ownership Checking -> Backend
  *
  * Implements clean stage-based compilation with clear engineering boundaries.
  */
@@ -12,20 +12,22 @@ import type { Program } from '../ast/ast.ts';
 import { CompilerBackend, type BackendResult } from '../backend/index.ts';
 import { DiagnosticBag } from '../diagnostics/index.ts';
 import { InternalCompilerError } from '../diagnostics/ice.ts';
-import { HIRLowering, type HIRProgram } from '../hir/index.ts';
+import { HIRLowering, HIRValidator, type HIRProgram } from '../hir/index.ts';
 import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
-import { MIRBuilder, type MIRModule } from '../mir/index.ts';
+import { MIRBuilder, validateMIR, type MIRModule } from '../mir/index.ts';
+import { analyzeOwnership, type OwnershipAnalysisResult } from '../ownership/index.ts';
 import {
   ModuleGraph,
   PackageGraph,
   PackageLoader,
   SeiraModule,
   SeiraPackage,
+  WorkspaceLoader,
 } from '../module/index.ts';
 import { Parser } from '../parser/parser.ts';
 import { Resolver, type ResolverResult } from '../resolver/index.ts';
-import { TypeChecker } from '../typecheck/index.ts';
+import { TypeChecker, type TypecheckResult } from '../typecheck/index.ts';
 import type { CompilerConfig } from './config.ts';
 import { CompilerContext } from './context.ts';
 import { CompilerStage, isStageAtLeast } from './stage.ts';
@@ -51,6 +53,7 @@ export interface CompilationResult {
   readonly ast?: Program;
   readonly hir?: HIRProgram;
   readonly mir?: MIRModule;
+  readonly ownership?: OwnershipAnalysisResult;
   readonly backendResult?: BackendResult;
   readonly diagnostics: DiagnosticBag;
   readonly context: CompilerContext;
@@ -110,8 +113,24 @@ export class CompilerDriver {
       };
     }
 
-    // Resolve package dependencies via PackageGraph
-    const packageGraph = new PackageGraph(diagnostics);
+    // Discover a workspace from this package directory (or one of its ancestors).
+    // The workspace package map is required to resolve { workspace = true } dependencies.
+    const workspaceLoader = new WorkspaceLoader(diagnostics);
+    const workspaceRoot = workspaceLoader.findWorkspaceRoot(packageDir);
+    const workspace = workspaceRoot ? workspaceLoader.loadWorkspace(workspaceRoot) : null;
+
+    if (diagnostics.hasErrors()) {
+      return {
+        success: false,
+        package: pkg,
+        modules: pkg.modules,
+        sortedModules: [],
+        diagnostics,
+      };
+    }
+
+    // Resolve package dependencies via PackageGraph, including workspace members.
+    const packageGraph = new PackageGraph(diagnostics, workspace?.packages);
     const resolvedPackages = packageGraph.resolvePackage(packageDir);
 
     if (diagnostics.hasErrors()) {
@@ -176,13 +195,17 @@ export class CompilerDriver {
       };
     }
 
-    // Build module dependency graph and detect module cycles (E6008)
-    const moduleMap = new Map<string, SeiraModule>();
-    for (const mod of allModulesToCompile) {
-      moduleMap.set(mod.id.path, mod);
+    // Resolve module order within each package independently.
+    // Module names are package-scoped: package_a::utils and package_b::utils
+    // must not overwrite one another merely because both files are named utils.sr.
+    // Cross-package ordering is already guaranteed by PackageGraph.
+    const sortedModules: SeiraModule[] = [];
+    for (const resolvedPkg of resolvedPackages) {
+      const activePkg = resolvedPkg.name === pkg.name ? pkg : resolvedPkg;
+      const packageModules = new Map(activePkg.modules);
+      const moduleGraph = new ModuleGraph(packageModules, diagnostics);
+      sortedModules.push(...moduleGraph.resolveOrder());
     }
-    const moduleGraph = new ModuleGraph(moduleMap, diagnostics);
-    const sortedModules = moduleGraph.resolveOrder();
 
     if (diagnostics.hasErrors()) {
       return {
@@ -304,9 +327,10 @@ export class CompilerDriver {
     }
 
     // Stage 4: Type Checking & Semantic Analysis
+    let typecheckResult: TypecheckResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.Typecheck)) {
       const typeChecker = new TypeChecker(context.diagnostics);
-      typeChecker.check(ast, resolverResult, filePath);
+      typecheckResult = typeChecker.check(ast, resolverResult, filePath);
 
       if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Typecheck) {
         context.finish();
@@ -321,13 +345,18 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 5: High-Level Intermediate Representation (HIR) Lowering (Architectural Skeleton)
+    // Stage 5: High-Level Intermediate Representation (HIR) Lowering & Validation
     let hir: HIRProgram | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.HIR)) {
       const hirLowering = new HIRLowering(context.diagnostics);
-      hir = hirLowering.lower(ast, filePath);
+      hir = hirLowering.lower(ast, resolverResult, typecheckResult, filePath);
 
-      if (effectiveStop === CompilerStage.HIR) {
+      if (hir && !context.diagnostics.hasErrors()) {
+        const hirValidator = new HIRValidator(context.diagnostics);
+        hirValidator.validate(hir);
+      }
+
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.HIR) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),
@@ -346,8 +375,12 @@ export class CompilerDriver {
     if (isStageAtLeast(effectiveStop, CompilerStage.MIR) && hir) {
       const mirBuilder = new MIRBuilder();
       mir = mirBuilder.build(hir);
+      const mirValidation = validateMIR(mir);
+      for (const error of mirValidation.errors) {
+        context.diagnostics.reportError('E4005', `MIR Validation Error: ${error}`, hir.source.span, hir.source.file);
+      }
 
-      if (effectiveStop === CompilerStage.MIR) {
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.MIR) {
         context.finish();
         return {
           success: !context.diagnostics.hasErrors(),
@@ -362,7 +395,33 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 7: Backend Code Generation (Architectural Skeleton)
+    // Stage 7: Ownership & Borrow Analysis over MIR
+    let ownership: OwnershipAnalysisResult | undefined;
+    if (isStageAtLeast(effectiveStop, CompilerStage.ResourceCheck) && mir) {
+      ownership = analyzeOwnership(mir);
+      for (const issue of ownership.issues) {
+        const span = issue.source?.span ?? hir?.source.span ?? { start: 0, end: 0, line: 1, column: 1 };
+        const file = issue.source?.file ?? hir?.source.file;
+        context.diagnostics.reportError(issue.code, issue.message, span, file);
+      }
+
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.ResourceCheck) {
+        context.finish();
+        return {
+          success: !context.diagnostics.hasErrors(),
+          stage: CompilerStage.ResourceCheck,
+          tokens,
+          ast,
+          hir,
+          mir,
+          ownership,
+          diagnostics: context.diagnostics,
+          context,
+        };
+      }
+    }
+
+    // Stage 8: Backend Code Generation (Architectural Skeleton)
     let backendResult: BackendResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.Backend)) {
       const backend = new CompilerBackend(
@@ -384,6 +443,7 @@ export class CompilerDriver {
       ast,
       hir,
       mir,
+      ownership,
       backendResult,
       diagnostics: context.diagnostics,
       context,

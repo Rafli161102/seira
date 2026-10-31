@@ -27,6 +27,7 @@ import type {
   AssignStmt,
   BinaryExpr,
   BindingStmt,
+  BorrowExpr,
   Block,
   BlockExpr,
   BreakStmt,
@@ -60,6 +61,7 @@ import type {
   PipelineExpr,
   Program,
   ReturnStmt,
+  StructDecl,
   SetLiteral,
   Stmt,
   TupleLiteral,
@@ -140,6 +142,7 @@ import {
   rtSet,
   rtSome,
   rtString,
+  rtStruct,
   rtTuple,
   rtUInt,
   runtimeValuesEqual,
@@ -159,6 +162,9 @@ import {
   type OptionRuntimeValue,
   type PathRuntimeValue,
   type ReaderRuntimeValue,
+  type ReferenceRuntimeValue,
+  type RuntimePlaceProjection,
+  type StructRuntimeValue,
   type ResourceRuntimeValue,
   type ResultRuntimeValue,
   type RuntimeValue,
@@ -229,11 +235,17 @@ export class ExecutionContext {
     return this.callStack;
   }
 
-  public emitOutput(line: string): void {
+  public emitOutput(text: string, appendNewline = true): void {
     if (this.config.enableOutput) {
-      console.log(line);
+      // Preserve console.log interception used by embedders and CLI consumers
+      // for line-oriented output; print remains a raw no-newline write.
+      if (appendNewline) {
+        console.log(text);
+      } else {
+        process.stdout.write(text);
+      }
     }
-    this.outputLines.push(line);
+    this.outputLines.push(text);
   }
 
   public getCapturedOutput(): ReadonlyArray<string> {
@@ -268,6 +280,7 @@ export class Evaluator {
   private readonly ctx: ExecutionContext;
   /** Global-scope function declarations, hoisted before execution. */
   private readonly globalFunctions = new Map<string, FunctionDecl>();
+  private readonly globalStructs = new Map<string, StructDecl>();
 
   constructor(ctx: ExecutionContext) {
     this.ctx = ctx;
@@ -281,6 +294,11 @@ export class Evaluator {
    * and expression statements in order.
    */
   public executeProgram(program: Program, dependencyModules?: SeiraModule[]): RuntimeOutcome {
+    this.globalStructs.clear();
+    for (const item of program.items) {
+      if (item.kind === 'StructDecl') this.globalStructs.set(item.name, item as StructDecl);
+    }
+
     // Build the global execution environment
     const env = new RuntimeEnvironment(undefined, 'global');
 
@@ -294,7 +312,10 @@ export class Evaluator {
         const modExports = new Map<string, RuntimeValue>();
 
         for (const item of mod.ast.items) {
-          if (item.kind === 'FunctionDecl') {
+          if (item.kind === 'StructDecl') {
+            const struct = item as StructDecl;
+            this.globalStructs.set(struct.name, struct);
+          } else if (item.kind === 'FunctionDecl') {
             const fn = item as FunctionDecl;
             this.globalFunctions.set(fn.name, fn);
             const fnVal = rtFunction(fn.name, fn, env);
@@ -589,6 +610,16 @@ export class Evaluator {
     if (valOutcome.kind !== 'Normal') return valOutcome;
     const newValue = valOutcome.value;
 
+    if (stmt.target.kind === 'UnaryExpr' && (stmt.target as UnaryExpr).operator === '*') {
+      const referenceOutcome = this.evaluateExpr((stmt.target as UnaryExpr).operand, env);
+      if (referenceOutcome.kind !== 'Normal') return referenceOutcome;
+      if (referenceOutcome.value.tag !== 'Reference') {
+        return panicOutcome(invalidStateError('Assignment through dereference requires a Reference value.', stmt.span, this.ctx.config.fileName));
+      }
+      const result = this.assignThroughReference(referenceOutcome.value as ReferenceRuntimeValue, newValue, stmt.operator, stmt.span);
+      if (result.kind !== 'Normal') return result;
+      return normalOutcome(UNIT_VALUE);
+    }
     if (stmt.target.kind !== 'Identifier') {
       return panicOutcome(unsupportedOperationError(
         'compound assignment to non-identifier',
@@ -754,6 +785,8 @@ export class Evaluator {
         return this.evaluateBinaryExpr(expr as BinaryExpr, env);
       case 'UnaryExpr':
         return this.evaluateUnaryExpr(expr as UnaryExpr, env);
+      case 'BorrowExpr':
+        return this.evaluateBorrowExpr(expr as BorrowExpr, env);
       case 'PipelineExpr':
         return this.evaluatePipelineExpr(expr as PipelineExpr, env);
       case 'OptionFallbackExpr':
@@ -1043,12 +1076,257 @@ export class Evaluator {
 
   // ─── Unary Expression ─────────────────────────────────────────────────────
 
+  /** Resolve a named binding followed only by numeric tuple-member projections. */
+  /** Resolve a named binding followed by tuple-position and struct-field projections. */
+  private runtimeBorrowPlace(
+    expr: Expr,
+    env: RuntimeEnvironment,
+  ):
+    | { name: string; path: RuntimePlaceProjection[] }
+    | { failure: RuntimeOutcome }
+    | undefined {
+    if (expr.kind === 'Identifier') return { name: (expr as Identifier).name, path: [] };
+
+    if (expr.kind === 'MemberExpr') {
+      const member = expr as MemberExpr;
+      const parent = this.runtimeBorrowPlace(member.object, env);
+      if (!parent || 'failure' in parent) return parent;
+
+      if (/^(0|[1-9][0-9]*)$/.test(member.property)) {
+        const index = Number(member.property);
+        if (!Number.isSafeInteger(index)) return undefined;
+        return { name: parent.name, path: [...parent.path, { kind: 'tuple', index }] };
+      }
+      return { name: parent.name, path: [...parent.path, { kind: 'field', name: member.property }] };
+    }
+
+    if (expr.kind === 'IndexExpr') {
+      const indexed = expr as IndexExpr;
+      const parent = this.runtimeBorrowPlace(indexed.object, env);
+      if (!parent || 'failure' in parent) return parent;
+
+      const binding = env.lookup(parent.name);
+      const target = binding
+        ? this.readPlaceProjection(binding.value, parent.path)
+        : undefined;
+      if (!target || (target.tag !== 'List' && target.tag !== 'Map')) return undefined;
+
+      const indexOutcome = this.evaluateExpr(indexed.index, env);
+      if (indexOutcome.kind !== 'Normal') return { failure: indexOutcome };
+
+      if (target.tag === 'Map') {
+        const map = target as MapRuntimeValue;
+        const entry = map.entries.find((candidate) => runtimeValuesEqual(candidate.key, indexOutcome.value));
+        if (!entry) {
+          return {
+            failure: panicOutcome(invalidStateError(
+              `Cannot borrow missing Map key '${formatRuntimeValue(indexOutcome.value)}'.`,
+              indexed.span,
+              this.ctx.config.fileName,
+            )),
+          };
+        }
+        return { name: parent.name, path: [...parent.path, { kind: 'map', key: entry.key }] };
+      }
+
+      if (indexOutcome.value.tag !== 'Int' && indexOutcome.value.tag !== 'UInt') {
+        return {
+          failure: panicOutcome(invalidStateError(
+            `List index must be an integer, got ${indexOutcome.value.tag}.`,
+            indexed.index.span,
+            this.ctx.config.fileName,
+          )),
+        };
+      }
+
+      const rawIndex = indexOutcome.value.value;
+      if (rawIndex < 0n || rawIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return {
+          failure: panicOutcome(invalidStateError(
+            `List borrow index ${rawIndex.toString()} is outside the supported index range.`,
+            indexed.index.span,
+            this.ctx.config.fileName,
+          )),
+        };
+      }
+      const index = Number(rawIndex);
+      const list = target as ListRuntimeValue;
+      if (index >= list.elements.length) {
+        return {
+          failure: panicOutcome(invalidStateError(
+            `List borrow index ${index} is out of bounds for a list of length ${list.elements.length}.`,
+            indexed.span,
+            this.ctx.config.fileName,
+          )),
+        };
+      }
+      return { name: parent.name, path: [...parent.path, { kind: 'list', index }] };
+    }
+
+    return undefined;
+  }
+
+  private readPlaceProjection(value: RuntimeValue, path: ReadonlyArray<RuntimePlaceProjection>): RuntimeValue | undefined {
+    let current = value;
+    for (const part of path) {
+      if (part.kind === 'tuple') {
+        if (current.tag !== 'Tuple') return undefined;
+        const next = (current as TupleRuntimeValue).elements[part.index];
+        if (next === undefined) return undefined;
+        current = next;
+      } else if (part.kind === 'list') {
+        if (current.tag !== 'List') return undefined;
+        const next = (current as ListRuntimeValue).elements[part.index];
+        if (next === undefined) return undefined;
+        current = next;
+      } else if (part.kind === 'map') {
+        if (current.tag !== 'Map') return undefined;
+        const entry = (current as MapRuntimeValue).entries.find((candidate) => runtimeValuesEqual(candidate.key, part.key));
+        if (!entry) return undefined;
+        current = entry.value;
+      } else {
+        if (current.tag !== 'Struct') return undefined;
+        const next = (current as StructRuntimeValue).fields.get(part.name);
+        if (next === undefined) return undefined;
+        current = next;
+      }
+    }
+    return current;
+  }
+
+  /** Rebuild immutable tuple/struct containers from the changed leaf to the root. */
+  private updatePlaceProjection(
+    value: RuntimeValue,
+    path: ReadonlyArray<RuntimePlaceProjection>,
+    replacement: RuntimeValue,
+  ): RuntimeValue | undefined {
+    if (path.length === 0) return replacement;
+    const [part, ...remaining] = path;
+    if (!part) return undefined;
+
+    if (part.kind === 'tuple') {
+      if (value.tag !== 'Tuple') return undefined;
+      const tuple = value as TupleRuntimeValue;
+      if (part.index < 0 || part.index >= tuple.elements.length) return undefined;
+      const updatedChild = this.updatePlaceProjection(tuple.elements[part.index], remaining, replacement);
+      if (updatedChild === undefined) return undefined;
+      const elements = [...tuple.elements];
+      elements[part.index] = updatedChild;
+      return { ...tuple, elements };
+    }
+
+    if (part.kind === 'list') {
+      if (value.tag !== 'List') return undefined;
+      const list = value as ListRuntimeValue;
+      if (part.index < 0 || part.index >= list.elements.length) return undefined;
+      const updatedElement = this.updatePlaceProjection(list.elements[part.index], remaining, replacement);
+      if (updatedElement === undefined) return undefined;
+      const elements = [...list.elements];
+      elements[part.index] = updatedElement;
+      return { ...list, elements };
+    }
+
+    if (part.kind === 'map') {
+      if (value.tag !== 'Map') return undefined;
+      const map = value as MapRuntimeValue;
+      const entryIndex = map.entries.findIndex((entry) => runtimeValuesEqual(entry.key, part.key));
+      if (entryIndex < 0) return undefined;
+      const currentEntry = map.entries[entryIndex];
+      const updatedValue = this.updatePlaceProjection(currentEntry.value, remaining, replacement);
+      if (updatedValue === undefined) return undefined;
+      const entries = [...map.entries];
+      entries[entryIndex] = { key: currentEntry.key, value: updatedValue };
+      return { ...map, entries };
+    }
+
+    if (value.tag !== 'Struct') return undefined;
+    const struct = value as StructRuntimeValue;
+    const currentField = struct.fields.get(part.name);
+    if (currentField === undefined) return undefined;
+    const updatedField = this.updatePlaceProjection(currentField, remaining, replacement);
+    if (updatedField === undefined) return undefined;
+    const fields = new Map(struct.fields);
+    fields.set(part.name, updatedField);
+    return { ...struct, fields };
+  }
+
+  private evaluateBorrowExpr(expr: BorrowExpr, env: RuntimeEnvironment): RuntimeOutcome {
+    if (expr.operand.kind === 'UnaryExpr' && expr.operand.operator === '*' && expr.operand.operand.kind === 'Identifier') {
+      const parentOutcome = this.evaluateExpr(expr.operand.operand, env);
+      if (parentOutcome.kind !== 'Normal') return parentOutcome;
+      if (parentOutcome.value.tag !== 'Reference') {
+        return panicOutcome(invalidStateError('A reborrow requires an existing Reference value.', expr.span, this.ctx.config.fileName));
+      }
+      const parent = parentOutcome.value as ReferenceRuntimeValue;
+      if (expr.isMutable && !parent.mutable) {
+        return panicOutcome(invalidStateError('A shared reference cannot be reborrowed as mutable.', expr.span, this.ctx.config.fileName));
+      }
+      return normalOutcome({
+        tag: 'Reference',
+        environment: parent.environment,
+        name: parent.name,
+        mutable: expr.isMutable,
+        ...(parent.placePath && parent.placePath.length > 0 ? { placePath: [...parent.placePath] } : {}),
+      } satisfies ReferenceRuntimeValue);
+    }
+
+    const resolvedPlace = this.runtimeBorrowPlace(expr.operand, env);
+    if (resolvedPlace && 'failure' in resolvedPlace) return resolvedPlace.failure;
+    const place = resolvedPlace;
+    if (!place) {
+      return panicOutcome(invalidStateError(
+        'Runtime borrowing supports named bindings, tuple positions, struct fields, and List indices only.',
+        expr.span,
+        this.ctx.config.fileName,
+      ));
+    }
+
+    const reference = env.borrow(place.name, expr.isMutable, place.path);
+    if (!reference) {
+      return panicOutcome(invalidStateError(
+        expr.isMutable
+          ? `Cannot mutably borrow '${place.name}': binding is missing or immutable.`
+          : `Cannot borrow '${place.name}': binding was not found.`,
+        expr.span,
+        this.ctx.config.fileName,
+      ));
+    }
+
+    const binding = reference.environment.lookup(reference.name);
+    if (!binding || this.readPlaceProjection(binding.value, reference.placePath ?? []) === undefined) {
+      return panicOutcome(invalidStateError(
+        `Place projection for reference '${place.name}' is not valid for the runtime value.`,
+        expr.span,
+        this.ctx.config.fileName,
+      ));
+    }
+    return normalOutcome(reference);
+  }
   private evaluateUnaryExpr(expr: UnaryExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const operandOutcome = this.evaluateExpr(expr.operand, env);
     if (operandOutcome.kind !== 'Normal') return operandOutcome;
     const operand = operandOutcome.value;
 
     switch (expr.operator) {
+      case '*': {
+        if (operand.tag !== 'Reference') {
+          return panicOutcome(invalidStateError(`Dereference requires a Reference value, got ${operand.tag}.`, expr.span, this.ctx.config.fileName));
+        }
+        const reference = operand as ReferenceRuntimeValue;
+        const binding = reference.environment.lookup(reference.name);
+        if (!binding) {
+          return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, expr.span, this.ctx.config.fileName));
+        }
+        const projected = this.readPlaceProjection(binding.value, reference.placePath ?? []);
+        if (projected === undefined) {
+          return panicOutcome(invalidStateError(
+            `Place projection for reference '${reference.name}' is no longer valid.`,
+            expr.span,
+            this.ctx.config.fileName,
+          ));
+        }
+        return normalOutcome(projected);
+      }
       case 'not':
         // Strict Bool semantics — 'not' requires a Bool, never an integer/other
         if (operand.tag !== 'Bool') {
@@ -1300,6 +1578,20 @@ export class Evaluator {
     span?: Span,
     env?: RuntimeEnvironment
   ): RuntimeOutcome {
+    const structDecl = this.globalStructs.get(name);
+    if (structDecl) {
+      if (args.length !== structDecl.fields.length) {
+        return panicOutcome(invalidStateError(
+          `Struct constructor '${name}' expects ${structDecl.fields.length} fields, but received ${args.length}.`,
+          span,
+          this.ctx.config.fileName,
+        ));
+      }
+      const fields = new Map<string, RuntimeValue>();
+      structDecl.fields.forEach((field, index) => fields.set(field.name, args[index]));
+      return normalOutcome(rtStruct(name, fields));
+    }
+
     // Check built-ins first
     const builtinResult = this.tryCallBuiltin(name, args, span);
     if (builtinResult !== null) return builtinResult;
@@ -2235,11 +2527,61 @@ export class Evaluator {
 
   // ─── Assignment Expression ────────────────────────────────────────────────
 
+  private assignThroughReference(reference: ReferenceRuntimeValue, value: RuntimeValue, operator: string, span?: Span): RuntimeOutcome {
+    if (!reference.mutable) {
+      return panicOutcome(invalidStateError('Cannot mutate through a shared reference.', span, this.ctx.config.fileName));
+    }
+    const binding = reference.environment.lookup(reference.name);
+    if (!binding) {
+      return panicOutcome(invalidStateError(`Reference to '${reference.name}' is no longer valid.`, span, this.ctx.config.fileName));
+    }
+
+    const placePath = reference.placePath ?? [];
+    const currentValue = this.readPlaceProjection(binding.value, placePath);
+    if (currentValue === undefined) {
+      return panicOutcome(invalidStateError(
+        `Place projection for reference '${reference.name}' is no longer valid.`,
+        span,
+        this.ctx.config.fileName,
+      ));
+    }
+
+    let nextValue = value;
+    if (operator !== '=') {
+      const compound = this.applyCompoundOperator(operator, currentValue, value, span);
+      if (isPanic(compound)) return compound;
+      nextValue = (compound as NormalOutcome).value;
+    }
+
+    const updatedRoot = this.updatePlaceProjection(binding.value, placePath, nextValue);
+    if (updatedRoot === undefined) {
+      return panicOutcome(invalidStateError(
+        `Cannot update projected place through reference to '${reference.name}'.`,
+        span,
+        this.ctx.config.fileName,
+      ));
+    }
+
+    const assigned = reference.environment.assign(reference.name, updatedRoot);
+    if (assigned !== 'ok') {
+      return panicOutcome(invalidStateError(`Cannot assign through reference to '${reference.name}'.`, span, this.ctx.config.fileName));
+    }
+    return normalOutcome(nextValue);
+  }
+
   private evaluateAssignmentExpr(expr: AssignmentExpr, env: RuntimeEnvironment): RuntimeOutcome {
     const valOutcome = this.evaluateExpr(expr.value, env);
     if (valOutcome.kind !== 'Normal') return valOutcome;
     const newValue = valOutcome.value;
 
+    if (expr.target.kind === 'UnaryExpr' && (expr.target as UnaryExpr).operator === '*') {
+      const referenceOutcome = this.evaluateExpr((expr.target as UnaryExpr).operand, env);
+      if (referenceOutcome.kind !== 'Normal') return referenceOutcome;
+      if (referenceOutcome.value.tag !== 'Reference') {
+        return panicOutcome(invalidStateError('Assignment through dereference requires a Reference value.', expr.span, this.ctx.config.fileName));
+      }
+      return this.assignThroughReference(referenceOutcome.value as ReferenceRuntimeValue, newValue, expr.operator, expr.span);
+    }
     if (expr.target.kind !== 'Identifier') {
       return panicOutcome(unsupportedOperationError(
         'assignment to non-identifier target', expr.span, this.ctx.config.fileName
@@ -2283,6 +2625,18 @@ export class Evaluator {
     const targetOutcome = this.evaluateExpr(expr.object, env);
     if (targetOutcome.kind !== 'Normal') return targetOutcome;
     const target = targetOutcome.value;
+
+    // User-defined struct field access.
+    if (target.tag === 'Struct') {
+      const struct = target as StructRuntimeValue;
+      const fieldValue = struct.fields.get(expr.property);
+      if (fieldValue !== undefined) return normalOutcome(fieldValue);
+      return panicOutcome(invalidStateError(
+        `Struct '${struct.name}' has no field named '${expr.property}'.`,
+        expr.span,
+        this.ctx.config.fileName,
+      ));
+    }
 
     // Tuple positional index: e.g. user.0, user.1
     if (target.tag === 'Tuple') {
@@ -2595,9 +2949,7 @@ export class Evaluator {
 
       case 'print': {
         const parts = args.map(formatRuntimeValue);
-        if (this.ctx.config.enableOutput) {
-          process.stdout.write(parts.join(' '));
-        }
+        this.ctx.emitOutput(parts.join(' '), false);
         return normalOutcome(UNIT_VALUE);
       }
 
