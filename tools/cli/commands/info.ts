@@ -35,7 +35,7 @@ export function runInfo(): void {
   console.log('  [x] HIR:             Active — AST to typed HIR lowering & validation (develop)');
   console.log('  [x] MIR:             Active — HIR to SSA/CFG lowering & verification (develop)');
   console.log('  [x] MIR Optimizer:   Active — verified pass manager, constant folding, branch simplification & dead pure-op elimination (P1.16)');
-  console.log('  [x] Conformance:     Implemented (P1.17 merged) — semantic matrix, deterministic diagnostics & bounded lexer fuzzing (P1.17)');
+  console.log('  [x] Conformance:     Implemented (P1.17 merged) — semantic matrix, deterministic diagnostics & bounded lexer fuzzing');
   console.log('  [x] Backend Contract: Implemented (P1.18 merged) — target layout, runtime ABI & MIR input validation (P1.18)');
   console.log('  [x] Ownership:       Active — MIR resource lifetime & borrow-event analysis (develop)');
   console.log('  [x] Effect Check:    Initial explicit ! call-boundary checking (P1.15)');
