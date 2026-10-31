@@ -266,7 +266,7 @@ function isSafeToRemove(operation: MIROperation, types: Map<number, string>): bo
 }
 
 function deadCodeEliminate(fn: MIRFunction, stats: MutableStats): MIRFunction {
-  let blocks = fn.blocks.map((block) => ({ ...block, operations: [...block.operations] }));
+  let blocks: BasicBlock[] = fn.blocks.map((block) => ({ ...block, operations: [...block.operations] }));
   let changed = true;
 
   while (changed) {
