@@ -26,6 +26,7 @@ import {
   formatType,
   TypeChecker,
 } from '../../../compiler/typecheck/index.ts';
+import { createFunctionType, createTupleType, FLOAT_TYPE, INT_TYPE, isTypeAssignable, unifyTypes } from '../../../compiler/typecheck/types.ts';
 import { ExecutionEngine } from '../../../runtime/execution/engine.ts';
 import { isNormal } from '../../../runtime/execution/outcomes.ts';
 import {
