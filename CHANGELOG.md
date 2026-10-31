@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.0.13-d] - 2026-10-31
+
+### P1.12 — Runtime Map Key References & Collection Safety
+- Added shared and mutable references to existing Map values through literal and dynamic key expressions.
+- Kept ordinary safe Map indexing unchanged: `scores[key]` still returns `Option<V>`, while borrowing an existing entry refers to its stored value `V`.
+- Added ordered Map-key runtime projections; dereference reads and writes resolve entries using Seira structural key equality.
+- Mutable dereference updates rebuild the Map value entry while preserving its original key, entry order, and all sibling entries.
+- Added type checking for Map key/value references and rejected mutable borrows rooted in immutable bindings.
+- Added MIR Map places with key-type-aware literal segments and a dynamic-key wildcard. Distinct constant keys may be borrowed independently; a dynamic key conservatively aliases every Map key.
+- Preserved key/index expressions as MIR operands so dynamic key evaluation and liveness are not erased during place lowering.
+- Missing Map keys fail with a structured runtime diagnostic; this milestone does not implicitly insert new keys through a borrow.
+- Added runtime, typecheck, and ownership regressions for mutation, reborrowing, dynamic aliases, disjoint keys, key type mismatches, and missing keys.
+- Kept Map key mutation, reference escapes, and general interprocedural alias propagation out of scope.
+
 ## [0.0.12-d] - 2026-10-31
 
 ### P1.11 — Runtime List Index References & Alias Safety
