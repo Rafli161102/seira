@@ -6,7 +6,7 @@
 import { SEIRA_VERSION } from './version.ts';
 
 export function runHelp(): void {
-  console.log(`Seira ${SEIRA_VERSION} — Runtime List Index References & Alias Safety (Development Series)
+  console.log(`Seira ${SEIRA_VERSION} — Runtime Map Key References & Collection Safety (Development Series)
 Simple to write. Predictable to run.
 
 USAGE:
@@ -28,14 +28,14 @@ CORE COMMANDS:
 TOOLCHAIN COMMANDS (Reserved / Planned for Future Milestones):
     build, b           Compile Seira package (Planned: Alpha)
     test, t            Execute package unit and integration tests (Planned: Alpha)
-    fmt, f             Format Seira source files according to style rules (Planned: 0.0.13-d)
-    doc                Generate documentation from source comments (Planned: 0.0.13-d)
-    clean              Remove build artifacts and intermediate files (Planned: 0.0.13-d)
-    cache              Inspect and manage compiler disk caches (Planned: 0.0.13-d)
-    add <dep>          Add a dependency to Seira.toml (Planned: 0.0.13-d)
-    remove <dep>       Remove a dependency from Seira.toml (Planned: 0.0.13-d)
-    update             Update package dependencies (Planned: 0.0.13-d)
-    fetch              Download package dependencies (Planned: 0.0.13-d)
+    fmt, f             Format Seira source files according to style rules (Planned: 0.0.14-d)
+    doc                Generate documentation from source comments (Planned: 0.0.14-d)
+    clean              Remove build artifacts and intermediate files (Planned: 0.0.14-d)
+    cache              Inspect and manage compiler disk caches (Planned: 0.0.14-d)
+    add <dep>          Add a dependency to Seira.toml (Planned: 0.0.14-d)
+    remove <dep>       Remove a dependency from Seira.toml (Planned: 0.0.14-d)
+    update             Update package dependencies (Planned: 0.0.14-d)
+    fetch              Download package dependencies (Planned: 0.0.14-d)
 
 DOCUMENTATION:
     https://github.com/Rafli161102/seira

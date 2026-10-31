@@ -9,19 +9,19 @@ const RESERVED_ROADMAP: Record<string, string> = {
   build: '0.1.0-alpha (Native LLVM & WebAssembly Backend)',
   run: '0.1.0-alpha (Execution Engine & Bytecode/Binary Runner)',
   test: '0.1.0-alpha (Integrated Test Runner)',
-  fmt: '0.0.13-d (Source Code Formatter)',
-  doc: '0.0.13-d (Docstring Generator)',
-  clean: '0.0.13-d (Cache Cleaner)',
-  cache: '0.0.13-d (Compilation Cache Manager)',
-  add: '0.0.13-d (Package Manager Dependency Resolution)',
-  remove: '0.0.13-d (Package Manager Dependency Resolution)',
-  update: '0.0.13-d (Package Manager Dependency Resolution)',
-  fetch: '0.0.13-d (Package Manager Dependency Resolution)',
+  fmt: '0.0.14-d (Source Code Formatter)',
+  doc: '0.0.14-d (Docstring Generator)',
+  clean: '0.0.14-d (Cache Cleaner)',
+  cache: '0.0.14-d (Compilation Cache Manager)',
+  add: '0.0.14-d (Package Manager Dependency Resolution)',
+  remove: '0.0.14-d (Package Manager Dependency Resolution)',
+  update: '0.0.14-d (Package Manager Dependency Resolution)',
+  fetch: '0.0.14-d (Package Manager Dependency Resolution)',
 };
 
 export function runReserved(commandName: string): number {
   const milestone = RESERVED_ROADMAP[commandName] ?? 'Future Release';
-  console.log(`Seira ${SEIRA_VERSION} (Runtime List Index References & Alias Safety — Development Series)`);
+  console.log(`Seira ${SEIRA_VERSION} (Runtime Map Key References & Collection Safety — Development Series)`);
   console.log(`This command is not implemented in Seira ${SEIRA_VERSION}.`);
   console.log(`Command:               seira ${commandName}`);
   console.log(`Target Milestone:      ${milestone}`);
