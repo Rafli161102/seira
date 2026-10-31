@@ -12,7 +12,7 @@ import { SEIRA_VERSION } from './version.ts';
 export function runInfo(): void {
   console.log('Seira Environment & Toolchain Information');
   console.log('========================================');
-  console.log(`Seira Version:         ${SEIRA_VERSION} (Runtime List Index References & Alias Safety — Development Series)`);
+  console.log(`Seira Version:         ${SEIRA_VERSION} (Runtime Map Key References & Collection Safety — Development Series)`);
   console.log(`Language Axiom:        Everything is a Value. Programs are Transformations.`);
   console.log(`Host Platform:         ${platform()} (${arch()})`);
   console.log(`Host Node.js:          ${process.version}`);
@@ -29,9 +29,9 @@ export function runInfo(): void {
   console.log('  [x] Package Manager: Active (0.0.8-s)');
   console.log('  [x] Standard Library: Active (0.0.9-s, 0.0.10-s)');
   console.log('  [x] Compiler Driver: Active (0.0.3-s, 0.0.8-s)');
-  console.log('  [x] Resolver:        Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.12-d)');
-  console.log('  [x] Typecheck:       Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.11-d)');
-  console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.11-d)');
+  console.log('  [x] Resolver:        Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.12-d, 0.0.13-d)');
+  console.log('  [x] Typecheck:       Active (0.0.4-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.11-d, 0.0.12-d, 0.0.13-d)');
+  console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.11-d, 0.0.12-d, 0.0.13-d)');
   console.log('  [x] HIR:             Active — AST to typed HIR lowering & validation (develop)');
   console.log('  [x] MIR:             Active — HIR to SSA/CFG lowering & verification (develop)');
   console.log('  [x] Ownership:       Active — MIR resource lifetime & borrow-event analysis (develop)');
