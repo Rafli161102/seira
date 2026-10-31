@@ -2,14 +2,43 @@
 
 ## [Unreleased]
 
-### Engineering Roadmap
-- Opened the P1.13–P1.18 hardening program in `docs/roadmap/P1.13-P1.18.md`.
-- Added an authoritative current architecture status document distinguishing implemented HIR/MIR and ownership foundations from planned effect checking, optimization, and native/WASM code generation.
-- Corrected README implementation classifications so HIR/MIR are not described as skeletons and backend emission is not represented as available.
-- Marked legacy Seed architecture specifications as historical baselines where applicable.
+### Repository Engineering
+- Added an audited current-state architecture reference for the 0.0.16-d Development baseline.
+- Documented P1.13–P1.15 as completed based on existing implementation and changelog entries; scoped remaining work to P1.16–P1.18.
+- Marked Seed-era architecture specifications as historical references to prevent stale implementation claims.
+
+
+## [0.0.16-d] - 2026-10-31
+
+### P1.15 — Effect System Foundation
+- Added an initial effect boundary for explicit `fn name!` declarations and effectful function types.
+- Pure functions calling effectful callees now receive `E8001`; effectful callers may invoke effectful callees.
+- Preserved top-level script calls as the explicit host boundary.
+- Included effect markers in trait method implementation compatibility checks (`E4006`).
+- Added an EffectCheck compiler checkpoint after effect-aware type checking and regression coverage for pure/effectful calls, function types, trait signatures, and the driver stage.
+- Deferred full effect inference, algebraic effect handlers, capability-to-effect classification for built-in host operations, and effect polymorphism.
+
+## [0.0.15-d] - 2026-10-31
+
+### P1.14 — Type System Hardening
+- Made generic unification transactional: failed nested matches no longer leak partially inferred substitutions.
+- Repeated occurrences of a generic parameter now require the same structural type instead of accepting either-direction assignability.
+- Unknown input types are provisional and may be refined by later concrete arguments; they do not block valid inference.
+- Included the effect marker when unifying function types.
+- Made function-parameter compatibility invariant until Seira defines a formal subtype/variance model; return types retain their existing assignability rule.
+- Added regressions for repeated generic conflicts, rollback, unknown refinement, pure/effectful function mismatches, callback compatibility, and a source-level conflicting-generic call.
+
+## [0.0.14-d] - 2026-10-31
+
+### P1.13 — Ownership & Borrow Checker Hardening
+- Fixed an unsound CFG-join merge that selected one owner when a reference could originate from different owners on predecessor paths.
+- Added a conservative unknown-owner identity so a joined reference aliases every possible root owner.
+- Preserved conservative parent suspension when joined child reborrows can originate from different parents.
+- Added a synthetic MIR regression with two predecessor blocks and a conflicting mutable borrow after the join.
+- Updated architecture status and documented the remaining alias/lifetime limitations.
+- Kept general interprocedural alias propagation, reference escapes, and closure-capture ownership out of scope.
 
 ## [0.0.13-d] - 2026-10-31
-
 
 ### P1.12 — Runtime Map Key References & Collection Safety
 - Added shared and mutable references to existing Map values through literal and dynamic key expressions.
