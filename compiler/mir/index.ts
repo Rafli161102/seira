@@ -418,12 +418,13 @@ class FunctionLowerer {
       if (!parent) return undefined;
       return { root: parent.root, path: [...parent.path, expr.fieldName] };
     }
-    if (expr.kind === 'HIRIndexExpr' && expr.target.type.kind === 'List') {
+    if (expr.kind === 'HIRIndexExpr' && (expr.target.type.kind === 'List' || expr.target.type.kind === 'Map')) {
       const parent = this.lowerPlace(expr.target);
       if (!parent) return undefined;
 
-      let indexSegment = '@*';
+      let indexSegment = expr.target.type.kind === 'List' ? '@*' : '#*';
       if (
+        expr.target.type.kind === 'List' &&
         expr.index.kind === 'HIRLiteralExpr' &&
         (expr.index.literalKind === 'int' || expr.index.literalKind === 'uint')
       ) {
@@ -438,6 +439,14 @@ class FunctionLowerer {
             // Non-integral or malformed literal projections remain conservative.
           }
         }
+      } else if (
+        expr.target.type.kind === 'Map' &&
+        expr.index.kind === 'HIRLiteralExpr' &&
+        ['int', 'uint', 'float', 'bool', 'char', 'string', 'unit'].includes(expr.index.literalKind)
+      ) {
+        const raw = expr.index.value;
+        const rawText = String(raw).replaceAll('%', '%25').replaceAll('.', '%2E');
+        indexSegment = `#${expr.index.literalKind}:${rawText}`;
       }
       return { root: parent.root, path: [...parent.path, indexSegment] };
     }

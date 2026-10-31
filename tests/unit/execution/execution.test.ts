@@ -1135,3 +1135,60 @@ test('Execution: borrowing an out-of-range List index fails safely', () => {
   assert.equal(r.success, false);
   assert.ok(r.diagnostics.getErrors().some((error) => error.code.startsWith('R')));
 });
+
+
+test('Execution: mutable Map key reference updates the existing entry without changing its key', () => {
+  const r = run(`
+    fn main() {
+      mut scores = {"alpha": 10, "beta": 20};
+      score_ref = &mut scores["alpha"];
+      *score_ref += 5;
+      println(*score_ref);
+      println(scores["alpha"]);
+      println(scores["beta"]);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['15', 'Some(15)', 'Some(20)']);
+});
+
+test('Execution: shared and mutable Map entry references support dynamic keys and reborrowing', () => {
+  const r = run(`
+    fn main() {
+      mut scores = {"alpha": 10, "beta": 20};
+      key = "beta";
+      parent = &mut scores[key];
+      child = &mut *parent;
+      *child += 2;
+      println(*parent);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['22']);
+});
+
+test('Execution: nested Map entry references preserve the complete projection path', () => {
+  const r = run(`
+    type Stats { score: Int }
+    fn main() {
+      mut players = {"aqua": Stats(40)};
+      score_ref = &mut players["aqua"].score;
+      *score_ref += 2;
+      println(players["aqua"].score);
+    }
+  `);
+  assert.ok(r.success, r.diagnostics.format());
+  assert.deepStrictEqual(r.output, ['Some(42)']);
+});
+
+test('Execution: borrowing a missing Map key fails safely', () => {
+  const r = run(`
+    fn main() {
+      mut scores = {"alpha": 10};
+      score_ref = &mut scores["missing"];
+      println(*score_ref);
+    }
+  `);
+  assert.equal(r.success, false);
+  assert.ok(r.diagnostics.getErrors().some((error) => error.code.startsWith('R')));
+});

@@ -157,9 +157,12 @@ function placesOverlap(left = '', right = ''): boolean {
     const b = rightParts[index];
     if (a === b) continue;
 
-    // A runtime/dynamic list index can refer to any position. It therefore
-    // aliases every constant or dynamic list index at the same path depth.
+    // A runtime/dynamic List index may select any position.
     if ((a === '@*' && b.startsWith('@')) || (b === '@*' && a.startsWith('@'))) {
+      continue;
+    }
+    // A dynamic Map key may equal any statically-known or dynamic key.
+    if ((a === '#*' && b.startsWith('#')) || (b === '#*' && a.startsWith('#'))) {
       continue;
     }
     return false;
