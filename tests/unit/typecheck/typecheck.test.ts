@@ -533,3 +533,35 @@ test('Typecheck: supports List element references but rejects Map index referenc
   assert.equal(mapIndex.tcResult.success, false);
   assert.ok(mapIndex.diagnostics.getErrors().some((error) => error.code === 'E3008'));
 });
+
+
+test('Typecheck: supports Map value references with key type checking', () => {
+  const valid = typecheckSource(`
+    fn update(mut values: Map<String, Int>, key: String) {
+      shared_ref = &values[key];
+      println(*shared_ref);
+      mutable_ref = &mut values[key];
+      *mutable_ref += 1;
+    }
+    fn main() {}
+  `);
+  assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
+
+  const immutableRoot = typecheckSource(`
+    fn update(values: Map<String, Int>) {
+      mutable_ref = &mut values["alpha"];
+    }
+    fn main() {}
+  `);
+  assert.equal(immutableRoot.tcResult.success, false);
+  assert.ok(immutableRoot.diagnostics.getErrors().some((error) => error.code === 'E3008'));
+
+  const badKey = typecheckSource(`
+    fn update(mut values: Map<String, Int>) {
+      mutable_ref = &mut values[1];
+    }
+    fn main() {}
+  `);
+  assert.equal(badKey.tcResult.success, false);
+  assert.ok(badKey.diagnostics.getErrors().some((error) => error.code === 'E3002'));
+});
