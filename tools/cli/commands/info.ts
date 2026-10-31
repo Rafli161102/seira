@@ -12,7 +12,7 @@ import { SEIRA_VERSION } from './version.ts';
 export function runInfo(): void {
   console.log('Seira Environment & Toolchain Information');
   console.log('========================================');
-  console.log(`Seira Version:         ${SEIRA_VERSION} (Runtime Map Key References & Collection Safety — Development Series)`);
+  console.log(`Seira Version:         ${SEIRA_VERSION} (Ownership & Borrow Checker Hardening — Development Series)`);
   console.log(`Language Axiom:        Everything is a Value. Programs are Transformations.`);
   console.log(`Host Platform:         ${platform()} (${arch()})`);
   console.log(`Host Node.js:          ${process.version}`);

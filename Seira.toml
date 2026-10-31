@@ -1,9 +1,9 @@
 # Seira Project Manifest
-# Specification: 0.0.13-d Runtime Map Key References & Collection Safety
+# Specification: 0.0.14-d Ownership & Borrow Checker Hardening
 
 [package]
 name = "seira"
-version = "0.0.13-d"
+version = "0.0.14-d"
 edition = "2026"
 authors = ["RFLI and Seira Contributors"]
 license = "MIT"
