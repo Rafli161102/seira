@@ -1,7 +1,7 @@
 # Current Architecture Status — Seira 0.0.18-d
 
 **As of:** 2026-10-31  
-**Development baseline:** 0.0.18-d (P1.16 feature branch; CI validation pending)  
+**Development baseline:** 0.0.17-d (P1.16 merged; P1.17 feature branch)  
 **Current milestone branch:** P1.17 — Compiler Conformance & Deterministic Testing  
 **Project status:** Experimental; not production-ready; Alpha has not been released.
 
@@ -19,7 +19,8 @@ This document supersedes stale implementation-status tables in historical Seed a
 | Effect checking | Initial call-boundary enforcement | Explicit fn name!; pure-to-effectful calls rejected with E8001; effectful caller propagation, function-type effect markers, trait method effect signature checks; host primitives not all classified |
 | Runtime execution | Implemented as tree-walking | runtime/execution; HIR/MIR are not yet the execution engine |
 | Standard Library Seed foundation | Implemented | std/src and std packages |
-| MIR optimization | Conservative P1.16 foundation implemented | Constant folding, constant branch simplification, unreachable-block removal, dead pure-operation elimination; optLevel 2/3 currently reuse the same pass set |
+| MIR optimization | P1.16 conservative verified pass manager merged | Constant folding, constant branch simplification, unreachable-block removal, dead pure-operation elimination; optLevel 2/3 currently reuse the same pass set |
+| Compiler conformance | P1.17 candidate | Semantic matrix, deterministic diagnostics, bounded lexer token fuzzing; CI pending |
 | Native LLVM code generation | Not implemented | Backend returns E9001 |
 | WebAssembly code generation | Not implemented | Backend returns E9001 |
 | AOT build artifacts | Not implemented | CLI build remains reserved |
