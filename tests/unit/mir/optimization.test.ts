@@ -104,3 +104,45 @@ test('Compiler driver runs and validates MIR optimizations when optLevel is enab
   assert.ok(!operations.some((op) => op.opcode === 'binary'));
   assert.equal(validateMIR(result.mir!).success, true);
 });
+
+
+test('MIR optimization level zero preserves the original module without rewriting', () => {
+  const input = moduleOf([
+    block(0, [
+      operation('const', 1, [], HIR_INT_TYPE, { literalKind: 'Int', value: '2', raw: '2' }),
+      operation('const', 2, [], HIR_INT_TYPE, { literalKind: 'Int', value: '3', raw: '3' }),
+      operation('binary', 3, [1, 2], HIR_INT_TYPE, { operator: '+' }),
+    ], { kind: 'Return', value: 3 }, 'entry'),
+  ]);
+  const result = optimizeMIR(input, 0);
+  assert.equal(result.module, input);
+  assert.deepEqual(result.stats, {
+    constantFolds: 0,
+    branchesFolded: 0,
+    unreachableBlocksRemoved: 0,
+    deadOperationsRemoved: 0,
+  });
+});
+
+test('MIR optimization adjusts resource event positions after dead pure operations are removed', () => {
+  const input = moduleOf([
+    {
+      id: 0,
+      name: 'entry',
+      parameters: [],
+      operations: [
+        operation('const', 1, [], HIR_INT_TYPE, { literalKind: 'Int', value: '4', raw: '4' }),
+        operation('const', 2, [], HIR_INT_TYPE, { literalKind: 'Int', value: '5', raw: '5' }),
+        operation('binary', 3, [1, 2], HIR_INT_TYPE, { operator: '+' }),
+        { op: 'call', opcode: 'call', dest: 4, operands: [], type: HIR_INT_TYPE, attributes: {}, source },
+      ],
+      resourceOps: [{ action: 'acquire', resourceId: 4, cleanup: 'close', position: 4, source }],
+      terminator: { kind: 'Return', value: 4 },
+    },
+  ]);
+  const result = optimizeMIR(input, 1);
+  const optimizedBlock = result.module.functions[0].blocks[0];
+  assert.deepEqual(optimizedBlock.operations.map((op) => op.opcode), ['call']);
+  assert.equal(optimizedBlock.resourceOps[0].position, 1);
+  assert.equal(validateMIR(result.module).success, true);
+});
