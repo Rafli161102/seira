@@ -17,7 +17,7 @@
 |---|---|---|
 | Frontend, resolver, type checker | Implemented through P1.14 | Further language conformance work remains |
 | HIR/MIR | Typed HIR, CFG/SSA MIR, verifier implemented | P1.16 conservative verified optimizer merged |
-| MIR interpreter | P1.19 proposed experimental interpreter on feature branch | Aggregates, references, resource events, host calls, iterators, closures, methods, and patterns unsupported; CI exposed a loop-carried SSA lowering defect under repair |
+| MIR interpreter | P1.19 proposed experimental interpreter on feature branch | Aggregates, references, resource events, host calls, iterators, closures, methods, and patterns unsupported; six-job CI matrix passes after the loop regression fixture was corrected |
 | Ownership | P1.13 CFG-join hardening merged; initial NLL/projections available | Reference escapes, general interprocedural alias propagation, closure-capture ownership deferred |
 | Effects | P1.15 explicit effect-call boundary merged | No effect inference, polymorphism, handlers, or complete host-operation classification |
 | Runtime | TypeScript AST tree-walking evaluator remains the default runtime | MIR interpreter is a separate experimental subset; no shared value/runtime layer |
@@ -28,7 +28,7 @@
 
 ## P1.19 proposed MIR interpreter boundary
 
-The proposed interpreter validates MIR before execution and evaluates constants, scalar arithmetic/comparisons, scalar unary operators, direct calls to functions in the same MIR module, and Return/Branch/CondBranch/Panic terminators. Block parameters are transferred simultaneously on edges. A loop-carried SSA regression was found in CI and is being fixed on PR #26; do not consider the milestone complete until all matrix jobs pass.
+The proposed interpreter validates MIR before execution and evaluates constants, scalar arithmetic/comparisons, scalar unary operators, direct calls to functions in the same MIR module, and Return/Branch/CondBranch/Panic terminators. Block parameters are transferred simultaneously on edges. An initial loop fixture used bare binding syntax, which creates a lexical shadow, rather than the compound-assignment operator. The regression fixture now uses `count += 1`; the six-job CI matrix has passed for the updated feature-branch head.
 
 Unsupported operations fail closed with E9101; invalid MIR is rejected with E9003. Runtime faults and strict-Bool violations produce E9102. The AST tree-walking evaluator remains the default runtime and the MIR interpreter is currently a development conformance tool, not the default execution engine.
 
@@ -51,5 +51,7 @@ The AST runtime remains the supported execution path. PR #26 proposes an experim
 - feature/p1.19-mir-interpreter: proposed 0.0.20-d milestone; PR #26 is open.
 - dev-infra: infrastructure and CI.
 - feature branches: temporary and cleaned after verified merge.
+
+P1.19's latest feature-branch commit passes the six-job matrix on Ubuntu/macOS/Windows × Node 22/24. The PR remains open for integration; do not describe it as merged until develop contains the merge commit.
 
 Future milestones must retain the same standard: implementation, regression tests, typecheck, full suite, security audit, CI matrix, README/CHANGELOG/version synchronization, architecture updates, and a reviewable PR.
