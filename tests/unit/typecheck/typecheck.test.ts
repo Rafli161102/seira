@@ -468,7 +468,7 @@ test('Typecheck: validates struct constructors, argument types, and declared fie
   const valid = typecheckSource(`
     type Person { name: String, age: Int }
     fn main() {
-      person = Person("Mika", 23);
+      mut person = Person("Mika", 23);
       mut age_ref = &mut person.age;
       *age_ref += 1;
     }

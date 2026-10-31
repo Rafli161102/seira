@@ -172,6 +172,7 @@ export class TypeChecker {
 
   private readonly traits = new Map<string, TraitDecl>();
   private readonly structDeclarations = new Map<string, StructDecl>();
+  private readonly structMethodNames = new Map<string, Set<string>>();
   private readonly implementations = new Map<string, Set<string>>();
   private readonly typeAliases = new Map<string, TypeAliasDecl>();
   private currentGenericParams?: Map<string, GenericParamType>;
@@ -205,6 +206,7 @@ export class TypeChecker {
 
     this.traits.clear();
     this.structDeclarations.clear();
+    this.structMethodNames.clear();
     this.implementations.clear();
     this.typeAliases.clear();
     this.currentGenericParams = undefined;
@@ -242,6 +244,12 @@ export class TypeChecker {
       } else if (item.kind === 'ImplDecl') {
         const impl = item as ImplDecl;
         const targetTypeName = impl.targetType.name;
+        if (!this.structMethodNames.has(targetTypeName)) {
+          this.structMethodNames.set(targetTypeName, new Set());
+        }
+        for (const method of impl.methods) {
+          this.structMethodNames.get(targetTypeName)!.add(method.name);
+        }
         if (!this.implementations.has(targetTypeName)) {
           this.implementations.set(targetTypeName, new Set());
         }
@@ -1218,10 +1226,13 @@ export class TypeChecker {
           const field = struct.fields.find((candidate) => candidate.name === mem.property);
           if (field) {
             resultType = this.resolveTypeAnnotation(field.type);
+          } else if (this.structMethodNames.get(objType.name)?.has(mem.property)) {
+            // Method calls on user-defined structs are resolved by checkCall/HIR dispatch.
+            resultType = UNKNOWN_TYPE;
           } else {
             this.diagnostics.reportError(
               'E3002',
-              `Struct '${objType.name}' has no field named '${mem.property}'.`,
+              `Struct '${objType.name}' has no field or declared method named '${mem.property}'.`,
               mem.span,
               this.currentFile
             );
