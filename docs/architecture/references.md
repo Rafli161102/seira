@@ -73,3 +73,12 @@ A List element can be borrowed through an index expression, including a variable
 For ownership analysis, a literal index is represented as `@N`, allowing distinct constant positions to be borrowed independently. An index expression whose value is not a compile-time integer literal is represented as `@*`; it conservatively aliases every List position at that path depth. This rule prevents unsound assumptions about two runtime indices being different. A dynamic out-of-range borrow fails at runtime with a structured diagnostic. Safe non-borrowing indexing retains its existing `Option<T>` semantics.
 
 Map index references are deliberately unsupported in this increment. The model does not yet define stable projected places or alias checks for arbitrary map keys. References still cannot escape their defining function, and general interprocedural alias propagation remains deferred.
+
+
+## Runtime Map value references (P1.12)
+
+Existing Map values can be borrowed using `&map[key]` and `&mut map[key]`. Ordinary `map[key]` lookup still returns `Option<V>`; a successful reference targets `V` rather than the Option wrapper. The runtime resolves the key once and stores the canonical structural key in the reference ordered place path. Missing keys fail with a structured runtime diagnostic. This does not provide insertion through a reference or mutable access to the key itself.
+
+A Map stored beneath a named binding or struct field can be projected by a key, and the path is retained for dereference operations. Dereference writes reconstruct the changed Map value while preserving the original key and the other entries. Reborrowing preserves the full root and key path.
+
+For ownership, statically known keys are encoded with their literal kind to avoid collisions between values of different types. Distinct keys can coexist under mutable loans; identical keys conflict. A dynamic key is represented as `#*` and conservatively aliases all keys in the same Map place. MIR keeps the key expression as an operand to preserve evaluation and liveness. This remains a local ownership model: reference escapes and general interprocedural alias propagation are deferred.

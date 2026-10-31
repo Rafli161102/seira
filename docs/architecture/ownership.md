@@ -108,3 +108,12 @@ Borrowing a List element uses the source forms `&values[index]` and `&mut values
 MIR encodes a statically known non-negative index as `@N` and an index that is not a compile-time integer literal as `@*`. Distinct constant positions such as `@0` and `@1` are disjoint. A dynamic `@*` projection conservatively overlaps every constant or dynamic List index at that projection depth because the runtime value may select the same element. Indexed reads carry the same root-plus-place metadata, so a read of a disjoint constant position can remain available while another element is mutably borrowed. Out-of-range runtime borrows fail with a structured runtime diagnostic rather than producing a dangling reference.
 
 Map key projections are intentionally not included: equality, stable key addressing, and alias rules for map entries need a separate semantic contract. This milestone does not add Map borrows or general interprocedural alias propagation.
+
+
+## Runtime Map key projections & alias safety (P1.12)
+
+Map entry borrowing uses the existing index syntax: `&scores[key]` or `&mut scores[key]`. Ordinary safe lookup remains `Option<V>`; a successful borrow refers to the stored value `V`. A missing key is not an addressable place and therefore produces a structured runtime diagnostic instead of inserting a new entry or manufacturing an empty slot.
+
+MIR stores Map places as a root binding plus a typed key path. Literal keys receive a type-aware stable segment (for example, `#string:alpha`), while an expression whose value is not a compile-time literal becomes `#*`. Distinct literal keys are independent; equal literal keys overlap. A dynamic key conservatively overlaps every Map key at the same path depth because its runtime value may equal any key. Key/index expressions are retained as MIR operands so evaluation and liveness survive lowering. Whole-Map replacement remains blocked while an entry loan is active through the existing root-place ownership checks.
+
+Runtime references retain the structural key value and resolve it with Seira value equality. Mutable writes rebuild the selected Map entry without changing its key or disturbing sibling entries. Map keys themselves are not mutable through a value reference. Map insertion/removal through a separate owner path, reference escapes, and general interprocedural alias propagation are not expanded by this milestone.

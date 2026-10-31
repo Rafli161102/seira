@@ -409,21 +409,22 @@ class FunctionLowerer {
     }
   }
 
-  private lowerPlace(expr: HIRExpr): { root: MIRValue; path: string[] } | undefined {
+  private lowerPlace(expr: HIRExpr): { root: MIRValue; path: string[]; indexes: HIRExpr[] } | undefined {
     if (expr.kind === 'HIRLocalExpr' || expr.kind === 'HIRGlobalExpr') {
-      return { root: this.lowerExpr(expr), path: [] };
+      return { root: this.lowerExpr(expr), path: [], indexes: [] };
     }
     if (expr.kind === 'HIRFieldAccessExpr') {
       const parent = this.lowerPlace(expr.target);
       if (!parent) return undefined;
-      return { root: parent.root, path: [...parent.path, expr.fieldName] };
+      return { root: parent.root, path: [...parent.path, expr.fieldName], indexes: parent.indexes };
     }
-    if (expr.kind === 'HIRIndexExpr' && expr.target.type.kind === 'List') {
+    if (expr.kind === 'HIRIndexExpr' && (expr.target.type.kind === 'List' || expr.target.type.kind === 'Map')) {
       const parent = this.lowerPlace(expr.target);
       if (!parent) return undefined;
 
-      let indexSegment = '@*';
+      let indexSegment = expr.target.type.kind === 'List' ? '@*' : '#*';
       if (
+        expr.target.type.kind === 'List' &&
         expr.index.kind === 'HIRLiteralExpr' &&
         (expr.index.literalKind === 'int' || expr.index.literalKind === 'uint')
       ) {
@@ -438,8 +439,21 @@ class FunctionLowerer {
             // Non-integral or malformed literal projections remain conservative.
           }
         }
+      } else if (
+        expr.target.type.kind === 'Map' &&
+        expr.index.kind === 'HIRLiteralExpr' &&
+        ['int', 'uint', 'float', 'bool', 'char', 'string', 'unit'].includes(expr.index.literalKind)
+      ) {
+        const raw = expr.index.value;
+        const rawText = String(raw).replaceAll('%', '%25').replaceAll('.', '%2E');
+        indexSegment = `#${expr.index.literalKind}:${rawText}`;
       }
-      return { root: parent.root, path: [...parent.path, indexSegment] };
+      return {
+        root: parent.root,
+        path: [...parent.path, indexSegment],
+        // Keep key/index expressions in MIR so dynamic projections retain their evaluation.
+        indexes: [...parent.indexes, expr.index],
+      };
     }
     return undefined;
   }
@@ -466,12 +480,22 @@ class FunctionLowerer {
           const borrowPlace = isReborrow ? undefined : this.lowerPlace(expr.operand);
           const borrowSource = isReborrow ? expr.operand.operand : expr.operand;
           const operand = borrowPlace?.root ?? this.lowerExpr(borrowSource);
+          const projectionIndexes = borrowPlace?.indexes.map((index) => this.lowerExpr(index)) ?? [];
           const attributes: Record<string, string | number | boolean | null> | undefined = isReborrow
             ? { reborrow: true }
             : borrowPlace && borrowPlace.path.length > 0
-              ? { placePath: borrowPlace.path.join('.') }
+              ? {
+                  placePath: borrowPlace.path.join('.'),
+                  projectionIndexCount: projectionIndexes.length,
+                }
               : undefined;
-          const borrow = this.emit(expr.operator, [operand.id], expr.type, expr.id, attributes);
+          const borrow = this.emit(
+            expr.operator,
+            [operand.id, ...projectionIndexes.map((index) => index.id)],
+            expr.type,
+            expr.id,
+            attributes,
+          );
           this.borrowScopes[this.borrowScopes.length - 1]?.push({ valueId: borrow.id, source: this.findOrigin(expr.id) });
           return borrow;
         }
@@ -527,8 +551,13 @@ class FunctionLowerer {
       case 'HIRFieldAccessExpr': {
         const place = this.lowerPlace(expr);
         if (place) {
-          return this.emit('field.get', [place.root.id], expr.type, expr.id, {
-            fieldId: expr.fieldId, fieldName: expr.fieldName, rootId: place.root.id, placePath: place.path.join('.'),
+          const projectionIndexes = place.indexes.map((index) => this.lowerExpr(index));
+          return this.emit('field.get', [place.root.id, ...projectionIndexes.map((index) => index.id)], expr.type, expr.id, {
+            fieldId: expr.fieldId,
+            fieldName: expr.fieldName,
+            rootId: place.root.id,
+            placePath: place.path.join('.'),
+            projectionIndexCount: projectionIndexes.length,
           });
         }
         const target = this.lowerExpr(expr.target);
@@ -537,10 +566,11 @@ class FunctionLowerer {
       case 'HIRIndexExpr': {
         const place = this.lowerPlace(expr);
         if (place) {
-          const index = this.lowerExpr(expr.index);
-          return this.emit('index.get', [place.root.id, index.id], expr.type, expr.id, {
+          const projectionIndexes = place.indexes.map((index) => this.lowerExpr(index));
+          return this.emit('index.get', [place.root.id, ...projectionIndexes.map((index) => index.id)], expr.type, expr.id, {
             rootId: place.root.id,
             placePath: place.path.join('.'),
+            projectionIndexCount: projectionIndexes.length,
           });
         }
         const target = this.lowerExpr(expr.target);

@@ -1014,22 +1014,24 @@ export class TypeChecker {
           if (isIndexPlace) {
             const indexedObjectType = this.checkExpression((borrow.operand as IndexExpr).object);
             if (indexedObjectType.kind === 'List') {
-              // A borrowed list slot is the element itself, not the Option<T>
-              // returned by ordinary safe indexing.
+              // A borrowed List slot is the element itself, not Option<T>.
               referenceInnerType = indexedObjectType.element;
+            } else if (indexedObjectType.kind === 'Map') {
+              // A borrowed Map entry is its value, not Option<V>.
+              referenceInnerType = indexedObjectType.value;
             } else {
               this.diagnostics.reportError(
                 'E3008',
-                'Only List index projections can be borrowed in this language edition.',
+                'Only List and Map index projections can be borrowed in this language edition.',
                 borrow.operand.span,
                 this.currentFile,
-                'Bind a List before borrowing one of its indexed elements. Map index references are not supported yet.',
+                'Bind a List or Map before borrowing one of its existing elements.',
               );
             }
           }
 
           if (!isNamedPlace) {
-            this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding or one of its fields or List elements.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
+            this.diagnostics.reportError('E3008', 'A reference must borrow a named local binding, field, or existing collection element.', borrow.operand.span, this.currentFile, 'Bind the value to a local variable before borrowing it.');
           } else if (borrow.isMutable) {
             const symbol = this.currentResolverResult?.resolvedSymbols.get(root!);
             if (!symbol?.isMut) {
