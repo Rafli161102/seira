@@ -3147,7 +3147,7 @@ export class TypeChecker {
           ? annotation.functionParams.map((p) => this.resolveTypeAnnotation(p))
           : [];
         const ret = annotation.returnType ? this.resolveTypeAnnotation(annotation.returnType) : UNIT_TYPE;
-        return createFunctionType(params, ret, false);
+        return createFunctionType(params, ret, annotation.isEffectful ?? false);
       }
       case 'Union': {
         const types = annotation.unionTypes
