@@ -34,8 +34,8 @@ export function runInfo(): void {
   console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.11-d, 0.0.12-d, 0.0.13-d)');
   console.log('  [x] HIR:             Active — AST to typed HIR lowering & validation (develop)');
   console.log('  [x] MIR:             Active — HIR to SSA/CFG lowering & verification (develop)');
-  console.log('  [x] MIR Optimizer:   Active — verified pass manager, constant folding, branch simplification & dead pure-op elimination (P1.16)
-  [x] Conformance:     Active — semantic matrix, deterministic diagnostics & bounded lexer fuzzing (P1.17)');
+  console.log('  [x] MIR Optimizer:   Active — verified pass manager, constant folding, branch simplification & dead pure-op elimination (P1.16)');
+  console.log('  [x] Conformance:     Candidate — semantic matrix, deterministic diagnostics & bounded lexer fuzzing (P1.17)');
   console.log('  [x] Ownership:       Active — MIR resource lifetime & borrow-event analysis (develop)');
   console.log('  [x] Effect Check:    Initial explicit ! call-boundary checking (P1.15)');
   console.log('  [ ] Native Codegen:  Skeleton (Reserved: 0.1.0-alpha)');
