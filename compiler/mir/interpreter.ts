@@ -17,8 +17,10 @@ export interface MIRExecutionResult {
   readonly steps: number;
 }
 class MIRExecutionFault extends Error {
-  constructor(public readonly code: string, message: string) {
+  public readonly code: string;
+  constructor(code: string, message: string) {
     super(message);
+    this.code = code;
     this.name = 'MIRExecutionFault';
   }
 }
@@ -36,7 +38,10 @@ export class MIRInterpreter {
   private readonly maxCallDepth: number;
   private steps = 0;
 
-  constructor(private readonly module: MIRModule, options: MIRInterpreterOptions = {}) {
+  private readonly module: MIRModule;
+
+  constructor(module: MIRModule, options: MIRInterpreterOptions = {}) {
+    this.module = module;
     this.maxSteps = this.limit(options.maxSteps, 100_000);
     this.maxCallDepth = this.limit(options.maxCallDepth, 256);
     for (const fn of module.functions) {
