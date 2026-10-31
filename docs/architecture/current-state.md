@@ -2,9 +2,10 @@
 
 | Field | Value |
 |---|---|
-| Published release baseline | main / 0.0.16-d |
-| Development integration baseline | develop / 0.0.17-d |
-| Candidate milestone | P1.17 / 0.0.18-d on feature branch |
+| Published baseline | main / 0.0.16-d |
+| Development baseline | develop / 0.0.18-d |
+| P1.17 merged | 0.0.18-d |
+| P1.18 candidate | 0.0.19-d |
 | Audit date | 2026-10-31 |
 | Project status | Experimental; not production-ready |
 
@@ -12,40 +13,32 @@
 
 | Area | Status | Limitations |
 |---|---|---|
-| Frontend and resolver | Implemented | P1.17 adds conformance and generated tests |
-| Type system | P1.14 hardening merged | Full trait solver, recursive inference, associated/higher-kinded types, subtyping and monomorphization deferred |
-| HIR/MIR | Typed HIR, CFG/SSA MIR, verifier implemented | MIR optimization foundation P1.16 merged |
-| Ownership | P1.13 CFG-join hardening merged; initial NLL and projection analysis available | Reference escapes, general interprocedural alias propagation, closure-capture ownership deferred |
-| Effects | P1.15 explicit effect-call boundary merged | No effect inference, polymorphism, handlers, or complete host-operation classification |
-| Runtime | TypeScript tree-walking evaluator | Not a MIR interpreter |
-| Conformance | P1.17 semantic matrix and deterministic lexer fuzz candidate | True AST-vs-MIR differential execution deferred until a MIR interpreter exists |
-| Native backend | Backend interface only; returns E9001 | No LLVM/native emitter |
-| WASM backend | Backend interface only; returns E9001 | No WASM emitter or artifact execution |
+| Frontend, resolver, type checker | Implemented through P1.14 | Continued conformance hardening |
+| HIR/MIR | Typed HIR, CFG/SSA MIR, verifier implemented | P1.16 conservative verified optimizer merged |
+| Ownership | P1.13 CFG-join hardening merged; initial NLL/projections available | Reference escapes, general interprocedural alias propagation, closure-capture ownership deferred |
+| Effects | P1.15 explicit effect-call boundary merged | No effect inference, polymorphism, handlers, complete host-operation classification |
+| Runtime | TypeScript tree-walking evaluator | No MIR interpreter |
+| Conformance | P1.17 merged: semantic matrix, deterministic diagnostics, bounded lexer fuzz | True AST-vs-MIR differential execution unavailable until a MIR interpreter exists |
+| Backend contract | P1.18 candidate: versioned target/runtime ABI, data-layout checks, MIR input validation | No official target profile or code emitter |
+| Native backend | Interface only; E9001 for valid MIR | No LLVM/native emitter |
+| WASM backend | Interface only; E9001 for valid MIR | No WASM emitter/artifact execution |
 
-## P1.17 test coverage candidate
+## P1.18 contract behavior
 
-- Semantic conformance cases for generic functions, mutable-reference syntax, effectful call boundaries, invalid type programs, and parser rejection.
-- Repeated compilation checks that diagnostic codes and source spans remain deterministic.
-- Bounded seeded lexer fuzzing over valid and invalid token fragments.
-- Each generated sample asserts EOF presence, monotonic spans, and span bounds.
+The backend contract validator checks ABI version, target triple, object format, pointer width, endianness, maximum alignment, supported integer widths, calling convention, runtime ABI version/symbols, and capability names. The backend request validator also invokes MIR verification. Invalid MIR is rejected with E9003. Valid MIR still receives E9001 because emission is not implemented.
 
-This is deterministic generated testing, not an unbounded fuzzer. It does not claim a true AST-vs-MIR differential oracle because no MIR interpreter exists.
+The target descriptors used in tests are illustrative only; no official ABI or target triple has been selected.
 
-## Actual execution and backend boundary
+## Runtime and backend truth
 
-The runtime is a TypeScript tree-walking evaluator. The MIR optimizer runs on compiler IR but does not execute MIR. Native and wasm32 emitter interfaces still return E9001. No native/WASM artifacts are produced or executed.
+The runtime is a TypeScript tree-walking evaluator. HIR/MIR are compiler representations, not the execution engine. Native LLVM and WebAssembly code generation are not implemented. No native executable or wasm artifact is produced.
 
 ## Branch status
 
-- main: 0.0.16-d release baseline.
-- develop: 0.0.17-d integration baseline after P1.16 merge.
+- main: 0.0.16-d.
+- develop: 0.0.17-d.
+- P1.17: merged to develop through PR #18.
+- P1.18 branch: feature/p1.18-backend-readiness; PR #19 validation pending.
 - dev-infra: infrastructure and CI.
-- feature/p1.17-conformance-testing: P1.17 candidate; CI required before merge.
-
-GitHub-hosted branch protection still requires maintainer configuration. Branch Governance validates PR direction and performs ancestry-checked cleanup for merged temporary branches.
-
-## Next milestone
-
-- P1.18 — Backend Readiness (0.0.19-d).
 
 See [P1.13–P1.18 roadmap](../roadmap/P1.13-P1.18.md).

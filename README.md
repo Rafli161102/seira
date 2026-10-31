@@ -1,7 +1,7 @@
 # Seira
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: 0.0.18-d](https://img.shields.io/badge/Release-0.0.17--d%20Development-orange.svg)](CHANGELOG.md)
+[![Release: 0.0.19-d](https://img.shields.io/badge/Release-0.0.19--d%20Development-orange.svg)](CHANGELOG.md)
 [![Status: Development](https://img.shields.io/badge/Status-Development-orange.svg)](#project-status)
 
 **Seira** is an experimental modern programming language project focused on predictable semantics, explicit effects, strong static typing, and a compiler architecture designed for native and WebAssembly targets. It is open source, community-oriented, and currently in its early Development Series.
@@ -14,7 +14,7 @@
 ## Project Status
 
 > [!IMPORTANT]
-> **Current Status: Development (0.0.18-d) — Compiler Conformance & Deterministic Testing**  
+> **Current Status: Development (0.0.19-d) — Backend Readiness Contract**  
 > Seira is an experimental programming language in the first Development Series release, building on the completed Seed compiler, package, standard-library, I/O, and resource foundations.  
 > **Seira is NOT production-ready, and Alpha has not yet been released.**  
 > This release adds a conservative MIR optimization foundation after typed MIR lowering and verification. At optLevel 1, Seira folds safe constants, simplifies constant branches, removes unreachable blocks, and eliminates dead pure operations. Calls, resource operations, dereferences, potentially trapping division, and unknown operations are preserved. Optimization levels 2 and 3 currently reuse the same conservative pass set. The initial explicit effect boundary from P1.15 remains supported: calls to functions declared with `!` are rejected inside pure functions (`E8001`), while effectful callers may invoke them. Effect markers are checked on function types and trait method implementations. Top-level calls remain an explicit host boundary. Built-in host capabilities are not yet fully classified, and general effect inference/handlers remain future work. Seira remains experimental; no operational native or WebAssembly code generator exists.
@@ -32,6 +32,7 @@ The existing `develop` branch contains post-Seed compiler and language work. The
 
 ### Recent Development Updates (`develop`)
 
+- **P1.18 — Backend Readiness Contract:** added versioned target/runtime ABI contracts, target-layout validation, and MIR input validation at the backend boundary. Native and WASM code generation remain unimplemented.
 - **P1.17 — Compiler Conformance & Deterministic Testing:** added a Development semantic conformance matrix for generics, mutable references, effects, and stable diagnostics, plus deterministic bounded lexer fuzz coverage.
 - **P1.16 — MIR Optimization Foundation:** added conservative constant folding, constant-branch simplification, unreachable-block removal, dead pure-operation elimination, and MIR verification after optimization. Optimization remains disabled by default in the development profile (`optLevel: 0`).
 - **P1.15 — Effect System Foundation:** effectful function calls (`fn name!`) are checked against caller effect boundaries; pure callers receive `E8001`; function type and trait method effect markers are validated; top-level execution remains the host boundary.
@@ -268,7 +269,7 @@ PHASE 1: SEED (0.0.1-s → 0.0.10-s)  ◄ [COMPLETED MILESTONE: 0.0.10-s]
   ├── 0.0.9-s: Standard Library Foundation (Complete)
   └── 0.0.10-s: I/O & Resource Boundary Foundation (Complete)
 
-PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.18-d]
+PHASE 2: DEVELOPMENT (0.0.11-d → 0.0.30-d)  ◄ [CURRENT RELEASE: 0.0.19-d]
   ├── 0.0.11-d: Runtime Struct Values & Field References (Complete)
   ├── 0.0.12-d: Runtime List Index References & Alias Safety (Complete)
   ├── 0.0.13-d: Runtime Map Key References & Collection Safety (Complete)

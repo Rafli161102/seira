@@ -1,7 +1,7 @@
 /**
- * Seira Compiler Backend Architecture (Architectural Skeleton)
+ * Seira Compiler Backend Boundary and Readiness Contract
  *
- * ARCHITECTURAL SKELETON — NOT IMPLEMENTED
+ * ABI/target validation is implemented; code generation remains NOT IMPLEMENTED
  *
  * Responsibilities:
  * - Code generation consumes MIR (compiler IR), NOT raw source or AST
@@ -13,7 +13,8 @@
  */
 
 import { DiagnosticBag } from '../diagnostics/index.ts';
-import type { MIRModule } from '../mir/index.ts';
+import { validateMIR, type MIRModule } from '../mir/index.ts';
+export * from './contract.ts';
 import type { Span } from '../source/span.ts';
 
 export type TargetBackend = 'native' | 'wasm32';
@@ -54,6 +55,20 @@ export class CompilerBackend implements BackendEmitter {
       selectedTarget = (mirOrOptions as BackendOptions).target;
     } else if (options?.target) {
       selectedTarget = options.target;
+    }
+
+    if (mirOrOptions && !('target' in mirOrOptions)) {
+      const mirValidation = validateMIR(mirOrOptions as MIRModule);
+      if (!mirValidation.success) {
+        for (const error of mirValidation.errors) {
+          this.diagnostics.reportError(
+            'E9003',
+            `Backend rejected invalid MIR: ${error}`,
+            { start: 0, end: 0, line: 1, column: 1 } as Span,
+          );
+        }
+        return { success: false, target: selectedTarget, diagnostics: this.diagnostics };
+      }
     }
 
     this.diagnostics.reportError(

@@ -1,7 +1,7 @@
 {
   "name": "seira",
-  "version": "0.0.18-d",
-  "description": "The Seira Programming Language — Compiler Conformance & Deterministic Testing (Development Release)",
+  "version": "0.0.19-d",
+  "description": "The Seira Programming Language — Backend Readiness Contract (Development Release)",
   "type": "module",
   "bin": {
     "seira": "./bin/seira",
