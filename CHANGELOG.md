@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### P1.19 — Post-merge CI correction
+- Restore `BindingStmt` reassignment lookup to the current lexical scope, so a bare binding inside a nested block creates a block-local shadow instead of mutating an outer variable.
+- Keep explicit assignment and compound-assignment statements as the mutation path; update MIR loop differential and step-budget fixtures to use `count += 1`.
+- Preserve the 0.0.20-d version; this is a corrective change to the already merged P1.19 Development milestone.
+
 ### Repository Engineering
 - Added an audited current-state architecture reference and historical P1.13–P1.18 roadmap references and the new P1.19–P1.24 roadmap.
 - Marked Seed-era architecture documents as historical baselines.
