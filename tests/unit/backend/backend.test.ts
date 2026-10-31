@@ -15,7 +15,7 @@ function nativeContract(): BackendTargetContract {
     abiVersion: SEIRA_BACKEND_ABI_VERSION,
     target: 'native',
     triple: 'x86_64-unknown-linux-gnu',
-    objectFormat: 'elf',
+    objectFormat: 'elf' as const,
     callingConvention: 'seira-native-test-v1',
     dataLayout: {
       pointerWidth: 64,
