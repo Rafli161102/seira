@@ -2,11 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Published baseline | main / 0.0.19-d |
-| Development baseline | develop / 0.0.19-d |
+| Published baseline | main / 0.0.20-d |
+| Development baseline | develop / 0.0.20-d |
 | P1.16 merged | 0.0.17-d |
 | P1.17 merged | 0.0.18-d |
 | P1.18 merged | 0.0.19-d |
+| P1.19 merged | 0.0.20-d |
 | Audit date | 2026-10-31 |
 | Project status | Experimental; not production-ready |
 
@@ -16,13 +17,22 @@
 |---|---|---|
 | Frontend, resolver, type checker | Implemented through P1.14 | Further language conformance work remains |
 | HIR/MIR | Typed HIR, CFG/SSA MIR, verifier implemented | P1.16 conservative verified optimizer merged |
+| MIR interpreter | P1.19 experimental interpreter for scalar operations, direct in-module calls, and CFG control flow | Aggregates, references, resource events, host calls, iterators, closures, methods, and patterns unsupported |
 | Ownership | P1.13 CFG-join hardening merged; initial NLL/projections available | Reference escapes, general interprocedural alias propagation, closure-capture ownership deferred |
 | Effects | P1.15 explicit effect-call boundary merged | No effect inference, polymorphism, handlers, or complete host-operation classification |
-| Runtime | TypeScript tree-walking evaluator | No MIR interpreter |
-| Conformance | P1.17 merged: semantic matrix, deterministic diagnostics, bounded lexer fuzz | True AST-vs-MIR differential execution unavailable until a MIR interpreter exists |
-| Backend contract | P1.18 merged: versioned target/runtime ABI, layout checks, MIR input validation | No official production target profile or emitter |
+| Runtime | TypeScript AST tree-walking evaluator remains the default runtime | MIR interpreter is a separate experimental subset; no shared value/runtime layer |
+| Conformance | P1.17 semantic matrix and deterministic tests; P1.19 AST/MIR return-value differential tests for supported subset | Not full language equivalence; output and host effects are not compared |
+| Backend contract | P1.18 versioned target/runtime ABI, target layout checks, MIR validation | No official production target profile or emitter |
 | Native backend | Interface and readiness contract only; E9001 for valid MIR | No LLVM/native emitter |
 | WASM backend | Interface and readiness contract only; E9001 for valid MIR | No WASM emitter/artifact execution |
+
+## P1.19 MIR interpreter boundary
+
+The interpreter validates MIR before execution and evaluates constants, scalar arithmetic/comparisons, scalar unary operators, direct calls to functions in the same MIR module, and Return/Branch/CondBranch/Panic terminators. Block parameters are transferred simultaneously on edges, including loop-carried SSA values. Execution is bounded by configurable step and call-depth limits.
+
+Unsupported operations fail closed with E9101; invalid MIR is rejected with E9003. Runtime faults and strict-Bool violations produce E9102. The AST tree-walking evaluator remains the default runtime and the MIR interpreter is currently a development conformance tool, not the default execution engine.
+
+See [MIR interpreter architecture](mir-interpreter.md) and [P1.19–P1.24 roadmap](../roadmap/P1.19-P1.24.md).
 
 ## P1.18 contract behavior
 
@@ -32,15 +42,13 @@ Test triples and symbols are illustrative fixtures, not approved production targ
 
 ## Runtime and backend truth
 
-The runtime remains a TypeScript tree-walking evaluator. HIR/MIR are compiler representations, not the execution engine. No native executable or wasm artifact is produced or executed. P1.18 completes backend readiness contracts only; it does not complete code generation.
+The AST runtime remains the supported execution path. P1.19 adds an experimental interpreter over a deliberately small MIR subset. No native executable, object file, or wasm artifact is produced or executed. P1.18 completes backend readiness contracts only; it does not complete code generation.
 
 ## Branch synchronization
 
-- main: 0.0.19-d release baseline.
-- develop: 0.0.19-d integration baseline.
+- main: 0.0.20-d release baseline.
+- develop: 0.0.20-d integration baseline.
 - dev-infra: infrastructure and CI.
 - feature branches: temporary and cleaned after verified merge.
 
-PR #20 synchronized main with develop. Both branches report 0.0.19-d and the compare shows no file-level differences; the remaining ahead/behind count is merge-history only. Permanent branch protection/rulesets still require maintainer configuration in GitHub settings.
-
-See [P1.13–P1.18 roadmap](../roadmap/P1.13-P1.18.md).
+Future milestones must retain the same standard: implementation, regression tests, typecheck, full suite, security audit, CI matrix, README/CHANGELOG/version synchronization, architecture updates, and a reviewable PR.

@@ -1,21 +1,27 @@
-# Compiler Conformance & Deterministic Testing — P1.17
+# Compiler Conformance & Deterministic Testing — P1.17 / P1.19
 
-**Target release:** 0.0.18-d  
-**Status:** Implemented on the P1.17 feature branch; CI validation pending.
+**P1.17 target release:** 0.0.18-d  
+**P1.19 target release:** 0.0.20-d
 
 ## Current test strategy
 
-The conformance suite includes the Seed syntax corpus plus Development semantic cases for generic inference, mutable-reference syntax, effect-call boundaries, invalid type programs, and parser rejection. It also compares diagnostic codes and source spans across repeated compilations.
+The conformance suite includes the Seed syntax corpus plus Development semantic cases for generic inference, mutable-reference syntax, effect-call boundaries, invalid type programs, and parser rejection. It compares diagnostic codes and source spans across repeated compilations. A bounded deterministic lexer generator uses a fixed LCG seed and checks EOF presence, monotonic token offsets, non-reversed spans, and source bounds.
 
-A bounded deterministic lexer generator uses a fixed LCG seed and a fixed alphabet of valid and invalid token fragments. Each sample must end with EOF, have monotonic token start offsets, have non-reversed spans, and keep all spans within source bounds.
+## AST-versus-MIR differential boundary
 
-## Differential-testing boundary
+P1.19 introduces a small MIR interpreter and an AST-versus-MIR differential oracle for the implemented scalar subset. Current coverage includes:
+- integer arithmetic, comparisons, and equality;
+- strict boolean operations and conditional branches;
+- SSA block-parameter transfer across branches and loop back-edges;
+- direct calls between functions present in the MIR module.
 
-The current execution oracle is the TypeScript tree-walking evaluator. HIR/MIR lowering and MIR optimization exist, but no MIR interpreter and no native/WASM emitter exist. Therefore, true AST-evaluator-versus-MIR-execution differential testing is not possible yet. This milestone records that boundary rather than comparing paths that do not exist.
+The MIR interpreter verifies the complete input module before execution. It enforces step and call-depth limits and returns explicit diagnostics for unsupported operations. Differential tests compare observable return values only; output, host capabilities, aggregate values, references, resource cleanup, iterators, closures, and exception/propagation semantics are not yet covered.
 
 ## Deferred
 
-- Parser/typechecker grammar-based generators.
+- Full MIR execution coverage and a shared AST/MIR runtime value model.
+- Host I/O, built-in functions, external/module calls, and effect semantics in MIR.
+- Reference/place reads and writes, ownership-aware runtime checks, resource cleanup.
+- Aggregate construction/projection, iterators, closures, methods, and pattern matching.
 - Persistent fuzz corpus minimization and long-running scheduled fuzzing.
-- MIR interpreter and AST-vs-MIR execution comparison.
-- Native/WASM artifact conformance.
+- Native/WASM artifact conformance after real emitters exist.

@@ -3,12 +3,22 @@
 ## [Unreleased]
 
 ### Repository Engineering
-- Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.19-d baseline.
+- Added an audited current-state architecture reference and historical P1.13–P1.18 roadmap references and the new P1.19–P1.24 roadmap.
 - Marked Seed-era architecture documents as historical baselines.
 - Added ancestry-checked automatic cleanup for merged temporary branches and a guarded manual cleanup workflow.
-- Added a P1.18 backend readiness contract without claiming operational native or WASM emission.
+- Added a P1.18 backend readiness contract and P1.19 bounded MIR interpreter without claiming operational native or WASM emission.
 
 
+
+## [0.0.20-d] - 2026-10-31
+
+### P1.19 — MIR Interpreter Foundation
+- Added an experimental MIR interpreter with verified SSA value execution, simultaneous block-parameter transfer, strict boolean branches, and direct calls within the current MIR module.
+- Added scalar constants, Int/UInt/Float arithmetic and comparisons, primitive equality, String concatenation, numeric negation, and Bool negation.
+- Added configurable instruction/terminator step and call-depth limits.
+- Added fail-closed handling for unsupported opcodes (E9101), runtime faults (E9102), invalid MIR (E9003), missing entry functions (E9100), and execution limits (E9103/E9104).
+- Added AST-versus-MIR differential tests for function calls, loops, conditional branches, and scalar return values.
+- Kept the AST tree-walking evaluator as the default runtime; no native or WASM emitter was added.
 
 ## [0.0.19-d] - 2026-10-31
 
