@@ -816,3 +816,15 @@ test('Generics: conflicting repeated arguments produce a type diagnostic', () =>
   assert.equal(tcResult.success, false);
   assert.ok(diagnostics.getErrors().some((error) => error.code === 'E3003'));
 });
+
+
+test('Generics: unknown inference is provisional and can be refined by a later concrete argument', () => {
+  const genericT = { kind: 'GenericParam', name: 'T' } as const;
+  const bindings = new Map<string, any>();
+
+  assert.equal(unifyTypes(genericT, { kind: 'Primitive', name: 'Unknown' }, bindings), true);
+  assert.equal(bindings.get('T')?.name, 'Unknown');
+
+  assert.equal(unifyTypes(genericT, INT_TYPE, bindings), true);
+  assert.equal(bindings.get('T'), INT_TYPE);
+});

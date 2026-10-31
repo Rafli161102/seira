@@ -30,6 +30,12 @@ P1.14 makes generic unification transactional and strict for repeated generic pa
 
 This is not a complete type-system overhaul. Recursive type aliases, richer trait solver coherence, associated types, higher-kinded types, and formal variance/subtyping remain outside this milestone.
 
+## Type system boundary
+
+P1.14 makes generic unification transactional and strict for repeated generic parameters. Failed nested matches do not leak partial substitutions. Unknown argument types may provisionally bind a generic variable and can be refined by a later concrete argument; when no concrete argument is available, the unresolved placeholder preserves existing trait-constrained inference behavior. Function unification includes the effect marker. Function parameter compatibility is invariant until Seira defines a formal subtype/variance model.
+
+This is not a complete type-system overhaul. Recursive type aliases, a richer trait solver/coherence model, associated types, higher-kinded types and formal variance/subtyping remain outside this milestone.
+
 ## Ownership boundary
 
 P1.13 fixes a CFG-join unsoundness: if predecessor states disagree on a root owner or parent reborrow, the merged state now uses a conservative unknown identity. This prevents the checker from choosing one owner and forgetting another possible alias. The approach can be conservative; it is not a substitute for complete points-to/interprocedural analysis.

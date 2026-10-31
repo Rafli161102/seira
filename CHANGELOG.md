@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.0.15-d] - 2026-10-31
+
+### P1.14 — Type System Hardening
+- Made generic unification transactional: failed nested matches no longer leak partially inferred substitutions.
+- Repeated occurrences of a generic parameter now require the same structural type instead of accepting either-direction assignability.
+- Unknown input types are provisional and may be refined by later concrete arguments; they do not block valid inference.
+- Included the effect marker when unifying function types.
+- Made function-parameter compatibility invariant until Seira defines a formal subtype/variance model; return types retain their existing assignability rule.
+- Added regressions for repeated generic conflicts, rollback, unknown refinement, pure/effectful function mismatches, callback compatibility, and a source-level conflicting-generic call.
+
 ## [0.0.14-d] - 2026-10-31
 
 ### P1.13 — Ownership & Borrow Checker Hardening

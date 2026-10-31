@@ -1,7 +1,7 @@
 {
   "name": "seira",
-  "version": "0.0.14-d",
-  "description": "The Seira Programming Language — Runtime Ownership & Borrow Checker Hardening (Development Release)",
+  "version": "0.0.15-d",
+  "description": "The Seira Programming Language — Type System Hardening (Development Release)",
   "type": "module",
   "bin": {
     "seira": "./bin/seira",
