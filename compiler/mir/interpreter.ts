@@ -99,7 +99,7 @@ export class MIRInterpreter {
         }
       }
       this.tick(fn.name + ':' + block.name + ':terminator');
-      const term = block.terminator;
+      const term: BasicBlock['terminator'] = block.terminator;
       if (term.kind === 'Return') return term.value === undefined ? null : this.read(values, term.value, 'return');
       if (term.kind === 'Panic') throw new MIRExecutionFault('E9102', term.message);
       if (term.kind === 'Unreachable') throw new MIRExecutionFault('E9102', 'Reached unreachable block ' + block.id + '.');
