@@ -4,7 +4,7 @@
  * This pass pipeline is deliberately conservative. It never removes calls,
  * resource events, dereferences, loads, field/index projections, or operations
  * whose runtime behavior may panic. Optimization happens on typed MIR and the
- * driver verifies the result after every pipeline run.
+ * driver verifies every pass candidate before it is committed.
  */
 
 import type {
