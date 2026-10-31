@@ -55,8 +55,13 @@ test('Parser: parses dereference reads and writes as unary targets', () => {
   assert.equal(diagnostics.hasErrors(), false);
   const fn = ast.items[0] as FunctionDecl;
   assert.equal((fn.body.statements[0] as BindingStmt).initializer?.kind, 'UnaryExpr');
-  assert.equal((fn.body.statements[1] as any).target.operator, '*');
-  assert.equal((fn.body.statements[2] as any).target.operator, '*');
+  const assignment = (fn.body.statements[1] as any).expression;
+  const compoundAssignment = (fn.body.statements[2] as any).expression;
+  assert.equal(assignment.kind, 'AssignmentExpr');
+  assert.equal(assignment.target.kind, 'UnaryExpr');
+  assert.equal(assignment.target.operator, '*');
+  assert.equal(compoundAssignment.kind, 'AssignmentExpr');
+  assert.equal(compoundAssignment.target.operator, '*');
 });
 
 test('Parser: parses standard function declaration', () => {

@@ -105,7 +105,10 @@ function mergeStates(states: ReadonlyArray<FlowState>): FlowState {
   }
   for (const id of loanIds) {
     let loan: LoanState | undefined;
-    for (const state of states) loan = joinLoan(loan, state.loans.get(id));
+    for (let index = 0; index < states.length; index++) {
+      const incoming = states[index].loans.get(id);
+      loan = index === 0 ? incoming : joinLoan(loan, incoming);
+    }
     if (loan) result.loans.set(id, loan);
   }
   return result;

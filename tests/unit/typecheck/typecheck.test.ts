@@ -48,8 +48,8 @@ test('Typecheck: dereference reads and mutable-reference assignment are typed', 
   const valid = typecheckSource(`
     fn read(value: &Int) -> Int { *value }
     fn increment(value: &mut Int) { *value += 1; }
-    fn replace(value: &mut Int) { *value = 42; }
-    fn main() { mut number = 1; increment(&mut number); replace(&mut number); result = read(&number); }
+    fn set_value(value: &mut Int) { *value = 42; }
+    fn main() { mut number = 1; increment(&mut number); set_value(&mut number); result = read(&number); }
   `);
   assert.equal(valid.tcResult.success, true, valid.diagnostics.format());
   assert.equal(valid.diagnostics.hasErrors(), false);

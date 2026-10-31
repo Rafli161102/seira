@@ -384,11 +384,11 @@ test('Execution: dereference reads and mutable-reference writes update the origi
   const r = run(`
     fn read(value: &Int) -> Int { *value }
     fn increment(value: &mut Int) { *value += 1; }
-    fn replace(value: &mut Int) { *value = 41; }
+    fn set_value(value: &mut Int) { *value = 41; }
     fn main() {
       mut counter = 0;
       increment(&mut counter);
-      replace(&mut counter);
+      set_value(&mut counter);
       println(read(&counter));
     }
   `);
