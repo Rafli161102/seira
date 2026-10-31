@@ -74,7 +74,7 @@ test('Backend contract: rejects ABI mismatch, invalid wasm pointer width, and du
   const invalid = {
     ...wasmContract(),
     abiVersion: '9.9.9',
-    objectFormat: 'elf',
+    objectFormat: 'elf' as const,
     dataLayout: { ...wasmContract().dataLayout, pointerWidth: 64 as const, maxAlignment: 15 },
     runtime: { ...wasmContract().runtime, version: '9.9.9', ioWriteSymbol: 'seira_test_main' },
   };
