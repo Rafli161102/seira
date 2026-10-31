@@ -209,13 +209,27 @@ class FunctionLowerer {
     return result;
   }
 
+  /**
+   * Resolve synthetic assignment-expression targets back to the active lexical
+   * binding. HIR may carry a synthetic symbol id for the target node even when
+   * the referenced local is the same mutable binding used by a loop header.
+   */
+  private resolveLocalSymbolId(target: Extract<HIRExpr, { kind: 'HIRLocalExpr' }>): string {
+    const entries = [...this.locals.entries()];
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const [symbolId, value] = entries[index];
+      if (value.name === target.name) return symbolId;
+    }
+    return target.symbolId;
+  }
+
   private lowerStmt(stmt: HIRStmt): void {
     this.registerNode(stmt);
     switch (stmt.kind) {
       case 'HIRLetStmt': {
         const init = stmt.initializer ? this.lowerExpr(stmt.initializer) :
           this.emit('undef', [], stmt.type, stmt.id, { symbol: stmt.name });
-        this.locals.set(stmt.symbolId, init);
+        this.locals.set(stmt.symbolId, { ...init, symbolId: stmt.symbolId, name: stmt.name });
         if (stmt.isMut) this.mutableSymbols.add(stmt.symbolId);
         return;
       }
@@ -229,10 +243,11 @@ class FunctionLowerer {
           })();
           this.emit('deref.store', [reference.id, value.id], stmt.target.type, stmt.id, { operator: stmt.operator });
         } else if (stmt.target.kind === 'HIRLocalExpr') {
-          const previous = this.locals.get(stmt.target.symbolId);
+          const symbolId = this.resolveLocalSymbolId(stmt.target);
+          const previous = this.locals.get(symbolId);
           const value = stmt.operator === '=' || !previous ? rhs :
             this.emit('binary', [previous.id, rhs.id], stmt.target.type, stmt.id, { operator: stmt.operator.slice(0, -1) });
-          this.locals.set(stmt.target.symbolId, value);
+          this.locals.set(symbolId, { ...value, symbolId, name: stmt.target.name });
         } else {
           const target = this.lowerExpr(stmt.target);
           this.emit('store', [target.id, rhs.id], stmt.value.type, stmt.id, { operator: stmt.operator });
