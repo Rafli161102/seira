@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+
+
+### Repository Engineering
+- Added an audited current-state architecture reference and a P1.13–P1.18 roadmap aligned with the 0.0.17-d candidate.
+- Marked Seed-era architecture documents as historical baselines.
+- Added ancestry-checked automatic cleanup for merged temporary branches and a guarded manual cleanup workflow.
+- Added a P1.18 backend readiness contract without claiming operational native or WASM emission.
+
+
+
+## [0.0.19-d] - 2026-10-31
+
+### P1.18 — Backend Readiness Contract
+- Added a versioned backend ABI contract and explicit target descriptors for native and wasm32 profiles.
+- Added validation for target triple, object format, pointer width, endianness, alignment, integer widths, calling convention, runtime ABI version/symbols, and target capabilities.
+- Added a backend request validator that checks both the target contract and MIR verifier result.
+- Made CompilerBackend reject invalid MIR with E9003 before returning E9001 for the still-unimplemented code generator.
+- Added tests for native/wasm32 contract shape, invalid ABI/layout combinations, invalid MIR rejection, and the explicit unsupported-emitter boundary.
+- No LLVM/native or WASM emitter was added; artifact generation remains unimplemented.
+
+## [0.0.18-d] - 2026-10-31
+
+### P1.17 — Compiler Conformance & Deterministic Testing
+- Added a Development semantic conformance matrix for generic inference, mutable-reference syntax, explicit effect boundaries, invalid pure-to-effectful calls, type errors, and parser rejection cases.
+- Added deterministic repeated-compilation checks for diagnostic code and source-span stability.
+- Added bounded deterministic lexer token fuzzing across valid and invalid token fragments, asserting EOF presence and monotonic in-range source spans.
+- Kept true AST-versus-MIR differential execution explicitly deferred because no MIR interpreter or native/WASM emitter exists.
+
+## [0.0.17-d] - 2026-10-31
+
+### P1.16 — MIR Optimization Foundation
+- Added conservative typed-MIR constant folding for supported integer/float arithmetic, comparisons, and selected unary operations.
+- Simplified constant conditional branches and removed unreachable basic blocks.
+- Added dead pure-operation elimination while retaining calls, resource events, dereferences, potentially trapping division, and unknown operations.
+- Preserved and remapped resource event positions when preceding pure operations are removed.
+- Added an Optimize compiler checkpoint, a named MIR pass manager, and MIR verification after every optimization pass.
+- Kept optimization disabled by default at optLevel 0; optLevel 2/3 currently reuse the conservative pass set.
+
 ## [0.0.16-d] - 2026-10-31
 
 ### P1.15 — Effect System Foundation

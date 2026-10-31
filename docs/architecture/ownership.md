@@ -1,3 +1,7 @@
+> **Historical baseline notice:** This document was authored for the Seed Series (0.0.10-s) and is retained as a historical architecture record. For current implementation status, consult [current-state.md](current-state.md) and the [P1.13–P1.18 roadmap](../roadmap/P1.13-P1.18.md). Do not interpret old milestone labels or test counts below as current Development status.
+
+---
+
 # Ownership & Borrow Analysis
 
 ## Boundary

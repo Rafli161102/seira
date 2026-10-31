@@ -2,14 +2,21 @@ name: Branch Governance
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, closed]
     branches: [main, develop, dev-infra]
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: "Merged temporary branch to clean up (feature/*, fix/*, docs/*, infra/*)"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   validate-branch-policy:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     name: Validate source and target branch policy
     runs-on: ubuntu-latest
     steps:
@@ -30,3 +37,79 @@ jobs:
               exit 1
               ;;
           esac
+
+  delete-merged-temporary-branch:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      (startsWith(github.event.pull_request.head.ref, 'feature/') ||
+       startsWith(github.event.pull_request.head.ref, 'fix/') ||
+       startsWith(github.event.pull_request.head.ref, 'docs/') ||
+       startsWith(github.event.pull_request.head.ref, 'infra/'))
+    name: Delete merged temporary branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Verify merge ancestry and delete temporary branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH_NAME" in
+            feature/*|fix/*|docs/*) test "$BASE_BRANCH" = "develop" ;;
+            infra/*) test "$BASE_BRANCH" = "dev-infra" ;;
+            *) echo "Refusing to delete a permanent or unknown branch"; exit 1 ;;
+          esac
+          BRANCH_ESCAPED="${BRANCH_NAME//\//%2F}"
+          BRANCH_SHA="$(gh api "repos/$REPOSITORY/branches/$BRANCH_ESCAPED" --jq '.commit.sha')"
+          git init verify-repo
+          cd verify-repo
+          git remote add origin "https://github.com/$REPOSITORY.git"
+          git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          git fetch --no-tags origin "$BRANCH_SHA"
+          git merge-base --is-ancestor "$BRANCH_SHA" "refs/remotes/origin/$BASE_BRANCH" || {
+            echo "Branch head is not contained in the PR target; refusing deletion."
+            exit 1
+          }
+          gh api --method DELETE "repos/$REPOSITORY/git/refs/heads/$BRANCH_NAME"
+          echo "Deleted merged temporary branch: $BRANCH_NAME"
+
+  manual-cleanup-merged-branch:
+    if: github.event_name == 'workflow_dispatch'
+    name: Manually clean up an already-merged temporary branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Verify branch ancestry and delete
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH_NAME: ${{ inputs.branch_name }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH_NAME" in
+            feature/*|fix/*|docs/*) BASE_BRANCH="develop" ;;
+            infra/*) BASE_BRANCH="dev-infra" ;;
+            *) echo "Refusing to delete a permanent or unknown branch"; exit 1 ;;
+          esac
+          BRANCH_ESCAPED="${BRANCH_NAME//\//%2F}"
+          BRANCH_SHA="$(gh api "repos/$REPOSITORY/branches/$BRANCH_ESCAPED" --jq '.commit.sha')"
+          git init verify-repo
+          cd verify-repo
+          git remote add origin "https://github.com/$REPOSITORY.git"
+          git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          git fetch --no-tags origin "$BRANCH_SHA"
+          git merge-base --is-ancestor "$BRANCH_SHA" "refs/remotes/origin/$BASE_BRANCH" || {
+            echo "Branch head is not contained in $BASE_BRANCH; refusing deletion."
+            exit 1
+          }
+          gh api --method DELETE "repos/$REPOSITORY/git/refs/heads/$BRANCH_NAME"
+          echo "Deleted merged temporary branch: $BRANCH_NAME"

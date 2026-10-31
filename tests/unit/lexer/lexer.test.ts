@@ -241,3 +241,33 @@ fn main() {
   assert.strictEqual(retToken?.span.line, 5);
   assert.strictEqual(retToken?.span.column, 5);
 });
+
+
+test('Lexer: deterministic bounded token fuzz preserves EOF and monotonic source spans', () => {
+  const fragments = [
+    'fn', 'let', 'mut', 'if', 'true', 'false', '42', '"text"', '(', ')',
+    '{', '}', '[', ']', '=', '+', '-', '*', '/', '|>', '??', '&', '!',
+    '++', '&&', 'null', '...', '..', ';', ',', '// comment\\n',
+  ];
+  let state = 0x5eed1234;
+  const next = (limit: number): number => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state % limit;
+  };
+
+  for (let sample = 0; sample < 96; sample++) {
+    const count = 1 + next(36);
+    const source = Array.from({ length: count }, () => fragments[next(fragments.length)]).join(' ');
+    const diagnostics = new DiagnosticBag();
+    const tokens = new Lexer(source, `generated-${sample}.sr`, diagnostics).tokenize();
+    assert.equal(tokens.at(-1)?.type, TokenType.Eof, `sample ${sample} must end with EOF`);
+
+    let previousStart = 0;
+    for (const token of tokens) {
+      assert.ok(token.span.start >= previousStart, `sample ${sample}: token starts must be monotonic`);
+      assert.ok(token.span.end >= token.span.start, `sample ${sample}: token span must not be reversed`);
+      assert.ok(token.span.end <= source.length, `sample ${sample}: token span must stay within source`);
+      previousStart = token.span.start;
+    }
+  }
+});

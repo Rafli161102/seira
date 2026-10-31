@@ -2,7 +2,7 @@
  * Seira Compiler Driver
  *
  * Orchestrates the sequential compiler pipeline:
- * Source -> Lexer -> Parser -> Resolver -> Type Checking -> HIR -> MIR -> Resource/Ownership Checking -> Backend
+ * Source -> Lexer -> Parser -> Resolver -> Type Checking/Effects -> HIR -> MIR -> Optimize -> Resource/Ownership Checking -> Backend
  *
  * Implements clean stage-based compilation with clear engineering boundaries.
  */
@@ -16,6 +16,7 @@ import { HIRLowering, HIRValidator, type HIRProgram } from '../hir/index.ts';
 import { Lexer } from '../lexer/lexer.ts';
 import type { Token } from '../lexer/token.ts';
 import { MIRBuilder, validateMIR, type MIRModule } from '../mir/index.ts';
+import { optimizeMIR } from '../mir/optimizer.ts';
 import { analyzeOwnership, type OwnershipAnalysisResult } from '../ownership/index.ts';
 import {
   ModuleGraph,
@@ -370,7 +371,7 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 6: Mid-Level Intermediate Representation (MIR) Construction (Architectural Skeleton)
+    // Stage 6: Mid-Level Intermediate Representation (MIR) Construction
     let mir: MIRModule | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.MIR) && hir) {
       const mirBuilder = new MIRBuilder();
@@ -395,7 +396,36 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 7: Ownership & Borrow Analysis over MIR
+    // Stage 7: Conservative MIR Optimization
+    if (mir && isStageAtLeast(effectiveStop, CompilerStage.Optimize)) {
+      const optimized = optimizeMIR(mir, context.config.optLevel, (candidate) => validateMIR(candidate).errors);
+      mir = optimized.module;
+      for (const failure of optimized.verificationFailures) {
+        for (const error of failure.errors) {
+          context.diagnostics.reportError('E4005', `MIR Optimization Verification Error after ${failure.passName}: ${error}`, hir!.source.span, hir!.source.file);
+        }
+      }
+      const optimizedValidation = validateMIR(mir);
+      for (const error of optimizedValidation.errors) {
+        context.diagnostics.reportError('E4005', `Optimized MIR Validation Error: ${error}`, hir!.source.span, hir!.source.file);
+      }
+
+      if (context.diagnostics.hasErrors() || effectiveStop === CompilerStage.Optimize) {
+        context.finish();
+        return {
+          success: !context.diagnostics.hasErrors(),
+          stage: CompilerStage.Optimize,
+          tokens,
+          ast,
+          hir,
+          mir,
+          diagnostics: context.diagnostics,
+          context,
+        };
+      }
+    }
+
+    // Stage 8: Ownership & Borrow Analysis over MIR
     let ownership: OwnershipAnalysisResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.ResourceCheck) && mir) {
       ownership = analyzeOwnership(mir);
@@ -421,7 +451,7 @@ export class CompilerDriver {
       }
     }
 
-    // Stage 8: Backend Code Generation (Architectural Skeleton)
+    // Stage 9: Backend Code Generation (Architectural Skeleton)
     let backendResult: BackendResult | undefined;
     if (isStageAtLeast(effectiveStop, CompilerStage.Backend)) {
       const backend = new CompilerBackend(

@@ -12,7 +12,7 @@ import { SEIRA_VERSION } from './version.ts';
 export function runInfo(): void {
   console.log('Seira Environment & Toolchain Information');
   console.log('========================================');
-  console.log(`Seira Version:         ${SEIRA_VERSION} (Effect System Foundation — Development Series)`);
+  console.log(`Seira Version:         ${SEIRA_VERSION} (Backend Readiness Contract — Development Series)`);
   console.log(`Language Axiom:        Everything is a Value. Programs are Transformations.`);
   console.log(`Host Platform:         ${platform()} (${arch()})`);
   console.log(`Host Node.js:          ${process.version}`);
@@ -34,6 +34,9 @@ export function runInfo(): void {
   console.log('  [x] Execution Engine: Active — Tree-Walking (0.0.5-s, 0.0.6-s, 0.0.7-s, 0.0.8-s, 0.0.9-s, 0.0.10-s, 0.0.11-d, 0.0.12-d, 0.0.13-d)');
   console.log('  [x] HIR:             Active — AST to typed HIR lowering & validation (develop)');
   console.log('  [x] MIR:             Active — HIR to SSA/CFG lowering & verification (develop)');
+  console.log('  [x] MIR Optimizer:   Active — verified pass manager, constant folding, branch simplification & dead pure-op elimination (P1.16)');
+  console.log('  [x] Conformance:     Implemented (P1.17 merged) — semantic matrix, deterministic diagnostics & bounded lexer fuzzing (P1.17)');
+  console.log('  [x] Backend Contract: Candidate — target layout, runtime ABI & MIR input validation (P1.18)');
   console.log('  [x] Ownership:       Active — MIR resource lifetime & borrow-event analysis (develop)');
   console.log('  [x] Effect Check:    Initial explicit ! call-boundary checking (P1.15)');
   console.log('  [ ] Native Codegen:  Skeleton (Reserved: 0.1.0-alpha)');
